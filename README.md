@@ -40,7 +40,7 @@ Cortex Linux embeds AI at the operating system level. Tell it what you need in p
 - ✅ LLM integration layer (PR #5 by @Sahilbhatane)
 - ✅ Safe command execution sandbox (PR #6 by @dhvil)
 - ✅ Hardware detection (PR #4 by @dhvil)
-- [ ] Package manager AI wrapper
+- ✅ Package manager AI wrapper
 - [ ] Basic multi-step orchestration
 
 ### Phase 2: Intelligence (Weeks 2-5)
