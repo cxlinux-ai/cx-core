@@ -85,36 +85,39 @@ class TestCortexCLI(unittest.TestCase):
     
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
     @patch('cortex.cli.CommandInterpreter')
-    @patch('subprocess.run')
-    def test_install_with_execute_success(self, mock_run, mock_interpreter_class):
+    @patch('cortex.cli.InstallationCoordinator')
+    def test_install_with_execute_success(self, mock_coordinator_class, mock_interpreter_class):
         mock_interpreter = Mock()
         mock_interpreter.parse.return_value = ["echo test"]
         mock_interpreter_class.return_value = mock_interpreter
         
+        mock_coordinator = Mock()
         mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = "test output"
-        mock_result.stderr = ""
-        mock_run.return_value = mock_result
+        mock_result.success = True
+        mock_result.total_duration = 1.5
+        mock_coordinator.execute.return_value = mock_result
+        mock_coordinator_class.return_value = mock_coordinator
         
         result = self.cli.install("docker", execute=True)
         
         self.assertEqual(result, 0)
-        mock_run.assert_called_once()
+        mock_coordinator.execute.assert_called_once()
     
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
     @patch('cortex.cli.CommandInterpreter')
-    @patch('subprocess.run')
-    def test_install_with_execute_failure(self, mock_run, mock_interpreter_class):
+    @patch('cortex.cli.InstallationCoordinator')
+    def test_install_with_execute_failure(self, mock_coordinator_class, mock_interpreter_class):
         mock_interpreter = Mock()
         mock_interpreter.parse.return_value = ["invalid command"]
         mock_interpreter_class.return_value = mock_interpreter
         
+        mock_coordinator = Mock()
         mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "command not found"
-        mock_run.return_value = mock_result
+        mock_result.success = False
+        mock_result.failed_step = 0
+        mock_result.error_message = "command not found"
+        mock_coordinator.execute.return_value = mock_result
+        mock_coordinator_class.return_value = mock_coordinator
         
         result = self.cli.install("docker", execute=True)
         
