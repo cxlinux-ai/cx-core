@@ -8,11 +8,12 @@ import subprocess
 import shlex
 import json
 import re
+import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
-import datetime
+from shutil import which
 
 
 class VerificationStatus(Enum):
@@ -65,7 +66,7 @@ class InstallationVerifier:
             'command': 'psql --version',
             'file': '/usr/bin/psql',
             'service': 'postgresql',
-            'version_regex': r'PostgreSQL (\d+\.\d+)'
+            'version_regex': r'PostgreSQL[^\d]*([\d\.]+)'
         },
         'mysql-server': {
             'command': 'mysql --version',
@@ -147,12 +148,31 @@ class InstallationVerifier:
         """Test if file/binary exists"""
         path = Path(filepath)
         exists = path.exists()
+        actual_location: Optional[str] = None
+        
+        if exists:
+            actual_location = str(path)
+        else:
+            # Try to resolve via PATH when direct path lookup fails
+            command_name = (
+                filepath if not path.is_absolute() else path.name
+            )
+            resolved_path = which(command_name)
+            if resolved_path:
+                exists = True
+                actual_location = resolved_path
+        
+        actual_message = (
+            f"Found at {actual_location}"
+            if actual_location
+            else "Not found"
+        )
         
         return VerificationTest(
             name=f"File exists: {filepath}",
             test_type="file",
             expected="File exists and is accessible",
-            actual=f"Found at {filepath}" if exists else "Not found",
+            actual=actual_message,
             passed=exists,
             error_message=None if exists else f"File not found: {filepath}"
         )
@@ -163,15 +183,26 @@ class InstallationVerifier:
             f"systemctl is-active {service_name}"
         )
         
-        is_active = "active" in stdout.lower()
+        service_state = stdout.strip().lower()
+        is_active = success and service_state == "active"
+        actual = service_state or stderr.strip() or "unknown"
+        
+        error_message = None
+        if not is_active:
+            if service_state and service_state != "active":
+                error_message = f"Service state: {service_state}"
+            elif stderr:
+                error_message = stderr.strip()
+            else:
+                error_message = "Service check failed"
         
         return VerificationTest(
             name=f"Service status: {service_name}",
             test_type="service",
             expected="Service is active/running",
-            actual=stdout.strip(),
+            actual=actual,
             passed=is_active,
-            error_message=None if is_active else f"Service not active: {stderr}"
+            error_message=error_message
         )
     
     def _test_version_match(
