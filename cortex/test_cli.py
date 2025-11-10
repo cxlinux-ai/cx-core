@@ -18,7 +18,7 @@ class TestCortexCLI(unittest.TestCase):
         api_key = self.cli._get_api_key()
         self.assertEqual(api_key, 'test-key')
     
-    @patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-claude-key'})
+    @patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-claude-key', 'OPENAI_API_KEY': ''}, clear=True)
     def test_get_api_key_claude(self):
         api_key = self.cli._get_api_key()
         self.assertEqual(api_key, 'test-claude-key')

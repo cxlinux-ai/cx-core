@@ -1,7 +1,12 @@
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 import json
-from interpreter import CommandInterpreter, APIProvider
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from LLM.interpreter import CommandInterpreter, APIProvider
 
 
 class TestCommandInterpreter(unittest.TestCase):
@@ -9,21 +14,21 @@ class TestCommandInterpreter(unittest.TestCase):
     def setUp(self):
         self.api_key = "test-api-key"
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_initialization_openai(self, mock_openai):
         interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
         self.assertEqual(interpreter.provider, APIProvider.OPENAI)
         self.assertEqual(interpreter.model, "gpt-4")
         mock_openai.assert_called_once_with(api_key=self.api_key)
     
-    @patch('interpreter.Anthropic')
+    @patch('anthropic.Anthropic')
     def test_initialization_claude(self, mock_anthropic):
         interpreter = CommandInterpreter(api_key=self.api_key, provider="claude")
         self.assertEqual(interpreter.provider, APIProvider.CLAUDE)
         self.assertEqual(interpreter.model, "claude-3-5-sonnet-20241022")
         mock_anthropic.assert_called_once_with(api_key=self.api_key)
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_initialization_custom_model(self, mock_openai):
         interpreter = CommandInterpreter(
             api_key=self.api_key,
@@ -73,14 +78,14 @@ class TestCommandInterpreter(unittest.TestCase):
         result = interpreter._validate_commands(commands)
         self.assertEqual(result, ["apt update"])
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_parse_empty_input(self, mock_openai):
         interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
         
         with self.assertRaises(ValueError):
             interpreter.parse("")
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_call_openai_success(self, mock_openai):
         mock_client = Mock()
         mock_response = Mock()
@@ -94,7 +99,7 @@ class TestCommandInterpreter(unittest.TestCase):
         result = interpreter._call_openai("install docker")
         self.assertEqual(result, ["apt update"])
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_call_openai_failure(self, mock_openai):
         mock_client = Mock()
         mock_client.chat.completions.create.side_effect = Exception("API Error")
@@ -105,7 +110,7 @@ class TestCommandInterpreter(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             interpreter._call_openai("install docker")
     
-    @patch('interpreter.Anthropic')
+    @patch('anthropic.Anthropic')
     def test_call_claude_success(self, mock_anthropic):
         mock_client = Mock()
         mock_response = Mock()
@@ -119,7 +124,7 @@ class TestCommandInterpreter(unittest.TestCase):
         result = interpreter._call_claude("install docker")
         self.assertEqual(result, ["apt update"])
     
-    @patch('interpreter.Anthropic')
+    @patch('anthropic.Anthropic')
     def test_call_claude_failure(self, mock_anthropic):
         mock_client = Mock()
         mock_client.messages.create.side_effect = Exception("API Error")
@@ -130,7 +135,7 @@ class TestCommandInterpreter(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             interpreter._call_claude("install docker")
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_parse_with_validation(self, mock_openai):
         mock_client = Mock()
         mock_response = Mock()
@@ -144,7 +149,7 @@ class TestCommandInterpreter(unittest.TestCase):
         result = interpreter.parse("test command", validate=True)
         self.assertEqual(result, ["apt update"])
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_parse_without_validation(self, mock_openai):
         mock_client = Mock()
         mock_response = Mock()
@@ -158,7 +163,7 @@ class TestCommandInterpreter(unittest.TestCase):
         result = interpreter.parse("test command", validate=False)
         self.assertEqual(result, ["apt update", "rm -rf /"])
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_parse_with_context(self, mock_openai):
         mock_client = Mock()
         mock_response = Mock()
@@ -197,7 +202,7 @@ class TestCommandInterpreter(unittest.TestCase):
         result = interpreter._parse_commands(response)
         self.assertEqual(result, ["apt update", "apt install docker"])
     
-    @patch('interpreter.OpenAI')
+    @patch('openai.OpenAI')
     def test_parse_docker_installation(self, mock_openai):
         mock_client = Mock()
         mock_response = Mock()
@@ -217,7 +222,7 @@ class TestCommandInterpreter(unittest.TestCase):
         
         result = interpreter.parse("install docker")
         self.assertGreater(len(result), 0)
-        self.assertIn("docker", result[0].lower() or result[1].lower())
+        self.assertTrue(any("docker" in cmd.lower() for cmd in result))
 
 
 if __name__ == "__main__":
