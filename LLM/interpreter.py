@@ -22,7 +22,7 @@ class CommandInterpreter:
         if model:
             self.model = model
         else:
-            self.model = "gpt-4" if self.provider == APIProvider.OPENAI else "claude-3-5-sonnet-20241022"
+            self.model = "gpt-4o-mini" if self.provider == APIProvider.OPENAI else "claude-3-5-sonnet-20241022"
         
         self._initialize_client()
     
