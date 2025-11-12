@@ -42,6 +42,13 @@ class InstallationResult:
 
 
 class InstallationCoordinator:
+    """
+    Coordinates multi-step software installation processes.
+    
+    Manages command execution with progress tracking, error handling,
+    rollback support, and logging capabilities.
+    """
+    
     def __init__(
         self,
         commands: List[str],
@@ -52,6 +59,18 @@ class InstallationCoordinator:
         log_file: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int, InstallationStep], None]] = None
     ):
+        """
+        Initialize the installation coordinator.
+        
+        Args:
+            commands: List of shell commands to execute
+            descriptions: Optional descriptions for each command
+            timeout: Maximum execution time per command in seconds
+            stop_on_error: Whether to stop on first error
+            enable_rollback: Whether to enable rollback on failure
+            log_file: Optional path to log file
+            progress_callback: Optional callback for progress updates
+        """
         self.timeout = timeout
         self.stop_on_error = stop_on_error
         self.enable_rollback = enable_rollback
@@ -144,9 +163,21 @@ class InstallationCoordinator:
                 self._log(f"Rollback failed: {cmd} - {str(e)}")
     
     def add_rollback_command(self, command: str):
+        """
+        Add a command to be executed during rollback.
+        
+        Args:
+            command: Shell command to execute on rollback
+        """
         self.rollback_commands.append(command)
     
     def execute(self) -> InstallationResult:
+        """
+        Execute all installation steps.
+        
+        Returns:
+            InstallationResult containing execution details and status
+        """
         start_time = time.time()
         failed_step_index = None
         
@@ -195,6 +226,15 @@ class InstallationCoordinator:
         )
     
     def verify_installation(self, verify_commands: List[str]) -> Dict[str, bool]:
+        """
+        Verify installation by running verification commands.
+        
+        Args:
+            verify_commands: List of commands to verify installation
+            
+        Returns:
+            Dictionary mapping commands to their success status
+        """
         verification_results = {}
         
         self._log("Starting verification...")
@@ -249,8 +289,10 @@ def install_docker() -> InstallationResult:
     commands = [
         "apt update",
         "apt install -y apt-transport-https ca-certificates curl software-properties-common",
-        "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -",
-        'add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"',
+        "install -m 0755 -d /etc/apt/keyrings",
+        "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
+        "chmod a+r /etc/apt/keyrings/docker.gpg",
+        'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null',
         "apt update",
         "apt install -y docker-ce docker-ce-cli containerd.io",
         "systemctl start docker",
@@ -260,7 +302,9 @@ def install_docker() -> InstallationResult:
     descriptions = [
         "Update package lists",
         "Install dependencies",
+        "Create keyrings directory",
         "Add Docker GPG key",
+        "Set key permissions",
         "Add Docker repository",
         "Update package lists again",
         "Install Docker packages",

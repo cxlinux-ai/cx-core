@@ -10,6 +10,11 @@ import subprocess
 import os
 import tempfile
 import shutil
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
 from sandbox_executor import (
     SandboxExecutor,
     ExecutionResult,

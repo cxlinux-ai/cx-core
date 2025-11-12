@@ -4,11 +4,11 @@ ds# 🧠 Cortex Linux
 **Linux that understands you. No documentation required.**
 ```bash
 $ cortex install oracle-23-ai --optimize-gpu
-🧠 Analyzing system: NVIDIA RTX 4090 detected
+[INFO] Analyzing system: NVIDIA RTX 4090 detected
    Installing CUDA 12.3 + dependencies
    Configuring Oracle for GPU acceleration  
    Running validation tests
-✅ Oracle 23 AI ready at localhost:1521 (4m 23s)
+[SUCCESS] Oracle 23 AI ready at localhost:1521 (4m 23s)
 ```
 
 ## The Problem
@@ -37,9 +37,9 @@ Cortex Linux embeds AI at the operating system level. Tell it what you need in p
 ## Current Roadmap
 
 ### Phase 1: Foundation (Weeks 1-2)
-- ✅ LLM integration layer (PR #5 by @Sahilbhatane)
-- ✅ Safe command execution sandbox (PR #6 by @dhvil)
-- ✅ Hardware detection (PR #4 by @dhvil)
+- [DONE] LLM integration layer (PR #5 by @Sahilbhatane)
+- [DONE] Safe command execution sandbox (PR #6 by @dhvil)
+- [DONE] Hardware detection (PR #4 by @dhvil)
 - [ ] Package manager AI wrapper
 - [ ] Basic multi-step orchestration
 

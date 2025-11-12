@@ -8,6 +8,12 @@ import unittest
 from unittest.mock import patch, mock_open, MagicMock
 import json
 import subprocess
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
 from hwprofiler import HardwareProfiler
 
 

@@ -2,16 +2,21 @@ import sys
 import os
 import argparse
 import time
-from typing import List, Optional
+from typing import Optional
 import subprocess
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from LLM.interpreter import CommandInterpreter
 from cortex.coordinator import InstallationCoordinator, StepStatus
 
 
 class CortexCLI:
+    """
+    Command-line interface for Cortex AI-powered software installation.
+    
+    Provides an interactive CLI for installing software using natural language
+    commands with support for OpenAI and Claude AI providers.
+    """
+    
     def __init__(self):
         self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
         self.spinner_idx = 0
@@ -34,10 +39,10 @@ class CortexCLI:
         print(f"{emoji} {message}")
     
     def _print_error(self, message: str):
-        print(f"❌ Error: {message}", file=sys.stderr)
+        print(f"[ERROR] {message}", file=sys.stderr)
     
     def _print_success(self, message: str):
-        print(f"✅ {message}")
+        print(f"[SUCCESS] {message}")
     
     def _animate_spinner(self, message: str):
         sys.stdout.write(f"\r{self.spinner_chars[self.spinner_idx]} {message}")
@@ -49,7 +54,18 @@ class CortexCLI:
         sys.stdout.write('\r\033[K')
         sys.stdout.flush()
     
-    def install(self, software: str, execute: bool = False, dry_run: bool = False):
+    def install(self, software: str, execute: bool = False, dry_run: bool = False) -> int:
+        """
+        Install software using natural language description.
+        
+        Args:
+            software: Natural language description of software to install
+            execute: Whether to execute the generated commands
+            dry_run: Whether to show commands without executing
+            
+        Returns:
+            Exit code: 0 for success, 1 for failure
+        """
         api_key = self._get_api_key()
         if not api_key:
             return 1
@@ -84,11 +100,11 @@ class CortexCLI:
             
             if execute:
                 def progress_callback(current, total, step):
-                    status_emoji = "⏳"
+                    status_emoji = "[PENDING]"
                     if step.status == StepStatus.SUCCESS:
-                        status_emoji = "✅"
+                        status_emoji = "[OK]"
                     elif step.status == StepStatus.FAILED:
-                        status_emoji = "❌"
+                        status_emoji = "[FAIL]"
                     print(f"\n[{current}/{total}] {status_emoji} {step.description}")
                     print(f"  Command: {step.command}")
                 
@@ -133,7 +149,13 @@ class CortexCLI:
             return 1
 
 
-def main():
+def main() -> int:
+    """
+    Main entry point for the Cortex CLI application.
+    
+    Returns:
+        Exit code: 0 for success, 1 for failure
+    """
     parser = argparse.ArgumentParser(
         prog='cortex',
         description='AI-powered Linux command interpreter',
@@ -144,12 +166,15 @@ Examples:
   cortex install docker --execute
   cortex install "python 3.11 with pip"
   cortex install nginx --dry-run
+  cortex --test
 
 Environment Variables:
   OPENAI_API_KEY      OpenAI API key for GPT-4
   ANTHROPIC_API_KEY   Anthropic API key for Claude
         """
     )
+    
+    parser.add_argument('--test', action='store_true', help='Run all test suites')
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
@@ -159,6 +184,17 @@ Environment Variables:
     install_parser.add_argument('--dry-run', action='store_true', help='Show commands without executing')
     
     args = parser.parse_args()
+    
+    if args.test:
+        test_dir = os.path.join(os.path.dirname(__file__), '..', 'tests')
+        test_runner = os.path.join(test_dir, 'run_all_tests.py')
+        
+        if not os.path.exists(test_runner):
+            print("[ERROR] Test runner not found", file=sys.stderr)
+            return 1
+        
+        result = subprocess.run([sys.executable, test_runner])
+        return result.returncode
     
     if not args.command:
         parser.print_help()

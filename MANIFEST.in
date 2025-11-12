@@ -1,5 +1,7 @@
 include README.md
 include LICENSE
 recursive-include LLM *.py
+recursive-exclude LLM test_*.py
 recursive-include cortex *.py
+recursive-exclude cortex test_*.py
 include LLM/requirements.txt
