@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch
 import sys
 import os
 
@@ -41,7 +41,7 @@ class TestCortexCLI(unittest.TestCase):
     
     @patch('sys.stdout')
     def test_print_status(self, mock_stdout):
-        self.cli._print_status("🧠", "Test message")
+        self.cli._print_status("[INFO]", "Test message")
         self.assertTrue(mock_stdout.write.called or print)
     
     @patch('sys.stderr')
