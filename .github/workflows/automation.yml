@@ -47,9 +47,11 @@ jobs:
                   else:
                       self.payment_history = []
               
-              def save_data(self):
-                  with open(self.bounties_file, 'w') as f:
-                      json.dump(self.pending_bounties, f, indent=2)
+def save_data(self):
+    with open(self.bounties_file, 'w') as f:
+        json.dump(self.pending_bounties, f, indent=2)
+    with open(self.payments_file, 'w') as f:
+        json.dump(self.payment_history, f, indent=2)
               
               def extract_bounty_amount(self, text):
                   if not text: return None
