@@ -73,6 +73,55 @@ class InstallationCoordinator:
         ]
         
         self.rollback_commands: List[str] = []
+
+    @classmethod
+    def from_plan(
+        cls,
+        plan: List[Dict[str, str]],
+        *,
+        timeout: int = 300,
+        stop_on_error: bool = True,
+        enable_rollback: Optional[bool] = None,
+        log_file: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int, InstallationStep], None]] = None
+    ) -> "InstallationCoordinator":
+        """Create a coordinator from a structured plan produced by an LLM.
+
+        Each plan entry should contain at minimum a ``command`` key and
+        optionally ``description`` and ``rollback`` fields. Rollback commands are
+        registered automatically when present.
+        """
+
+        commands: List[str] = []
+        descriptions: List[str] = []
+        rollback_commands: List[str] = []
+
+        for index, step in enumerate(plan):
+            command = step.get("command")
+            if not command:
+                raise ValueError("Each plan step must include a 'command'")
+
+            commands.append(command)
+            descriptions.append(step.get("description", f"Step {index + 1}"))
+
+            rollback_cmd = step.get("rollback")
+            if rollback_cmd:
+                rollback_commands.append(rollback_cmd)
+
+        coordinator = cls(
+            commands,
+            descriptions,
+            timeout=timeout,
+            stop_on_error=stop_on_error,
+            enable_rollback=enable_rollback if enable_rollback is not None else bool(rollback_commands),
+            log_file=log_file,
+            progress_callback=progress_callback,
+        )
+
+        for rollback_cmd in rollback_commands:
+            coordinator.add_rollback_command(rollback_cmd)
+
+        return coordinator
     
     def _log(self, message: str):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -252,38 +301,52 @@ class InstallationCoordinator:
 
 
 def install_docker() -> InstallationResult:
-    commands = [
-        "apt update",
-        "apt install -y apt-transport-https ca-certificates curl software-properties-common",
-        "install -m 0755 -d /etc/apt/keyrings",
-        "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
-        "chmod a+r /etc/apt/keyrings/docker.gpg",
-        'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null',
-        "apt update",
-        "apt install -y docker-ce docker-ce-cli containerd.io",
-        "systemctl start docker",
-        "systemctl enable docker"
+    plan = [
+        {
+            "command": "apt update",
+            "description": "Update package lists"
+        },
+        {
+            "command": "apt install -y apt-transport-https ca-certificates curl software-properties-common",
+            "description": "Install dependencies"
+        },
+        {
+            "command": "install -m 0755 -d /etc/apt/keyrings",
+            "description": "Create keyrings directory"
+        },
+        {
+            "command": "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
+            "description": "Add Docker GPG key"
+        },
+        {
+            "command": "chmod a+r /etc/apt/keyrings/docker.gpg",
+            "description": "Set key permissions"
+        },
+        {
+            "command": 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null',
+            "description": "Add Docker repository"
+        },
+        {
+            "command": "apt update",
+            "description": "Update package lists again"
+        },
+        {
+            "command": "apt install -y docker-ce docker-ce-cli containerd.io",
+            "description": "Install Docker packages"
+        },
+        {
+            "command": "systemctl start docker",
+            "description": "Start Docker service",
+            "rollback": "systemctl stop docker"
+        },
+        {
+            "command": "systemctl enable docker",
+            "description": "Enable Docker on boot",
+            "rollback": "systemctl disable docker"
+        }
     ]
-    
-    descriptions = [
-        "Update package lists",
-        "Install dependencies",
-        "Create keyrings directory",
-        "Add Docker GPG key",
-        "Set key permissions",
-        "Add Docker repository",
-        "Update package lists again",
-        "Install Docker packages",
-        "Start Docker service",
-        "Enable Docker on boot"
-    ]
-    
-    coordinator = InstallationCoordinator(
-        commands=commands,
-        descriptions=descriptions,
-        timeout=300,
-        stop_on_error=True
-    )
+
+    coordinator = InstallationCoordinator.from_plan(plan, timeout=300, stop_on_error=True)
     
     result = coordinator.execute()
     
@@ -292,3 +355,31 @@ def install_docker() -> InstallationResult:
         coordinator.verify_installation(verify_commands)
     
     return result
+
+
+def example_cuda_install_plan() -> List[Dict[str, str]]:
+    """Return a sample CUDA installation plan for LLM integration tests."""
+
+    return [
+        {
+            "command": "apt update",
+            "description": "Refresh package repositories"
+        },
+        {
+            "command": "apt install -y build-essential dkms",
+            "description": "Install build tooling"
+        },
+        {
+            "command": "sh cuda_installer.run --silent",
+            "description": "Install CUDA drivers",
+            "rollback": "rm -rf /usr/local/cuda"
+        },
+        {
+            "command": "nvidia-smi",
+            "description": "Verify GPU driver status"
+        },
+        {
+            "command": "nvcc --version",
+            "description": "Validate CUDA compiler installation"
+        }
+    ]
