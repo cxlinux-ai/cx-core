@@ -464,14 +464,38 @@ class ConfigManager:
     
     def _simple_version_compare(self, version1: str, version2: str) -> int:
         """
-        Simple fallback version comparison (extract numeric parts).
+        Fallback version comparison using numeric extraction.
+        
+        Used when the packaging library is unavailable or fails to parse
+        version strings. Extracts numeric components and compares them
+        sequentially, padding shorter versions with zeros.
+        
+        This method provides a basic version comparison by extracting all
+        numeric parts from the version strings and comparing them position
+        by position. It handles simple version schemes well but may not
+        correctly handle complex pre-release tags or build metadata.
         
         Args:
-            version1: First version string
-            version2: Second version string
+            version1: First version string (e.g., "1.2.3", "2.0.0-rc1")
+            version2: Second version string to compare against
         
         Returns:
-            -1 if version1 < version2, 0 if equal, 1 if version1 > version2
+            int: -1 if version1 < version2
+                 0 if versions are equal
+                 1 if version1 > version2
+        
+        Example:
+            >>> _simple_version_compare("1.2.3", "1.2.4")
+            -1
+            >>> _simple_version_compare("2.0.0", "1.9.9")
+            1
+            >>> _simple_version_compare("1.0", "1.0.0")
+            0
+        
+        Note:
+            This is a simplified comparison that only considers numeric parts.
+            Complex version schemes (pre-release tags, build metadata) may not
+            be handled correctly. Prefer using packaging.version when available.
         """
         # Simple version comparison (extract numeric parts)
         v1_parts = re.findall(r'\d+', version1)
@@ -557,11 +581,32 @@ class ConfigManager:
     
     def _import_packages(self, config: Dict[str, Any], summary: Dict[str, Any]) -> None:
         """
-        Import packages from configuration.
+        Import packages from configuration and update system state.
+        
+        This method processes package installations by first computing the
+        difference between the current system state and the target configuration
+        using diff_configuration(). It then attempts to install, upgrade, or
+        downgrade packages as needed.
+        
+        The method continues processing all packages even if individual packages
+        fail to install, ensuring maximum success. Failed installations are
+        tracked in the summary for user review.
         
         Args:
-            config: Configuration dictionary
-            summary: Summary dictionary to update with results
+            config: Configuration dictionary containing package specifications
+                   Expected to have 'packages' key with list of package dicts
+            summary: Summary dictionary to update with results. Modified in-place
+                    with keys: 'installed', 'upgraded', 'failed'
+        
+        Updates:
+            summary['installed']: List of successfully installed package names
+            summary['upgraded']: List of successfully upgraded package names
+            summary['failed']: List of failed package names (with error details)
+        
+        Note:
+            Uses _install_package() internally for actual package installation.
+            Each package is categorized based on diff results (install vs upgrade).
+            Errors are caught and logged to allow processing to continue.
         """
         diff = self.diff_configuration(config)
         packages_to_process = (
@@ -585,11 +630,30 @@ class ConfigManager:
     
     def _import_preferences(self, config: Dict[str, Any], summary: Dict[str, Any]) -> None:
         """
-        Import preferences from configuration.
+        Import user preferences from configuration and save to disk.
+        
+        Extracts preferences from the configuration dictionary and saves them
+        to the user's Cortex preferences file at ~/.cortex/preferences.yaml.
+        If preferences are empty or missing, no action is taken.
+        
+        This method handles the persistence of user-configurable settings such
+        as confirmation levels, verbosity settings, and other behavioral
+        preferences for the Cortex system.
         
         Args:
-            config: Configuration dictionary
-            summary: Summary dictionary to update with results
+            config: Configuration dictionary containing optional 'preferences' key
+                   with user preference settings as a dictionary
+            summary: Summary dictionary to update with results. Modified in-place
+                    with keys: 'preferences_updated', 'failed'
+        
+        Updates:
+            summary['preferences_updated']: Set to True on successful save
+            summary['failed']: Appends error message if save fails
+        
+        Note:
+            Uses _save_preferences() internally to persist to disk.
+            Errors during save are caught and added to failed list with details.
+            If config has no preferences or they are empty, silently succeeds.
         """
         config_prefs = config.get('preferences', {})
         if config_prefs:
