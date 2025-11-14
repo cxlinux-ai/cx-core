@@ -1,8 +1,7 @@
 import unittest
-from unittest.mock import Mock, patch, call
+from unittest.mock import Mock, patch
 import tempfile
 import os
-import time
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -10,7 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from cortex.coordinator import (
     InstallationCoordinator,
     InstallationStep,
-    InstallationResult,
     StepStatus,
     install_docker
 )
@@ -316,7 +314,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertIsNotNone(step.start_time)
         self.assertIsNotNone(step.end_time)
         if step.end_time and step.start_time:
-            self.assertTrue(step.end_time > step.start_time)
+            self.assertGreater(step.end_time, step.start_time)
         self.assertIsNotNone(step.duration())
 
 
@@ -333,7 +331,7 @@ class TestInstallDocker(unittest.TestCase):
         result = install_docker()
         
         self.assertTrue(result.success)
-        self.assertEqual(len(result.steps), 8)
+        self.assertEqual(len(result.steps), 10)
     
     @patch('subprocess.run')
     def test_install_docker_failure(self, mock_run):

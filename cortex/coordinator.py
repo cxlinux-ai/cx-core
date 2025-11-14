@@ -42,6 +42,8 @@ class InstallationResult:
 
 
 class InstallationCoordinator:
+    """Coordinates multi-step software installation processes."""
+
     def __init__(
         self,
         commands: List[str],
@@ -52,6 +54,7 @@ class InstallationCoordinator:
         log_file: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int, InstallationStep], None]] = None
     ):
+        """Initialize an installation run with optional logging and rollback."""
         self.timeout = timeout
         self.stop_on_error = stop_on_error
         self.enable_rollback = enable_rollback
@@ -144,9 +147,11 @@ class InstallationCoordinator:
                 self._log(f"Rollback failed: {cmd} - {str(e)}")
     
     def add_rollback_command(self, command: str):
+        """Register a rollback command executed if a step fails."""
         self.rollback_commands.append(command)
     
     def execute(self) -> InstallationResult:
+        """Run each installation step and capture structured results."""
         start_time = time.time()
         failed_step_index = None
         
@@ -195,6 +200,7 @@ class InstallationCoordinator:
         )
     
     def verify_installation(self, verify_commands: List[str]) -> Dict[str, bool]:
+        """Execute verification commands and return per-command success."""
         verification_results = {}
         
         self._log("Starting verification...")
@@ -249,8 +255,10 @@ def install_docker() -> InstallationResult:
     commands = [
         "apt update",
         "apt install -y apt-transport-https ca-certificates curl software-properties-common",
-        "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -",
-        'add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"',
+        "install -m 0755 -d /etc/apt/keyrings",
+        "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
+        "chmod a+r /etc/apt/keyrings/docker.gpg",
+        'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null',
         "apt update",
         "apt install -y docker-ce docker-ce-cli containerd.io",
         "systemctl start docker",
@@ -260,7 +268,9 @@ def install_docker() -> InstallationResult:
     descriptions = [
         "Update package lists",
         "Install dependencies",
+        "Create keyrings directory",
         "Add Docker GPG key",
+        "Set key permissions",
         "Add Docker repository",
         "Update package lists again",
         "Install Docker packages",
