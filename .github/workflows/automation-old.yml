@@ -1,0 +1,401 @@
+name: Cortex Linux Automation
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: '0 18 * * 5'  # Friday 6pm UTC (1pm EST)
+    - cron: '0 12 * * 1'  # Monday noon UTC
+  workflow_dispatch:
+
+jobs:
+  bounty-tracking:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Scan for bounties
+        run: |
+          cat > bounty_tracker.py << 'TRACKER_EOF'
+          #!/usr/bin/env python3
+          import os, json, re, subprocess
+          from datetime import datetime
+          
+          class BountyTracker:
+              def __init__(self, repo="cortexlinux/cortex"):
+                  self.repo = repo
+                  self.bounties_file = "bounties_pending.json"
+                  self.payments_file = "payments_history.json"
+                  self.load_data()
+              
+              def load_data(self):
+                  if os.path.exists(self.bounties_file):
+                      with open(self.bounties_file, 'r') as f:
+                          self.pending_bounties = json.load(f)
+                  else:
+                      self.pending_bounties = []
+                  if os.path.exists(self.payments_file):
+                      with open(self.payments_file, 'r') as f:
+                          self.payment_history = json.load(f)
+                  else:
+                      self.payment_history = []
+              
+def save_data(self):
+    with open(self.bounties_file, 'w') as f:
+        json.dump(self.pending_bounties, f, indent=2)
+    with open(self.payments_file, 'w') as f:
+        json.dump(self.payment_history, f, indent=2)
+              
+              def extract_bounty_amount(self, text):
+                  if not text: return None
+                  patterns = [r'\$(\d+)(?:-\d+)?\s*(?:bounty|upon merge|on merge)', r'bounty[:\s]+\$(\d+)', r'\$(\d+)\s*(?:on|upon)\s+merge']
+                  for pattern in patterns:
+                      match = re.search(pattern, text, re.IGNORECASE)
+                      if match: return int(match.group(1))
+                  return None
+              
+              def scan_merged_prs(self):
+                  cmd = ['gh', 'pr', 'list', '--repo', self.repo, '--state', 'merged', '--limit', '50', '--json', 'number,title,author,mergedAt,body,labels']
+                  result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                  prs = json.loads(result.stdout)
+                  unpaid_bounties = []
+                  for pr in prs:
+                      if any(p['pr_number'] == pr['number'] for p in self.payment_history): continue
+                      if any(b['pr_number'] == pr['number'] for b in self.pending_bounties): continue
+                      has_bounty_label = any(label.get('name') == 'bounty' for label in pr.get('labels', []))
+                      bounty_amount = self.extract_bounty_amount(pr.get('body', '') + ' ' + pr.get('title', ''))
+                      if has_bounty_label or bounty_amount:
+                          unpaid_bounties.append({
+                              'pr_number': pr['number'], 'title': pr['title'], 'author': pr['author']['login'],
+                              'merged_at': pr['mergedAt'], 'amount': bounty_amount or 100, 'status': 'pending',
+                              'payment_method': None, 'added_date': datetime.now().isoformat()
+                          })
+                  return unpaid_bounties
+              
+              def add_bounties(self, bounties):
+                  self.pending_bounties.extend(bounties)
+                  self.save_data()
+              
+              def get_payment_report(self):
+                  if not self.pending_bounties: return "✅ No pending bounties to pay!\n"
+                  report = "💰 BOUNTY PAYMENT REPORT\n" + "="*60 + "\n"
+                  report += f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                  report += f"Total Pending: {len(self.pending_bounties)} bounties\n\n"
+                  by_author = {}
+                  for bounty in self.pending_bounties:
+                      author = bounty['author']
+                      if author not in by_author: by_author[author] = []
+                      by_author[author].append(bounty)
+                  for author, bounties in sorted(by_author.items()):
+                      total = sum(b['amount'] for b in bounties)
+                      report += f"\n👤 @{author}\n   Total: ${total}\n"
+                      payment_method = bounties[0].get('payment_method')
+                      if payment_method:
+                          report += f"   Payment Method: {payment_method}\n"
+                      else:
+                          report += f"   Payment Method: ⚠️ NOT SET\n"
+                      report += f"   PRs:\n"
+                      for b in bounties:
+                          report += f"   • PR #{b['pr_number']}: {b['title']} (${b['amount']})\n"
+                  report += "\n" + "="*60 + "\n"
+                  report += f"💵 TOTAL TO PAY: ${sum(b['amount'] for b in self.pending_bounties)}\n"
+                  return report
+              
+              def generate_discord_message(self):
+                  if not self.pending_bounties: return None
+                  msg = "🔔 **Weekly Bounty Report**\n\n"
+                  by_author = {}
+                  for bounty in self.pending_bounties:
+                      author = bounty['author']
+                      if author not in by_author: by_author[author] = []
+                      by_author[author].append(bounty)
+                  for author, bounties in sorted(by_author.items()):
+                      total = sum(b['amount'] for b in bounties)
+                      msg += f"💰 @{author} - ${total}\n"
+                      for b in bounties:
+                          msg += f"   • PR #{b['pr_number']}: {b['title']}\n"
+                  msg += f"\n**Total: ${sum(b['amount'] for b in self.pending_bounties)}**\n\n"
+                  msg += "React with ✅ to approve payments"
+                  return msg
+          
+          tracker = BountyTracker()
+          new_bounties = tracker.scan_merged_prs()
+          if new_bounties:
+              tracker.add_bounties(new_bounties)
+          report = tracker.get_payment_report()
+          with open('bounty_report.txt', 'w') as f:
+              f.write(report)
+          discord_msg = tracker.generate_discord_message()
+          if discord_msg:
+              with open('discord_message.txt', 'w') as f:
+                  f.write(discord_msg)
+          print(report)
+          TRACKER_EOF
+          
+          python3 bounty_tracker.py
+      
+      - name: Post to Discord
+        if: hashFiles('discord_message.txt') != ''
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ -f discord_message.txt ]; then
+            CONTENT=$(cat discord_message.txt | jq -Rs .)
+            curl -X POST "$DISCORD_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": $CONTENT}"
+          fi
+      
+      - name: Commit tracking files
+        run: |
+          git config user.name "Cortex Bot"
+          git config user.email "bot@cortexlinux.com"
+          git add bounties_pending.json payments_history.json bounty_report.txt 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "Update bounty tracking [automated]"
+          git push || true
+
+  update-leaderboard:
+    if: github.event.schedule == '0 12 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Generate leaderboard
+        run: |
+          cat > generate_leaderboard.py << 'LEADER_EOF'
+          #!/usr/bin/env python3
+          import json, os, subprocess
+          from datetime import datetime
+          
+          contributors_file = "contributors.json"
+          payments_file = "payments_history.json"
+          
+          contributors = {}
+          payment_history = []
+          
+          if os.path.exists(contributors_file):
+              with open(contributors_file, 'r') as f:
+                  contributors = json.load(f)
+          if os.path.exists(payments_file):
+              with open(payments_file, 'r') as f:
+                  payment_history = json.load(f)
+          
+          stats = []
+          for username, data in contributors.items():
+              user_payments = [p for p in payment_history if p['author'] == username]
+              total_earned = sum(p['amount'] for p in user_payments)
+              prs_merged = len(user_payments)
+              if prs_merged > 0:
+                  stats.append({
+                      'username': username, 'total_earned': total_earned, 'prs_merged': prs_merged,
+                      'expertise': data.get('expertise', []),
+                      'github_url': data.get('github_url', f'https://github.com/{username}')
+                  })
+          
+          stats = sorted(stats, key=lambda x: x['total_earned'], reverse=True)
+          
+          total_contributors = len(stats)
+          total_paid = sum(p['amount'] for p in payment_history)
+          total_prs = len(payment_history)
+          
+          try:
+              cmd = ['gh', 'repo', 'view', 'cortexlinux/cortex', '--json', 'stargazerCount']
+              result = subprocess.run(cmd, capture_output=True, text=True)
+              repo_data = json.loads(result.stdout)
+              stars = repo_data.get('stargazerCount', 0)
+          except:
+              stars = 0
+          
+          md = f"""# 🏆 Cortex Linux Hall of Fame
+          
+          *Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}*
+          
+          ---
+          
+          ## 🌟 Project Milestones
+          
+          | Metric | Count |
+          |--------|-------|
+          | ⭐ GitHub Stars | **{stars}** |
+          | 👥 Active Contributors | **{total_contributors}** |
+          | 💰 Total Bounties Paid | **${total_paid:,}** |
+          | 🚀 PRs Merged | **{total_prs}** |
+          
+          ---
+          
+          ## 🥇 Top Contributors (All Time)
+          
+          | Rank | Contributor | PRs Merged | Total Earned | Specialization |
+          |------|-------------|------------|--------------|----------------|
+          """
+          
+          medals = ['🥇', '🥈', '🥉']
+          for i, contributor in enumerate(stats[:10], 1):
+              medal = medals[i-1] if i <= 3 else f"**{i}**"
+              username = contributor['username']
+              prs = contributor['prs_merged']
+              earned = contributor['total_earned']
+              expertise = ', '.join(contributor['expertise'][:2]) if contributor['expertise'] else 'General'
+              md += f"| {medal} | [@{username}]({contributor['github_url']}) | {prs} | ${earned} | {expertise} |\n"
+          
+          md += """
+          
+          ---
+          
+          ## 🚀 Want Your Name Here?
+          
+          Browse [Open Issues](https://github.com/cortexlinux/cortex/issues) and claim a bounty!
+          
+          **Bounties range from $50-200**
+          
+          ### Join the Community:
+          - 💬 [Discord](https://discord.gg/uCqHvxjU83)
+          - 📧 [Email](mailto:mike@cortexlinux.com)
+          
+          ---
+          
+          *⭐ [Star us on GitHub](https://github.com/cortexlinux/cortex) to follow development!*
+          """
+          
+          print(md)
+          LEADER_EOF
+          
+          python3 generate_leaderboard.py > LEADERBOARD.md
+      
+      - name: Commit leaderboard
+        run: |
+          git config user.name "Cortex Bot"
+          git config user.email "bot@cortexlinux.com"
+          git add LEADERBOARD.md
+          git diff --staged --quiet || git commit -m "Update leaderboard [automated]"
+          git push || true
+
+  welcome-contributor:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check if new contributor
+        id: check
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ ! -f contributors.json ]; then
+            echo "new=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if ! grep -q "$AUTHOR" contributors.json; then
+            echo "new=true" >> $GITHUB_OUTPUT
+          else
+            echo "new=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Welcome message
+        if: steps.check.outputs.new == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const author = context.payload.pull_request.user.login;
+            const pr = context.payload.pull_request.number;
+            const message = `## 🎉 Welcome to Cortex Linux, @${author}!
+            
+            Thank you for your first contribution! 
+            
+            ### 💰 Next Steps
+            
+            Your bounty will be processed on our next payment cycle (Fridays).
+            
+            Please provide your payment preference:
+            - PayPal (email)
+            - Crypto (USDC wallet address)
+            - Venmo (handle)
+            - Zelle (email/phone)
+            
+            ### 🚀 Join the Community
+            
+            - 💬 [Discord](https://discord.gg/uCqHvxjU83)
+            - ⭐ [Star the repo](https://github.com/cortexlinux/cortex)
+            
+            Looking forward to more contributions!
+            
+            — Mike (@mikejmorgan-ai)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+              body: message
+            });
+      
+      - name: Update contributors file
+        if: steps.check.outputs.new == 'true'
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -f contributors.json ]; then
+            echo "{}" > contributors.json
+          fi
+          
+          python3 << EOF
+          import json, os
+          from datetime import datetime
+          
+          author = os.environ['AUTHOR']
+          pr_num = os.environ['PR_NUMBER']
+          
+          with open('contributors.json', 'r') as f:
+              contributors = json.load(f)
+          
+          if author not in contributors:
+              contributors[author] = {
+                  'onboarded_date': datetime.now().isoformat(),
+                  'github_url': f'https://github.com/{author}',
+                  'first_pr': int(pr_num),
+                  'payment_method': None,
+                  'expertise': [],
+                  'total_earned': 0,
+                  'prs_merged': 0
+              }
+          
+          with open('contributors.json', 'w') as f:
+              json.dump(contributors, f, indent=2)
+          EOF
+          
+          git config user.name "Cortex Bot"
+          git config user.email "bot@cortexlinux.com"
+          git add contributors.json
+          git diff --staged --quiet || git commit -m "Add contributor @$AUTHOR [automated]"
+          git push || true
+
+  notify-pr-merge:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          MESSAGE="🚀 **PR Merged**\n\n**PR #${PR_NUMBER}**: ${TITLE}\n👤 @${AUTHOR}\n🔗 ${PR_URL}\n\nGreat work! Bounty will be processed Friday."
+          curl -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"$MESSAGE\"}"

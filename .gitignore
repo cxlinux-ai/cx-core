@@ -20,6 +20,11 @@ venv.bak/
 # ==============================
 # Distribution / Packaging
 # ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
 develop-eggs/
 dist/
@@ -136,3 +141,12 @@ logs/
 *.tmp
 *.bak
 *.swp
+.env
+.venv
+env/
+venv/
+ENV/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
