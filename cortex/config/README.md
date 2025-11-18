@@ -45,7 +45,7 @@ cg.generate(
 
 Generate nginx web server and reverse proxy configurations.
 
-### Example: Reverse Proxy
+### Example: Nginx Reverse Proxy
 ```python
 cg = ConfigGenerator()
 cg.generate(
@@ -59,7 +59,7 @@ cg.generate(
 )
 ```
 
-### Example: Static Web Server
+### Example: Nginx Static Web Server
 ```python
 cg.generate(
     "nginx",
@@ -71,7 +71,7 @@ cg.generate(
 )
 ```
 
-### Example: SSL Configuration
+### Example: Nginx SSL Configuration
 ```python
 cg.generate(
     "nginx",
@@ -102,7 +102,7 @@ cg.generate(
 
 Generate PostgreSQL database configurations.
 
-### Example: Basic Configuration
+### Example: PostgreSQL Basic Configuration
 ```python
 cg.generate(
     "postgres",
@@ -113,7 +113,7 @@ cg.generate(
 )
 ```
 
-### Example: Replication Setup
+### Example: PostgreSQL Replication Setup
 ```python
 cg.generate(
     "postgres",
@@ -124,7 +124,7 @@ cg.generate(
 )
 ```
 
-### Example: SSL Configuration
+### Example: PostgreSQL SSL Configuration
 ```python
 cg.generate(
     "postgres",
@@ -150,7 +150,7 @@ cg.generate(
 
 Generate Redis cache server configurations.
 
-### Example: Basic Configuration
+### Example: Redis Basic Configuration
 ```python
 cg.generate(
     "redis",
@@ -161,7 +161,7 @@ cg.generate(
 )
 ```
 
-### Example: Persistence Enabled
+### Example: Redis Persistence Enabled
 ```python
 cg.generate(
     "redis",
@@ -171,7 +171,7 @@ cg.generate(
 )
 ```
 
-### Example: Replication Setup
+### Example: Redis Replication Setup
 ```python
 cg.generate(
     "redis",
@@ -197,7 +197,7 @@ cg.generate(
 
 Generate Docker Compose orchestration files.
 
-### Example: Web + Database Stack
+### Example: Docker Compose Web + Database Stack
 ```python
 services = [
     {
@@ -229,7 +229,7 @@ cg.generate(
 )
 ```
 
-### Example: Microservices Architecture
+### Example: Docker Compose Microservices Architecture
 ```python
 services = [
     {
@@ -273,7 +273,7 @@ cg.generate(
 
 Generate Apache web server configurations.
 
-### Example: Reverse Proxy
+### Example: Apache Reverse Proxy
 ```python
 cg.generate(
     "apache",
@@ -285,7 +285,7 @@ cg.generate(
 )
 ```
 
-### Example: Static Web Server
+### Example: Apache Static Web Server
 ```python
 cg.generate(
     "apache",
