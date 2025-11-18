@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from LLM.interpreter import CommandInterpreter
 from cortex.coordinator import InstallationCoordinator, StepStatus
+from cortex.update_manifest import UpdateChannel
+from cortex.updater import ChecksumMismatch, InstallError, UpdateError, UpdateService
 
 
 class CortexCLI:
@@ -178,6 +180,85 @@ class CortexCLI:
             self._print_error(f"Unexpected error: {str(e)}")
             return 1
 
+    def update(self, channel: Optional[str] = None, force: bool = False, dry_run: bool = False):
+        try:
+            channel_enum = UpdateChannel.from_string(channel) if channel else self.update_service.get_channel()
+        except ValueError as exc:
+            self._print_error(str(exc))
+            return 1
+
+        try:
+            result = self.update_service.perform_update(force=force, channel=channel_enum, dry_run=dry_run)
+        except ChecksumMismatch as exc:
+            self._print_error(f"Security check failed: {exc}")
+            return 1
+        except InstallError as exc:
+            self._print_error(f"Installer error: {exc}")
+            return 1
+        except UpdateError as exc:
+            self._print_error(f"Update failed: {exc}")
+            return 1
+        except Exception as exc:
+            self._print_error(f"Unexpected update failure: {exc}")
+            return 1
+
+        if not result.release:
+            self._print_status("ℹ️", result.message or "Cortex is already up to date.")
+            return 0
+
+        release = result.release
+
+        if not result.updated:
+            self._print_status("🔔", f"Update available: {release.version.raw} ({release.channel.value})")
+            if release.release_notes:
+                self._print_status("🆕", "What's new:")
+                for line in release.release_notes.strip().splitlines():
+                    print(f"   {line}")
+            self._print_status("ℹ️", result.message or "Dry run complete.")
+            return 0
+
+        self._print_success(f"Update complete! {result.previous_version.raw} → {release.version.raw}")
+        self._print_status("🗂️", f"Log saved to {result.log_path}")
+        if release.release_notes:
+            self._print_status("🆕", "What's new:")
+            for line in release.release_notes.strip().splitlines():
+                print(f"   {line}")
+
+        return 0
+
+    def _notify_update_if_available(self):
+        if os.environ.get("CORTEX_UPDATE_CHECK", "1") in ("0", "false", "False"):
+            return
+
+        try:
+            result = self.update_service.check_for_updates()
+        except Exception:
+            return
+
+        if result.update_available and result.release:
+            release = result.release
+            print(
+                f"\n🔔 Cortex update available: {release.version.raw} "
+                f"({result.channel.value} channel)\n"
+                "   Run 'cortex update' to learn more.\n"
+            )
+
+    def show_channel(self):
+        channel = self.update_service.get_channel()
+        self._print_status("ℹ️", f"Current update channel: {channel.value}")
+        return 0
+
+    def set_channel(self, channel: str):
+        try:
+            channel_enum = UpdateChannel.from_string(channel)
+        except ValueError as exc:
+            self._print_error(str(exc))
+            return 1
+
+        self.update_service.set_channel(channel_enum)
+        self._print_success(f"Update channel set to '{channel_enum.value}'")
+        return 0
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -190,14 +271,6 @@ Examples:
   cortex install docker --execute
   cortex install "python 3.11 with pip"
   cortex install nginx --dry-run
-  cortex history
-  cortex history show <id>
-  cortex rollback <id>
-  cortex check-pref
-  cortex check-pref ai.model
-  cortex edit-pref set ai.model gpt-4
-  cortex edit-pref delete theme
-  cortex edit-pref reset-all
 
 Environment Variables:
   OPENAI_API_KEY      OpenAI API key for GPT-4
@@ -213,6 +286,17 @@ Environment Variables:
     install_parser.add_argument('--execute', action='store_true', help='Execute the generated commands')
     install_parser.add_argument('--dry-run', action='store_true', help='Show commands without executing')
     
+    update_parser = subparsers.add_parser('update', help='Check for Cortex updates or upgrade')
+    update_parser.add_argument('--channel', choices=[c.value for c in UpdateChannel], help='Update channel to use')
+    update_parser.add_argument('--force', action='store_true', help='Force network check')
+    update_parser.add_argument('--dry-run', action='store_true', help='Show details without installing')
+
+    channel_parser = subparsers.add_parser('channel', help='Manage Cortex update channel')
+    channel_sub = channel_parser.add_subparsers(dest='channel_command', required=True)
+    channel_sub.add_parser('show', help='Display current update channel')
+    channel_set_parser = channel_sub.add_parser('set', help='Set update channel')
+    channel_set_parser.add_argument('channel', choices=[c.value for c in UpdateChannel], help='Channel to use')
+
     args = parser.parse_args()
     
     if not args.command:
@@ -223,6 +307,13 @@ Environment Variables:
     
     if args.command == 'install':
         return cli.install(args.software, execute=args.execute, dry_run=args.dry_run)
+    if args.command == 'update':
+        return cli.update(channel=args.channel, force=args.force, dry_run=args.dry_run)
+    if args.command == 'channel':
+        if args.channel_command == 'show':
+            return cli.show_channel()
+        if args.channel_command == 'set':
+            return cli.set_channel(args.channel)
     
     return 0
 
