@@ -10,5 +10,6 @@ __author__ = "Cortex Team"
 
 from .config import ConfigGenerator
 from .cli import main
+from .packages import PackageManager, PackageManagerType
 
-__all__ = ["ConfigGenerator", "main"]
+__all__ = ["ConfigGenerator", "main", "PackageManager", "PackageManagerType"]
