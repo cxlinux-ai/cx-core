@@ -1,4 +1,4 @@
-ds# 🧠 Cortex Linux
+🧠 Cortex Linux
 ### The AI-Native Operating System
 
 **Linux that understands you. No documentation required.**
