@@ -82,7 +82,7 @@ class ConfigManager:
                                 'version': parts[1],
                                 'source': self.SOURCE_APT
                             })
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except (subprocess.TimeoutExpired, FileNotFoundError):
             # Silently handle errors - package manager may not be available
             pass
         
@@ -361,6 +361,46 @@ class ConfigManager:
         
         return True, None
     
+    def _categorize_package(self, pkg: Dict[str, Any], current_pkg_map: Dict[Tuple[str, str], str]) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Categorize a package as install, upgrade, downgrade, or already installed.
+        
+        Args:
+            pkg: Package dictionary from config
+            current_pkg_map: Map of (name, source) to current version
+        
+        Returns:
+            Tuple of (category, package_data) where category is one of:
+            'install', 'upgrade', 'downgrade', 'already_installed', 'skip'
+            package_data is the modified package dict (with current_version if applicable)
+        """
+        name = pkg.get('name')
+        version = pkg.get('version')
+        source = pkg.get('source')
+        
+        if not name or not source:
+            return 'skip', None
+        
+        key = (name, source)
+        
+        if key not in current_pkg_map:
+            return 'install', pkg
+        
+        current_version = current_pkg_map[key]
+        if current_version == version:
+            return 'already_installed', pkg
+        
+        # Compare versions
+        try:
+            pkg_with_version = {**pkg, 'current_version': current_version}
+            if self._compare_versions(current_version, version) < 0:
+                return 'upgrade', pkg_with_version
+            else:
+                return 'downgrade', pkg_with_version
+        except Exception:
+            # If comparison fails, treat as upgrade
+            return 'upgrade', {**pkg, 'current_version': current_version}
+    
     def diff_configuration(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Compare current system state with configuration file.
@@ -390,43 +430,18 @@ class ConfigManager:
         # Compare packages from config
         config_packages = config.get('packages', [])
         for pkg in config_packages:
-            name = pkg.get('name')
-            version = pkg.get('version')
-            source = pkg.get('source')
+            category, pkg_data = self._categorize_package(pkg, current_pkg_map)
             
-            if not name or not source:
-                diff['warnings'].append(
-                    f"Malformed package entry skipped: {pkg}"
-                )
-                continue  # Skip malformed package entries
-            
-            key = (name, source)
-            
-            if key not in current_pkg_map:
-                diff['packages_to_install'].append(pkg)
-            else:
-                current_version = current_pkg_map[key]
-                if current_version != version:
-                    # Compare versions (uses packaging library with fallback to simple comparison)
-                    try:
-                        if self._compare_versions(current_version, version) < 0:
-                            diff['packages_to_upgrade'].append({
-                                **pkg,
-                                'current_version': current_version
-                            })
-                        else:
-                            diff['packages_to_downgrade'].append({
-                                **pkg,
-                                'current_version': current_version
-                            })
-                    except Exception:
-                        # If comparison fails, treat as upgrade
-                        diff['packages_to_upgrade'].append({
-                            **pkg,
-                            'current_version': current_version
-                        })
-                else:
-                    diff['packages_already_installed'].append(pkg)
+            if category == 'skip':
+                diff['warnings'].append(f"Malformed package entry skipped: {pkg}")
+            elif category == 'install':
+                diff['packages_to_install'].append(pkg_data)
+            elif category == 'upgrade':
+                diff['packages_to_upgrade'].append(pkg_data)
+            elif category == 'downgrade':
+                diff['packages_to_downgrade'].append(pkg_data)
+            elif category == 'already_installed':
+                diff['packages_already_installed'].append(pkg_data)
         
         # Compare preferences
         current_prefs = self._load_preferences()
@@ -701,6 +716,64 @@ class ConfigManager:
         # This prevents path traversal (../, ../../, etc.) while allowing @scope/package
         return bool(re.match(r'^[a-zA-Z0-9._:@=+\-]+(/[a-zA-Z0-9._\-]+)?$', identifier))
     
+    def _install_with_sandbox(self, name: str, version: Optional[str], source: str) -> bool:
+        """
+        Install package using sandbox executor.
+        
+        Args:
+            name: Package name
+            version: Package version (optional)
+            source: Package source (apt/pip/npm)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if source == self.SOURCE_APT:
+                command = f"sudo apt-get install -y {name}={version}" if version else f"sudo apt-get install -y {name}"
+            elif source == self.SOURCE_PIP:
+                command = f"pip3 install {name}=={version}" if version else f"pip3 install {name}"
+            elif source == self.SOURCE_NPM:
+                command = f"npm install -g {name}@{version}" if version else f"npm install -g {name}"
+            else:
+                return False
+            
+            result = self.sandbox_executor.execute(command)
+            return result.success
+        except Exception:
+            return False
+    
+    def _install_direct(self, name: str, version: Optional[str], source: str) -> bool:
+        """
+        Install package directly using subprocess (not recommended in production).
+        
+        Args:
+            name: Package name
+            version: Package version (optional)
+            source: Package source (apt/pip/npm)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if source == self.SOURCE_APT:
+                cmd = ['sudo', 'apt-get', 'install', '-y', f'{name}={version}' if version else name]
+                if not version:
+                    cmd = ['sudo', 'apt-get', 'install', '-y', name]
+                else:
+                    cmd = ['sudo', 'apt-get', 'install', '-y', f'{name}={version}']
+            elif source == self.SOURCE_PIP:
+                cmd = ['pip3', 'install', f'{name}=={version}'] if version else ['pip3', 'install', name]
+            elif source == self.SOURCE_NPM:
+                cmd = ['npm', 'install', '-g', f'{name}@{version}'] if version else ['npm', 'install', '-g', name]
+            else:
+                return False
+            
+            result = subprocess.run(cmd, capture_output=True, timeout=self.INSTALLATION_TIMEOUT)
+            return result.returncode == 0
+        except Exception:
+            return False
+    
     def _install_package(self, pkg: Dict[str, Any]) -> bool:
         """
         Install a single package using appropriate package manager.
@@ -722,66 +795,9 @@ class ConfigManager:
             return False
         
         if self.sandbox_executor:
-            # Use SandboxExecutor for safe installation
-            try:
-                if source == self.SOURCE_APT:
-                    # For apt, we typically install latest or specific version
-                    if version:
-                        command = f"sudo apt-get install -y {name}={version}"
-                    else:
-                        command = f"sudo apt-get install -y {name}"
-                    result = self.sandbox_executor.execute(command)
-                    return result.success
-                
-                elif source == self.SOURCE_PIP:
-                    if version:
-                        command = f"pip3 install {name}=={version}"
-                    else:
-                        command = f"pip3 install {name}"
-                    result = self.sandbox_executor.execute(command)
-                    return result.success
-                
-                elif source == self.SOURCE_NPM:
-                    if version:
-                        command = f"npm install -g {name}@{version}"
-                    else:
-                        command = f"npm install -g {name}"
-                    result = self.sandbox_executor.execute(command)
-                    return result.success
-                
-            except Exception:
-                return False
+            return self._install_with_sandbox(name, version or None, source)
         else:
-            # Direct installation (not recommended in production)
-            try:
-                if source == self.SOURCE_APT:
-                    if version:
-                        cmd = ['sudo', 'apt-get', 'install', '-y', f'{name}={version}']
-                    else:
-                        cmd = ['sudo', 'apt-get', 'install', '-y', name]
-                    result = subprocess.run(cmd, capture_output=True, timeout=self.INSTALLATION_TIMEOUT)
-                    return result.returncode == 0
-                
-                elif source == self.SOURCE_PIP:
-                    if version:
-                        cmd = ['pip3', 'install', f'{name}=={version}']
-                    else:
-                        cmd = ['pip3', 'install', name]
-                    result = subprocess.run(cmd, capture_output=True, timeout=self.INSTALLATION_TIMEOUT)
-                    return result.returncode == 0
-                
-                elif source == self.SOURCE_NPM:
-                    if version:
-                        cmd = ['npm', 'install', '-g', f'{name}@{version}']
-                    else:
-                        cmd = ['npm', 'install', '-g', name]
-                    result = subprocess.run(cmd, capture_output=True, timeout=self.INSTALLATION_TIMEOUT)
-                    return result.returncode == 0
-                
-            except Exception:
-                return False
-        
-        return False
+            return self._install_direct(name, version or None, source)
 
 
 def main():
