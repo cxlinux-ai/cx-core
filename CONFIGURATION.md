@@ -23,7 +23,7 @@ Cortex Linux's Configuration Management feature enables you to export, share, an
 Install required Python dependencies:
 
 ```bash
-pip3 install pyyaml>=6.0.1
+pip3 install pyyaml>=6.0.1 packaging>=23.0
 ```
 
 ### System Requirements
@@ -213,7 +213,7 @@ environment_variables:
 - **hardware**: Optional hardware profile from HardwareProfiler
 - **packages**: List of installed packages with name, version, and source
 - **preferences**: User preferences for Cortex behavior
-- **environment_variables**: Selected environment variables
+- **environment_variables**: Selected environment variables (exported for reference only; not automatically restored during import)
 
 ### Package Sources
 

@@ -5,7 +5,7 @@ Tests all functionality with mocked system calls.
 """
 
 import unittest
-from unittest.mock import patch, mock_open, MagicMock, call
+from unittest.mock import patch, MagicMock
 import tempfile
 import shutil
 import yaml

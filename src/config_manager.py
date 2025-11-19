@@ -11,7 +11,7 @@ import json
 import yaml
 import subprocess
 import re
-from typing import Dict, List, Optional, Any, Set, Tuple
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 from pathlib import Path
 
@@ -83,6 +83,7 @@ class ConfigManager:
                                 'source': self.SOURCE_APT
                             })
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            # Silently handle errors - package manager may not be available
             pass
         
         return packages
@@ -149,6 +150,7 @@ class ConfigManager:
                         'source': self.SOURCE_NPM
                     })
         except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            # Silently handle errors - npm may not be installed or global packages unavailable
             pass
         
         return packages
@@ -265,7 +267,7 @@ class ConfigManager:
             Success message with file path
         """
         if package_sources is None:
-            package_sources = ['apt', 'pip', 'npm']
+            package_sources = self.DEFAULT_SOURCES
         
         # Build configuration dictionary
         config = {
@@ -388,9 +390,16 @@ class ConfigManager:
         # Compare packages from config
         config_packages = config.get('packages', [])
         for pkg in config_packages:
-            name = pkg['name']
-            version = pkg['version']
-            source = pkg['source']
+            name = pkg.get('name')
+            version = pkg.get('version')
+            source = pkg.get('source')
+            
+            if not name or not source:
+                diff['warnings'].append(
+                    f"Malformed package entry skipped: {pkg}"
+                )
+                continue  # Skip malformed package entries
+            
             key = (name, source)
             
             if key not in current_pkg_map:
@@ -500,6 +509,14 @@ class ConfigManager:
         # Simple version comparison (extract numeric parts)
         v1_parts = re.findall(r'\d+', version1)
         v2_parts = re.findall(r'\d+', version2)
+        
+        # Handle case where no numeric parts found
+        if not v1_parts and not v2_parts:
+            return 0  # Both have no numeric parts, treat as equal
+        if not v1_parts:
+            return -1  # version1 has no numeric parts, consider it less
+        if not v2_parts:
+            return 1   # version2 has no numeric parts, consider it greater
         
         # Pad to same length
         max_len = max(len(v1_parts), len(v2_parts))
@@ -663,6 +680,21 @@ class ConfigManager:
             except Exception as e:
                 summary['failed'].append(f"preferences ({str(e)})")
     
+    def _validate_package_identifier(self, identifier: str) -> bool:
+        """
+        Validate package name or version contains only safe characters.
+        
+        Prevents command injection by ensuring package identifiers only contain
+        alphanumeric characters and common package naming characters.
+        
+        Args:
+            identifier: Package name or version string to validate
+        
+        Returns:
+            bool: True if identifier is safe, False otherwise
+        """
+        return bool(re.match(r'^[a-zA-Z0-9._:@=+\-]+$', identifier))
+    
     def _install_package(self, pkg: Dict[str, Any]) -> bool:
         """
         Install a single package using appropriate package manager.
@@ -676,6 +708,12 @@ class ConfigManager:
         name = pkg['name']
         version = pkg.get('version', '')
         source = pkg['source']
+        
+        # Validate package identifiers to prevent command injection
+        if not self._validate_package_identifier(name):
+            return False
+        if version and not self._validate_package_identifier(version):
+            return False
         
         if self.sandbox_executor:
             # Use SandboxExecutor for safe installation
