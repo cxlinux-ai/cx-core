@@ -10,7 +10,7 @@ import json
 import yaml
 import subprocess
 import re
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, ClassVar
 from datetime import datetime
 from pathlib import Path
 
@@ -38,7 +38,7 @@ class ConfigManager:
     SOURCE_APT = 'apt'
     SOURCE_PIP = 'pip'
     SOURCE_NPM = 'npm'
-    DEFAULT_SOURCES = [SOURCE_APT, SOURCE_PIP, SOURCE_NPM]
+    DEFAULT_SOURCES: ClassVar[List[str]] = [SOURCE_APT, SOURCE_PIP, SOURCE_NPM]
     
     def __init__(self, sandbox_executor=None):
         """
@@ -154,7 +154,7 @@ class ConfigManager:
         
         return packages
     
-    def detect_installed_packages(self, sources: List[str] = None) -> List[Dict[str, Any]]:
+    def detect_installed_packages(self, sources: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Detect all installed packages from specified sources.
         
@@ -251,7 +251,7 @@ class ConfigManager:
                             output_path: str,
                             include_hardware: bool = True,
                             include_preferences: bool = True,
-                            package_sources: List[str] = None) -> str:
+                            package_sources: Optional[List[str]] = None) -> str:
         """
         Export current system configuration to YAML file.
         
@@ -697,23 +697,34 @@ class ConfigManager:
             except Exception as e:
                 summary['failed'].append(f"preferences ({str(e)})")
     
-    def _validate_package_identifier(self, identifier: str) -> bool:
+    def _validate_package_identifier(self, identifier: str, allow_slash: bool = False) -> bool:
         """
         Validate package name or version contains only safe characters.
         
         Prevents command injection by ensuring package identifiers only contain
         alphanumeric characters and common package naming characters.
-        Supports NPM scoped packages (@scope/package) while blocking path traversal.
+        Supports NPM scoped packages (@scope/package) when allow_slash=True.
         
         Args:
             identifier: Package name or version string to validate
+            allow_slash: Whether to allow a single slash (for NPM scoped packages)
         
         Returns:
             bool: True if identifier is safe, False otherwise
         """
-        # Allow standard characters plus exactly one forward slash for NPM scoped packages
-        # This prevents path traversal (../, ../../, etc.) while allowing @scope/package
-        return bool(re.match(r'^[a-zA-Z0-9._:@=+\-]+(/[a-zA-Z0-9._\-]+)?$', identifier))
+        # Reject path-like patterns immediately
+        if identifier.startswith('.') or identifier.startswith('/') or identifier.startswith('~'):
+            return False
+        if '..' in identifier or '/.' in identifier:
+            return False
+        
+        # Apply character whitelist with optional slash support
+        if allow_slash:
+            # Allow exactly one forward slash for NPM scoped packages (@scope/package)
+            return bool(re.match(r'^[a-zA-Z0-9._:@=+\-]+(/[a-zA-Z0-9._\-]+)?$', identifier))
+        else:
+            # No slashes allowed for versions or non-NPM packages
+            return bool(re.match(r'^[a-zA-Z0-9._:@=+\-]+$', identifier))
     
     def _install_with_sandbox(self, name: str, version: Optional[str], source: str) -> bool:
         """
@@ -784,9 +795,11 @@ class ConfigManager:
         source = pkg['source']
         
         # Validate package identifiers to prevent command injection
-        if not self._validate_package_identifier(name):
+        # Allow slash only for NPM package names (for scoped packages like @scope/package)
+        allow_slash = (source == self.SOURCE_NPM)
+        if not self._validate_package_identifier(name, allow_slash=allow_slash):
             return False
-        if version and not self._validate_package_identifier(version):
+        if version and not self._validate_package_identifier(version, allow_slash=False):
             return False
         
         if self.sandbox_executor:
