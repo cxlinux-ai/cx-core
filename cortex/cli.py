@@ -305,10 +305,12 @@ class CortexCLI:
                     try:
                         response = input("\n[WARNING] Hardware requirements not met. Continue anyway? (y/N): ")
                         if response.lower() != 'y':
+                            print("\n[INFO] Installation aborted by user")
                             return 1
                     except (EOFError, KeyboardInterrupt):
                         # Non-interactive environment or user cancelled
-                        print("\n[INFO] Skipping hardware check prompt (non-interactive mode)")
+                        print("\n[ERROR] Aborting install: cannot prompt for hardware confirmation in non-interactive mode")
+                        print("        Use --dry-run to preview commands, or ensure hardware requirements are met")
                         return 1
             
             # Generate commands
