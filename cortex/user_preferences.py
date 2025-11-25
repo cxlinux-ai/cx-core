@@ -404,6 +404,9 @@ class PreferencesManager:
         if self._preferences.ai.model not in valid_models:
             errors.append(f"Unknown AI model: {self._preferences.ai.model}")
         
+        if self._preferences.ai.max_suggestions < 1:
+            errors.append("ai.max_suggestions must be at least 1")
+        
         if self._preferences.auto_update.frequency_hours < 1:
             errors.append("auto_update.frequency_hours must be at least 1")
         

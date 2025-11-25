@@ -279,8 +279,9 @@ class TestConfigurationManagement(unittest.TestCase):
         value = self.cli.prefs_manager.get('ai.model')
         self.assertEqual(value, 'gpt-4')
     
+    @patch('builtins.input', return_value='y')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_config_reset_command(self, mock_stdout):
+    def test_config_reset_command(self, mock_stdout, mock_input):
         """Test resetting configuration to defaults."""
         # Set some preferences
         self.cli.prefs_manager.set('ai.model', 'custom-model')
