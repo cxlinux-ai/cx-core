@@ -1,10 +1,31 @@
 import subprocess
+import shlex
 import time
 import json
+import re
 from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Dangerous patterns that should never be executed
+DANGEROUS_PATTERNS = [
+    r'rm\s+-rf\s+[/\*]',
+    r'rm\s+--no-preserve-root',
+    r'dd\s+if=.*of=/dev/',
+    r'curl\s+.*\|\s*sh',
+    r'curl\s+.*\|\s*bash',
+    r'wget\s+.*\|\s*sh',
+    r'wget\s+.*\|\s*bash',
+    r'\beval\s+',
+    r'base64\s+-d\s+.*\|',
+    r'>\s*/etc/',
+    r'chmod\s+777',
+    r'chmod\s+\+s',
+]
 
 
 class StepStatus(Enum):
@@ -134,13 +155,42 @@ class InstallationCoordinator:
             except Exception:
                 pass
     
+    def _validate_command(self, command: str) -> tuple:
+        """Validate command for security before execution.
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not command or not command.strip():
+            return False, "Empty command"
+
+        # Check for dangerous patterns
+        for pattern in DANGEROUS_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                logger.warning(f"Dangerous command pattern blocked: {pattern}")
+                return False, f"Command blocked: matches dangerous pattern"
+
+        return True, None
+
     def _execute_command(self, step: InstallationStep) -> bool:
         step.status = StepStatus.RUNNING
         step.start_time = time.time()
-        
+
         self._log(f"Executing: {step.command}")
-        
+
+        # Validate command before execution
+        is_valid, error = self._validate_command(step.command)
+        if not is_valid:
+            step.status = StepStatus.FAILED
+            step.error = error
+            step.end_time = time.time()
+            self._log(f"Command blocked: {step.command} - {error}")
+            return False
+
         try:
+            # Use shell=True carefully - commands are validated first
+            # For complex shell commands (pipes, redirects), shell=True is needed
+            # Simple commands could use shlex.split() with shell=False
             result = subprocess.run(
                 step.command,
                 shell=True,

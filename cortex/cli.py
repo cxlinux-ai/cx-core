@@ -16,12 +16,18 @@ from installation_history import (
     InstallationType,
     InstallationStatus
 )
+from cortex.user_preferences import (
+    PreferencesManager,
+    print_all_preferences,
+    format_preference_value
+)
 
 
 class CortexCLI:
     def __init__(self):
         self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
         self.spinner_idx = 0
+        self.prefs_manager = None  # Lazy initialization
     
     def _get_api_key(self) -> Optional[str]:
         api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')
@@ -568,6 +574,224 @@ class CortexCLI:
             self._print_error(f"Failed to export template: {str(e)}")
             return 1
 
+    def _get_prefs_manager(self):
+        """Lazy initialize preferences manager"""
+        if self.prefs_manager is None:
+            self.prefs_manager = PreferencesManager()
+        return self.prefs_manager
+
+    def check_pref(self, key: Optional[str] = None):
+        """Check/display user preferences"""
+        manager = self._get_prefs_manager()
+        
+        try:
+            if key:
+                # Show specific preference
+                value = manager.get(key)
+                if value is None:
+                    self._print_error(f"Preference key '{key}' not found")
+                    print("\nAvailable preference keys:")
+                    print("  - verbosity")
+                    print("  - theme")
+                    print("  - language")
+                    print("  - timezone")
+                    print("  - confirmations.before_install")
+                    print("  - confirmations.before_remove")
+                    print("  - confirmations.before_upgrade")
+                    print("  - confirmations.before_system_changes")
+                    print("  - auto_update.check_on_start")
+                    print("  - auto_update.auto_install")
+                    print("  - auto_update.frequency_hours")
+                    print("  - ai.model")
+                    print("  - ai.creativity")
+                    print("  - ai.explain_steps")
+                    print("  - ai.suggest_alternatives")
+                    print("  - ai.learn_from_history")
+                    print("  - ai.max_suggestions")
+                    print("  - packages.default_sources")
+                    print("  - packages.prefer_latest")
+                    print("  - packages.auto_cleanup")
+                    print("  - packages.backup_before_changes")
+                    return 1
+                
+                print(f"\n{key} = {format_preference_value(value)}")
+                return 0
+            else:
+                # Show all preferences
+                print_all_preferences(manager)
+                
+                # Show validation status
+                print("\nValidation Status:")
+                errors = manager.validate()
+                if errors:
+                    print("❌ Configuration has errors:")
+                    for error in errors:
+                        print(f"  - {error}")
+                    return 1
+                else:
+                    print("✅ Configuration is valid")
+                
+                # Show config info
+                info = manager.get_config_info()
+                print(f"\nConfiguration file: {info['config_path']}")
+                print(f"File size: {info['config_size_bytes']} bytes")
+                if info['last_modified']:
+                    print(f"Last modified: {info['last_modified']}")
+                
+                return 0
+                
+        except Exception as e:
+            self._print_error(f"Failed to read preferences: {str(e)}")
+            return 1
+
+    def edit_pref(self, action: str, key: Optional[str] = None, value: Optional[str] = None):
+        """Edit user preferences (add/set, delete/remove, list)"""
+        manager = self._get_prefs_manager()
+        
+        try:
+            if action in ['add', 'set', 'update']:
+                # Set/update a preference
+                if not key:
+                    self._print_error("Key is required for set/add/update action")
+                    print("Usage: cortex edit-pref set <key> <value>")
+                    print("Example: cortex edit-pref set ai.model gpt-4")
+                    return 1
+                
+                if not value:
+                    self._print_error("Value is required for set/add/update action")
+                    print("Usage: cortex edit-pref set <key> <value>")
+                    return 1
+                
+                # Get current value for comparison
+                old_value = manager.get(key)
+                
+                # Set new value
+                manager.set(key, value)
+                
+                self._print_success(f"Updated {key}")
+                if old_value is not None:
+                    print(f"  Old value: {format_preference_value(old_value)}")
+                print(f"  New value: {format_preference_value(manager.get(key))}")
+                
+                # Validate after change
+                errors = manager.validate()
+                if errors:
+                    print("\n⚠️  Warning: Configuration has validation errors:")
+                    for error in errors:
+                        print(f"  - {error}")
+                    print("\nYou may want to fix these issues.")
+                
+                return 0
+                
+            elif action in ['delete', 'remove', 'reset-key']:
+                # Reset a specific key to default
+                if not key:
+                    self._print_error("Key is required for delete/remove/reset-key action")
+                    print("Usage: cortex edit-pref delete <key>")
+                    print("Example: cortex edit-pref delete ai.model")
+                    return 1
+                
+                # To "delete" a key, we reset entire config and reload (since we can't delete individual keys)
+                # Instead, we'll reset to the default value for that key
+                print(f"Resetting {key} to default value...")
+                
+                # Create a new manager with defaults
+                from cortex.user_preferences import UserPreferences
+                defaults = UserPreferences()
+                
+                # Get the default value
+                parts = key.split('.')
+                obj = defaults
+                for part in parts:
+                    obj = getattr(obj, part)
+                default_value = obj
+                
+                # Set to default
+                manager.set(key, format_preference_value(default_value))
+                
+                self._print_success(f"Reset {key} to default")
+                print(f"  Value: {format_preference_value(manager.get(key))}")
+                
+                return 0
+                
+            elif action in ['list', 'show', 'display']:
+                # List all preferences (same as check-pref)
+                return self.check_pref()
+                
+            elif action == 'reset-all':
+                # Reset all preferences to defaults
+                confirm = input("⚠️  This will reset ALL preferences to defaults. Continue? (yes/no): ")
+                if confirm.lower() not in ['yes', 'y']:
+                    print("Operation cancelled.")
+                    return 0
+                
+                manager.reset()
+                self._print_success("All preferences reset to defaults")
+                return 0
+                
+            elif action == 'validate':
+                # Validate configuration
+                errors = manager.validate()
+                if errors:
+                    print("❌ Configuration has errors:")
+                    for error in errors:
+                        print(f"  - {error}")
+                    return 1
+                else:
+                    self._print_success("Configuration is valid")
+                    return 0
+                    
+            elif action == 'export':
+                # Export preferences to file
+                if not key:  # Using key as filepath
+                    self._print_error("Filepath is required for export action")
+                    print("Usage: cortex edit-pref export <filepath>")
+                    print("Example: cortex edit-pref export ~/cortex-prefs.json")
+                    return 1
+                
+                from pathlib import Path
+                manager.export_json(Path(key))
+                return 0
+                
+            elif action == 'import':
+                # Import preferences from file
+                if not key:  # Using key as filepath
+                    self._print_error("Filepath is required for import action")
+                    print("Usage: cortex edit-pref import <filepath>")
+                    print("Example: cortex edit-pref import ~/cortex-prefs.json")
+                    return 1
+                
+                from pathlib import Path
+                filepath = Path(key)
+                if not filepath.exists():
+                    self._print_error(f"File not found: {filepath}")
+                    return 1
+                
+                manager.import_json(filepath)
+                return 0
+                
+            else:
+                self._print_error(f"Unknown action: {action}")
+                print("\nAvailable actions:")
+                print("  set/add/update <key> <value>  - Set a preference value")
+                print("  delete/remove <key>           - Reset a preference to default")
+                print("  list/show/display             - Display all preferences")
+                print("  reset-all                     - Reset all preferences to defaults")
+                print("  validate                      - Validate configuration")
+                print("  export <filepath>             - Export preferences to JSON")
+                print("  import <filepath>             - Import preferences from JSON")
+                return 1
+                
+        except AttributeError as e:
+            self._print_error(f"Invalid preference key: {key}")
+            print("Use 'cortex check-pref' to see available keys")
+            return 1
+        except Exception as e:
+            self._print_error(f"Failed to edit preferences: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return 1
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -588,6 +812,11 @@ Examples:
   cortex history
   cortex history show <id>
   cortex rollback <id>
+  cortex check-pref
+  cortex check-pref ai.model
+  cortex edit-pref set ai.model gpt-4
+  cortex edit-pref delete theme
+  cortex edit-pref reset-all
 
 Environment Variables:
   OPENAI_API_KEY      OpenAI API key for GPT-4
@@ -639,6 +868,19 @@ Environment Variables:
     template_export_parser.add_argument('file_path', type=str, help='Destination file path')
     template_export_parser.add_argument('--format', choices=['yaml', 'json'], default='yaml', help='Export format')
     
+    # Check preferences command
+    check_pref_parser = subparsers.add_parser('check-pref', help='Check/display user preferences')
+    check_pref_parser.add_argument('key', nargs='?', help='Specific preference key to check (optional)')
+    
+    # Edit preferences command
+    edit_pref_parser = subparsers.add_parser('edit-pref', help='Edit user preferences')
+    edit_pref_parser.add_argument('action', 
+                                  choices=['set', 'add', 'update', 'delete', 'remove', 'reset-key', 
+                                          'list', 'show', 'display', 'reset-all', 'validate', 'export', 'import'],
+                                  help='Action to perform')
+    edit_pref_parser.add_argument('key', nargs='?', help='Preference key or filepath (for export/import)')
+    edit_pref_parser.add_argument('value', nargs='?', help='Preference value (for set/add/update)')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -670,6 +912,10 @@ Environment Variables:
             else:
                 template_parser.print_help()
                 return 1
+        elif args.command == 'check-pref':
+            return cli.check_pref(key=args.key)
+        elif args.command == 'edit-pref':
+            return cli.edit_pref(action=args.action, key=args.key, value=args.value)
         else:
             parser.print_help()
             return 1

@@ -6,6 +6,10 @@ rich>=13.0.0        # Beautiful terminal progress bars and formatting
 plyer>=2.0.0        # Desktop notifications (optional but recommended)
 pyyaml>=6.0.0       # YAML parsing for template system
 
+# Configuration Management
+pyyaml>=6.0.1
+packaging>=23.0
+
 # Testing Dependencies (dev)
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
@@ -17,4 +21,3 @@ pytest-cov>=4.0.0
 # - lspci (usually pre-installed)
 # - lsblk (usually pre-installed)
 # - ip (usually pre-installed)
-
