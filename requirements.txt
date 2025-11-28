@@ -4,5 +4,8 @@
 anthropic>=0.18.0
 openai>=1.0.0
 
+# YAML parsing for template system
+PyYAML>=6.0
+
 # Type hints for older Python versions
 typing-extensions>=4.0.0
