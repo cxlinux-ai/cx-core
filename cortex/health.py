@@ -55,7 +55,7 @@ class HealthEngine:
         self.factors: List[HealthFactor] = []
         self.history_mgr = HealthHistory()
     def _check_disk(self):
-        total, used, free = shutil.disk_usage("/")
+        total, used, _free = shutil.disk_usage("/")
         percent = (used / total) * 100
         if percent > 90:
             self.score -= 20
@@ -84,17 +84,23 @@ class HealthEngine:
         self.factors.append(HealthFactor("Security", "good", "System up to date"))
     def apply_fix(self, fix_id: str) -> bool:
         if fix_id == "clean_disk":
-            with console.status("[bold green]Running cleanup tasks...[/bold green]"): time.sleep(1.5)
+            with console.status("[bold green]Running cleanup tasks...[/bold green]"): # TODO: Implement actual disk cleanup logic (See #125)
+                time.sleep(1.5)
+                console.print("[yellow]Disk cleanup logic is handled in the cleanup module.[/yellow]")
             return True
         return False
     def run_diagnostics(self):
         trend = self.history_mgr.get_trend()
         with Progress(SpinnerColumn(), TextColumn("[bold cyan]Scanning...[/bold cyan]"), transient=True) as p:
             t = p.add_task("scan", total=4)
-            self._check_disk(); p.advance(t)
-            self._check_memory(); p.advance(t)
-            self._check_cpu(); p.advance(t)
-            self._check_updates(); p.advance(t)
+            self._check_disk()
+            p.advance(t)
+            self._check_memory()
+            p.advance(t)
+            self._check_cpu()
+            p.advance(t)
+            self._check_updates()
+            p.advance(t)
         self.score = max(0, self.score)
         self.history_mgr.save(self.score, [asdict(f) for f in self.factors])
         return self.score, self.factors, trend

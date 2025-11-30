@@ -14,6 +14,11 @@ from installation_history import (
     InstallationType,
     InstallationStatus
 )
+from cortex.user_preferences import (
+    PreferencesManager,
+    print_all_preferences,
+    format_preference_value
+)
     PreferencesManager,
     print_all_preferences,
     format_preference_value
@@ -569,8 +574,6 @@ Environment Variables:
         elif args.command == 'health':
             from cortex.health import check_health
             check_health(fix=args.fix)
-            return 0
-        elif args.command == 'health':
             return 0
         else:
             parser.print_help()

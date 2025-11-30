@@ -35,4 +35,5 @@ class TestHealth(unittest.TestCase):
         check_health(fix=False)
         self.assertTrue(mock_print.called)
 
-if __name__ == '__main__': unittest.main()
+if __name__ == '__main__':
+    unittest.main()
