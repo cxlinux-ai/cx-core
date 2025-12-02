@@ -22,7 +22,7 @@ Successfully integrated Moonshot AI's Kimi K2 model as a new LLM provider for Co
 
 **Features:**
 - Full HTTP-based API integration using `requests` library
-- Configurable base URL via `KIMI_API_BASE_URL` environment variable (defaults to `https://api.moonshot.cn`)
+- Configurable base URL via `KIMI_API_BASE_URL` environment variable (defaults to `https://api.moonshot.ai`)
 - Configurable model via `KIMI_DEFAULT_MODEL` environment variable
 - Proper error handling with descriptive exceptions
 - Request timeout set to 60 seconds
