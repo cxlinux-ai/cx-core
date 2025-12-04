@@ -1,4 +1,4 @@
-"""Model Lifecycle Manager - Systemd-Based LLM Service Management."""
+"""Model Lifecycle Manager - Systemd-based LLM service management."""
 
 from .model_lifecycle import (
     BACKENDS,
