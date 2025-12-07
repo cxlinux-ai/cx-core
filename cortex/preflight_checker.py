@@ -318,7 +318,6 @@ class PreflightChecker:
         
         try:
             # Create a specific prompt for package information
-            distro = os_info.get('distro', 'Ubuntu')
             distro_id = os_info.get('distro_id', 'ubuntu')
             
             prompt = f"""Get {software} package information for Linux {distro_id}. 
@@ -466,7 +465,6 @@ If unsure, estimate typical sizes. ONLY OUTPUT THE JSON OBJECT."""
     
     def calculate_requirements(self, software: str) -> None:
         """Calculate installation requirements based on software to install"""
-        software_lower = software.lower()
         
         # Calculate total download and disk requirements
         total_download = 0
@@ -526,7 +524,7 @@ If unsure, estimate typical sizes. ONLY OUTPUT THE JSON OBJECT."""
 def format_report(report: PreflightReport, software: str) -> str:
     """Format the preflight report for display"""
     lines = []
-    lines.append(f"\n🔍 Simulation mode: No changes will be made\n")
+    lines.append("\n🔍 Simulation mode: No changes will be made\n")
     
     # Check if using estimates
     using_estimates = any('estimate' in str(pkg.get('size_mb', '')) for pkg in report.packages_to_install)
@@ -541,7 +539,7 @@ def format_report(report: PreflightReport, software: str) -> str:
     
     # What would be installed
     if report.packages_to_install:
-        lines.append(f"\nWould install:")
+        lines.append("\nWould install:")
         for pkg in report.packages_to_install:
             lines.append(f"  - {pkg['name']} {pkg.get('version', '')} ({pkg.get('size_mb', '?')} MB)")
         
@@ -595,11 +593,8 @@ def export_report(report: PreflightReport, filepath: str) -> None:
     
     # Convert dataclass to dict
     report_dict = asdict(report)
-    
-    # Convert DiskInfo, PackageInfo, ServiceInfo to dicts
-    report_dict['disk_usage'] = [asdict(d) for d in report.disk_usage]
-    report_dict['package_status'] = [asdict(p) for p in report.package_status]
-    report_dict['service_status'] = [asdict(s) for s in report.service_status]
-    
+
+    # `asdict` already converts nested dataclasses recursively, so we can
+    # directly write the result to JSON.
     with open(filepath, 'w') as f:
         json.dump(report_dict, f, indent=2)

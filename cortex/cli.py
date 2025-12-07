@@ -320,8 +320,8 @@ class CortexCLI:
     def _run_simulation(self, software: str) -> int:
         """Run preflight simulation check for installation"""
         try:
-            # Get API key for LLM-powered package info (optional)
-            api_key = self._get_api_key()
+            # Get API key for LLM-powered package info (optional).
+            api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')
             provider = self._get_provider() if api_key else 'openai'
             
             # Create checker with optional API key for enhanced accuracy
