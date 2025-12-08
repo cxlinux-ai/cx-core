@@ -10,6 +10,8 @@ def load_dashboard():
     """Load dashboard module"""
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cortex", "dashboard.py")
     spec = importlib.util.spec_from_file_location("dashboard", path)
+    if spec is None or spec.loader is None:
+        raise ImportError("Failed to load dashboard module")
     dashboard = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(dashboard)
     return dashboard
