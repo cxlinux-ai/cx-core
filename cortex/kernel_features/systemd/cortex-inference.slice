@@ -1,0 +1,54 @@
+# Cortex Inference Resource Slice
+# /usr/lib/systemd/system/cortex-inference.slice
+#
+# This slice provides resource isolation for all Cortex LLM services.
+# All cortex-model@*.service units run within this slice.
+#
+# Usage:
+#   systemctl status cortex-inference.slice
+#   systemctl set-property cortex-inference.slice MemoryMax=64G
+#   systemd-cgtop (monitor resource usage)
+
+[Unit]
+Description=Cortex LLM Inference Resource Slice
+Documentation=https://github.com/cortexlinux/cortex/blob/main/docs/RESOURCE_MANAGEMENT.md
+Before=slices.target
+
+[Slice]
+# =============================================================================
+# CPU ALLOCATION
+# =============================================================================
+# Higher weight = more CPU time when system is contended
+# Default is 100, we set 300 to prioritize inference over background tasks
+CPUWeight=300
+
+# Reserve minimum 50% of CPU for inference slice
+# CPUQuota=50%
+
+# =============================================================================
+# MEMORY ALLOCATION  
+# =============================================================================
+# Maximum memory for all inference services combined
+# Set to 85% of system RAM to leave room for OS
+MemoryMax=85%
+
+# Soft limit - kernel will try to reclaim memory above this
+MemoryHigh=75%
+
+# Disable swap for inference workloads (swap kills performance)
+MemorySwapMax=0
+
+# =============================================================================
+# I/O ALLOCATION
+# =============================================================================
+# Higher weight = more I/O bandwidth for model loading
+IOWeight=200
+
+# =============================================================================
+# PROCESS LIMITS
+# =============================================================================
+# Maximum number of tasks (threads) in this slice
+TasksMax=65536
+
+[Install]
+WantedBy=slices.target

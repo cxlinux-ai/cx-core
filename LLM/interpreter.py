@@ -7,6 +7,7 @@ from enum import Enum
 class APIProvider(Enum):
     CLAUDE = "claude"
     OPENAI = "openai"
+    OLLAMA = "ollama"
 
 
 class CommandInterpreter:
@@ -22,8 +23,13 @@ class CommandInterpreter:
         if model:
             self.model = model
         else:
-            self.model = "gpt-4" if self.provider == APIProvider.OPENAI else "claude-3-5-sonnet-20241022"
-        
+            if self.provider == APIProvider.OPENAI:
+                self.model = "gpt-4"
+            elif self.provider == APIProvider.CLAUDE:
+                self.model = "claude-sonnet-4-20250514"
+            elif self.provider == APIProvider.OLLAMA:
+                self.model = "llama3.2"  # Default Ollama model
+
         self._initialize_client()
     
     def _initialize_client(self):
@@ -39,6 +45,10 @@ class CommandInterpreter:
                 self.client = Anthropic(api_key=self.api_key)
             except ImportError:
                 raise ImportError("Anthropic package not installed. Run: pip install anthropic")
+        elif self.provider == APIProvider.OLLAMA:
+            # Ollama uses local HTTP API, no special client needed
+            self.ollama_url = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
+            self.client = None  # Will use requests
     
     def _get_system_prompt(self) -> str:
         return """You are a Linux system command expert. Convert natural language requests into safe, validated bash commands.
@@ -86,11 +96,45 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
                     {"role": "user", "content": user_input}
                 ]
             )
-            
+
             content = response.content[0].text.strip()
             return self._parse_commands(content)
         except Exception as e:
             raise RuntimeError(f"Claude API call failed: {str(e)}")
+
+    def _call_ollama(self, user_input: str) -> List[str]:
+        """Call local Ollama instance for offline/local inference"""
+        import urllib.request
+        import urllib.error
+
+        try:
+            url = f"{self.ollama_url}/api/generate"
+            prompt = f"{self._get_system_prompt()}\n\nUser request: {user_input}"
+
+            data = json.dumps({
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3
+                }
+            }).encode('utf-8')
+
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={'Content-Type': 'application/json'}
+            )
+
+            with urllib.request.urlopen(req, timeout=60) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                content = result.get('response', '').strip()
+                return self._parse_commands(content)
+
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Ollama not available at {self.ollama_url}: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Ollama API call failed: {str(e)}")
     
     def _parse_commands(self, content: str) -> List[str]:
         try:
@@ -136,6 +180,8 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
             commands = self._call_openai(user_input)
         elif self.provider == APIProvider.CLAUDE:
             commands = self._call_claude(user_input)
+        elif self.provider == APIProvider.OLLAMA:
+            commands = self._call_ollama(user_input)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
         

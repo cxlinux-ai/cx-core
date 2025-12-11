@@ -1,15 +1,10 @@
-## Summary
-<!-- Brief description of changes -->
+## Related Issue
+Closes #<!-- REQUIRED: Issue number -->
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature  
-- [ ] Documentation update
+## Summary
+<!-- What does this PR do? -->
 
 ## Checklist
-- [ ] Tests passing
-- [ ] Docs updated
-- [ ] Fixes #XXX
-
-## Testing
-<!-- How was this tested? -->
+- [ ] Tests pass (`pytest tests/`)
+- [ ] PR title format: `[#XX] Description`
+- [ ] MVP label added if closing MVP issue

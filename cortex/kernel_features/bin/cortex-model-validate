@@ -1,0 +1,55 @@
+#!/bin/bash
+# /usr/bin/cortex-model-validate
+# Validates model exists and is readable before starting service
+#
+# Usage: cortex-model-validate <model-name>
+
+set -e
+
+MODEL_NAME="${1:-}"
+MODEL_BASE_PATH="${CORTEX_MODEL_PATH:-/var/lib/cortex/models}"
+
+if [ -z "$MODEL_NAME" ]; then
+    echo "ERROR: Model name required" >&2
+    exit 1
+fi
+
+MODEL_PATH="$MODEL_BASE_PATH/$MODEL_NAME"
+
+# Check Ollama models
+if command -v ollama &> /dev/null; then
+    if ollama list 2>/dev/null | grep -q "^$MODEL_NAME"; then
+        echo "Model '$MODEL_NAME' found in Ollama"
+        exit 0
+    fi
+fi
+
+# Check local model path
+if [ -d "$MODEL_PATH" ]; then
+    if [ -r "$MODEL_PATH" ]; then
+        echo "Model '$MODEL_NAME' found at $MODEL_PATH"
+        exit 0
+    else
+        echo "ERROR: Model directory not readable: $MODEL_PATH" >&2
+        exit 1
+    fi
+fi
+
+# Check for GGUF file
+GGUF_PATH="$MODEL_BASE_PATH/${MODEL_NAME}.gguf"
+if [ -f "$GGUF_PATH" ]; then
+    if [ -r "$GGUF_PATH" ]; then
+        echo "Model '$MODEL_NAME' found at $GGUF_PATH"
+        exit 0
+    else
+        echo "ERROR: Model file not readable: $GGUF_PATH" >&2
+        exit 1
+    fi
+fi
+
+echo "ERROR: Model '$MODEL_NAME' not found" >&2
+echo "Searched:" >&2
+echo "  - Ollama models" >&2
+echo "  - $MODEL_PATH" >&2
+echo "  - $GGUF_PATH" >&2
+exit 1
