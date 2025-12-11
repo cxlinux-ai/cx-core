@@ -38,7 +38,7 @@ from cortex.validators import (
     validate_installation_id,
     ValidationError
 )
-# Import the new Notification Manager
+# Import Notification Manager
 from cortex.notification_manager import NotificationManager
 
 
@@ -112,10 +112,9 @@ class CortexCLI:
         sys.stdout.write('\r\033[K')
         sys.stdout.flush()
 
-    # --- New Notification Method ---
+    # --- Notification Method ---
     def notify(self, args):
         """Handle notification commands"""
-        # Addressing CodeRabbit feedback: Handle missing subcommand gracefully
         if not args.notify_action:
             self._print_error("Please specify a subcommand (config/enable/disable/dnd/send)")
             return 1
@@ -132,16 +131,14 @@ class CortexCLI:
 
         elif args.notify_action == 'enable':
             mgr.config["enabled"] = True
-            # Addressing CodeRabbit feedback: Ideally should use a public method instead of private _save_config,
-            # but keeping as is for a simple fix (or adding a save method to NotificationManager would be best).
-            mgr._save_config() 
+            mgr.save_config() 
             self._print_success("Notifications enabled")
             return 0
 
         elif args.notify_action == 'disable':
             mgr.config["enabled"] = False
-            mgr._save_config()
-            cx_print("Notifications disabled (Critical alerts will still show)", "warning")
+            mgr.save_config()
+            self._print_success("Notifications disabled (Critical alerts will still show)")
             return 0
 
         elif args.notify_action == 'dnd':
@@ -149,7 +146,6 @@ class CortexCLI:
                 self._print_error("Please provide start and end times (HH:MM)")
                 return 1
             
-            # Addressing CodeRabbit feedback: Add time format validation
             try:
                 datetime.strptime(args.start, "%H:%M")
                 datetime.strptime(args.end, "%H:%M")
@@ -159,7 +155,7 @@ class CortexCLI:
 
             mgr.config["dnd_start"] = args.start
             mgr.config["dnd_end"] = args.end
-            mgr._save_config()
+            mgr.save_config()
             self._print_success(f"DND Window updated: {args.start} - {args.end}")
             return 0
 
@@ -174,7 +170,56 @@ class CortexCLI:
         else:
             self._print_error("Unknown notify command")
             return 1
-    # -------------------------------
+
+    # --- New Health Command ---
+    def health(self, args):
+        """Run system health checks and show recommendations"""
+        from cortex.health.monitor import HealthMonitor
+        
+        self._print_status("🔍", "Running system health checks...")
+        monitor = HealthMonitor()
+        report = monitor.run_all()
+        
+        # --- Display Results ---
+        score = report['total_score']
+        
+        # Color code the score
+        score_color = "green"
+        if score < 60: score_color = "red"
+        elif score < 80: score_color = "yellow"
+        
+        console.print()
+        console.print(f"📊 [bold]System Health Score:[/bold] [{score_color}]{score}/100[/{score_color}]")
+        console.print()
+        
+        console.print("[bold]Factors:[/bold]")
+        recommendations = []
+        
+        for res in report['results']:
+            status_icon = "✅"
+            if res['status'] == 'WARNING': status_icon = "⚠️ "
+            elif res['status'] == 'CRITICAL': status_icon = "❌"
+            
+            console.print(f"   {status_icon}  {res['name']:<15}: {res['score']}/100 ({res['details']})")
+            
+            if res['recommendation']:
+                recommendations.append(res['recommendation'])
+        
+        console.print()
+        
+        if recommendations:
+            console.print("[bold]Recommendations:[/bold]")
+            for i, rec in enumerate(recommendations, 1):
+                console.print(f"   {i}. {rec}")
+            
+            console.print()
+            # Note: Auto-fix logic would go here, prompting user to apply specific commands.
+            # For this iteration, we display actionable advice.
+            console.print("[dim]Run suggested commands manually to improve your score.[/dim]")
+        else:
+            self._print_success("System is in excellent health! No actions needed.")
+            
+        return 0
 
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
         # Validate input first
@@ -543,7 +588,8 @@ def show_rich_help():
     table.add_row("install <pkg>", "Install software")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
-    table.add_row("notify", "Manage desktop notifications")  # Added this line
+    table.add_row("notify", "Manage desktop notifications")
+    table.add_row("health", "Check system health score") # Added this line
 
     console.print(table)
     console.print()
@@ -598,7 +644,7 @@ def main():
     edit_pref_parser.add_argument('key', nargs='?')
     edit_pref_parser.add_argument('value', nargs='?')
 
-    # --- New Notify Command ---
+    # --- Notify Command ---
     notify_parser = subparsers.add_parser('notify', help='Manage desktop notifications')
     notify_subs = notify_parser.add_subparsers(dest='notify_action', help='Notify actions')
 
@@ -615,6 +661,9 @@ def main():
     send_parser.add_argument('--title', default='Cortex Notification')
     send_parser.add_argument('--level', choices=['low', 'normal', 'critical'], default='normal')
     send_parser.add_argument('--actions', nargs='*', help='Action buttons')
+    
+    # --- New Health Command ---
+    health_parser = subparsers.add_parser('health', help='Check system health score')
     # --------------------------
 
     args = parser.parse_args()
@@ -642,9 +691,11 @@ def main():
             return cli.check_pref(key=args.key)
         elif args.command == 'edit-pref':
             return cli.edit_pref(action=args.action, key=args.key, value=args.value)
-        # Handle the new notify command
         elif args.command == 'notify':
             return cli.notify(args)
+        # Handle new command
+        elif args.command == 'health':
+            return cli.health(args)
         else:
             parser.print_help()
             return 1
