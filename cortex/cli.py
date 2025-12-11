@@ -284,11 +284,23 @@ class CortexCLI:
 
                         total_duration = 0.0
                         if parallel_tasks:
-                            max_end = max((t.end_time or 0) for t in parallel_tasks)
-                            min_start = min(
-                                (t.start_time or time.time()) for t in parallel_tasks
+                            max_end = max(
+                                (
+                                    t.end_time
+                                    for t in parallel_tasks
+                                    if t.end_time is not None
+                                ),
+                                default=None,
                             )
-                            if max_end and min_start:
+                            min_start = min(
+                                (
+                                    t.start_time
+                                    for t in parallel_tasks
+                                    if t.start_time is not None
+                                ),
+                                default=None,
+                            )
+                            if max_end is not None and min_start is not None:
                                 total_duration = max_end - min_start
 
                         if success:

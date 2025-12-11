@@ -7,6 +7,8 @@ from typing import List, Dict, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from cortex.validators import DANGEROUS_PATTERNS
+
 
 class TaskStatus(Enum):
     PENDING = "pending"
@@ -55,25 +57,10 @@ async def run_single_task(task: ParallelTask, executor, timeout: int, log_callba
         log_callback(f"Starting {task.name}…", "info")
     
     # Validate command for dangerous patterns
-    DANGEROUS_PATTERNS = [
-        r'rm\s+-rf\s+[/\*]',
-        r'rm\s+--no-preserve-root',
-        r'dd\s+if=.*of=/dev/',
-        r'curl\s+.*\|\s*sh',
-        r'curl\s+.*\|\s*bash',
-        r'wget\s+.*\|\s*sh',
-        r'wget\s+.*\|\s*bash',
-        r'\beval\s+',
-        r'base64\s+-d\s+.*\|',
-        r'>\s*/etc/',
-        r'chmod\s+777',
-        r'chmod\s+\+s',
-    ]
-    
     for pattern in DANGEROUS_PATTERNS:
         if re.search(pattern, task.command, re.IGNORECASE):
             task.status = TaskStatus.FAILED
-            task.error = f"Command blocked: matches dangerous pattern"
+            task.error = "Command blocked: matches dangerous pattern"
             task.end_time = time.time()
             if log_callback:
                 log_callback(f"Finished {task.name} (failed)", "error")
@@ -81,10 +68,12 @@ async def run_single_task(task: ParallelTask, executor, timeout: int, log_callba
     
     try:
         # Run command in executor (thread pool) to avoid blocking the event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 executor,
+                # Use shell=True carefully - commands are validated against dangerous patterns above.
+                # shell=True is required to support complex shell commands (e.g., pipes, redirects).
                 lambda: subprocess.run(
                     task.command,
                     shell=True,
@@ -148,7 +137,7 @@ async def run_parallel_install(
         log_callback: Optional callback for logging (called with message and level)
     
     Returns:
-        Tuple of (success: bool, tasks: List[ParallelTask])
+        tuple[bool, List[ParallelTask]]: Success status and list of all tasks
     """
     if not commands:
         return True, []
@@ -190,13 +179,30 @@ async def run_parallel_install(
         while pending or running:
             # Start tasks whose dependencies are met
             ready_to_start = []
-            for task_name in list(pending):
+            for task_name in pending.copy():
                 task = tasks[task_name]
-                deps_met = all(dep in completed for dep in task.dependencies)
+                # When stop_on_error=False, accept both completed and failed dependencies
+                if stop_on_error:
+                    deps_met = all(dep in completed for dep in task.dependencies)
+                else:
+                    deps_met = all(dep in completed or dep in failed for dep in task.dependencies)
                 
                 if deps_met:
                     ready_to_start.append(task_name)
                     pending.remove(task_name)
+            
+            # If no tasks can be started and none are running, we're stuck (deadlock/cycle detection)
+            if not ready_to_start and not running and pending:
+                # Mark remaining tasks as skipped - they have unresolvable dependencies
+                for task_name in pending:
+                    task = tasks[task_name]
+                    if task.status == TaskStatus.PENDING:
+                        task.status = TaskStatus.SKIPPED
+                        task.error = "Task could not run because dependencies never completed"
+                        if log_callback:
+                            log_callback(f"{task_name} skipped due to unresolved dependencies", "error")
+                failed.update(pending)
+                break
             
             # Create tasks for ready items
             for task_name in ready_to_start:
@@ -217,10 +223,20 @@ async def run_parallel_install(
                 # Process completed tasks
                 for task_coro in done:
                     # Find which task this is
-                    for task_name, running_coro in list(running.items()):
+                    for task_name, running_coro in running.items():
                         if running_coro is task_coro:
                             task = tasks[task_name]
-                            success = task_coro.result()
+                            
+                            # Handle cancelled tasks
+                            try:
+                                success = task_coro.result()
+                            except asyncio.CancelledError:
+                                # Task was cancelled due to stop_on_error
+                                task.status = TaskStatus.SKIPPED
+                                task.error = "Task cancelled due to dependency failure"
+                                failed.add(task_name)
+                                del running[task_name]
+                                break
                             
                             if success:
                                 completed.add(task_name)

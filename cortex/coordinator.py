@@ -9,23 +9,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from cortex.validators import DANGEROUS_PATTERNS
 
-# Dangerous patterns that should never be executed
-DANGEROUS_PATTERNS = [
-    r"rm\s+-rf\s+[/\*]",
-    r"rm\s+--no-preserve-root",
-    r"dd\s+if=.*of=/dev/",
-    r"curl\s+.*\|\s*sh",
-    r"curl\s+.*\|\s*bash",
-    r"wget\s+.*\|\s*sh",
-    r"wget\s+.*\|\s*bash",
-    r"\beval\s+",
-    r"base64\s+-d\s+.*\|",
-    r">\s*/etc/",
-    r"chmod\s+777",
-    r"chmod\s+\+s",
-]
+logger = logging.getLogger(__name__)
 
 
 class StepStatus(Enum):

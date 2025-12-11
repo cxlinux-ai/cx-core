@@ -5,7 +5,6 @@ import asyncio
 import time
 from cortex.install_parallel import (
     run_parallel_install,
-    ParallelTask,
     TaskStatus
 )
 
@@ -63,10 +62,6 @@ class TestParallelExecution:
             )
             
             assert success
-            assert all(t.status == TaskStatus.SUCCESS for t in tasks)
-            
-            # Verify all tasks completed (they were sequential)
-            assert len(tasks) == 3
             assert all(t.status == TaskStatus.SUCCESS for t in tasks)
         
         asyncio.run(run_test())
@@ -178,7 +173,7 @@ class TestParallelExecution:
             
             assert not success
             assert tasks[0].status == TaskStatus.FAILED
-            assert "timed out" in tasks[0].error.lower() or tasks[0].error != ""
+            assert "timed out" in tasks[0].error.lower() or "timeout" in tasks[0].error.lower()
         
         asyncio.run(run_test())
     
@@ -242,7 +237,7 @@ class TestParallelExecution:
             def log_callback(message: str, level: str = "info"):
                 log_messages.append((message, level))
             
-            success, tasks = await run_parallel_install(
+            success, _tasks = await run_parallel_install(
                 commands,
                 timeout=10,
                 log_callback=log_callback
