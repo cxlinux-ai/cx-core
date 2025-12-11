@@ -3,32 +3,41 @@ import os
 from ..monitor import HealthCheck, CheckResult
 
 class SecurityCheck(HealthCheck):
-    """Check security configuration including firewall and SSH settings."""
+    """
+    Checks system security posture including firewall status and SSH configuration.
+    
+    Evaluates UFW firewall activity and SSH root login permissions,
+    returning a weighted score and actionable recommendations.
+    """
 
     def run(self) -> CheckResult:
         """
-        Run security checks for firewall status and SSH configuration.
+        Execute security checks and return aggregated results.
         
         Returns:
-            CheckResult with security score based on detected issues.
+            CheckResult: Security assessment with score (0-100), status,
+                        detected issues, and recommendations.
         """
         score = 100
         issues = []
         recommendations = []
         
         # 1. Firewall (UFW) Check
-        ufw_active, ufw_issue, ufw_rec = self._check_firewall()
-        if not ufw_active:
-            score = 0
-            issues.append(ufw_issue)
-            recommendations.append(ufw_rec)
+        # Returns: score_delta (negative for penalty), issues, recommendations
+        fw_score_delta, fw_issues, fw_recs = self._check_firewall()
+        
+        # If firewall is inactive, score becomes 0 immediately per requirements
+        if fw_score_delta == -100:
+             score = 0
+        
+        issues.extend(fw_issues)
+        recommendations.extend(fw_recs)
 
         # 2. SSH Root Login Check
-        ssh_penalty, ssh_issue, ssh_rec = self._check_ssh_root_login()
-        if ssh_penalty > 0:
-            score -= ssh_penalty
-            issues.append(ssh_issue)
-            recommendations.append(ssh_rec)
+        ssh_score_delta, ssh_issues, ssh_recs = self._check_ssh_root_login()
+        score += ssh_score_delta
+        issues.extend(ssh_issues)
+        recommendations.extend(ssh_recs)
 
         status = "OK"
         if score < 50: status = "CRITICAL"
@@ -44,8 +53,13 @@ class SecurityCheck(HealthCheck):
             weight=0.35
         )
 
-    def _check_firewall(self):
-        """Check if UFW is active."""
+    def _check_firewall(self) -> tuple[int, list[str], list[str]]:
+        """
+        Check if UFW is active.
+        
+        Returns:
+            tuple: (score_delta, issues_list, recommendations_list)
+        """
         try:
             res = subprocess.run(
                 ["systemctl", "is-active", "ufw"], 
@@ -54,23 +68,31 @@ class SecurityCheck(HealthCheck):
                 timeout=10
             )
             if res.returncode == 0 and res.stdout.strip() == "active":
-                return True, None, None
+                return 0, [], []
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
             pass
         
-        return False, "Firewall Inactive", "Enable UFW Firewall"
+        # Return -100 to signal immediate failure condition
+        return -100, ["Firewall Inactive"], ["Enable UFW Firewall"]
 
-    def _check_ssh_root_login(self):
-        """Check for PermitRootLogin yes in sshd_config."""
+    def _check_ssh_root_login(self) -> tuple[int, list[str], list[str]]:
+        """
+        Check for PermitRootLogin yes in sshd_config.
+        
+        Returns:
+            tuple: (score_delta, issues_list, recommendations_list)
+        """
         try:
             ssh_config = "/etc/ssh/sshd_config"
             if os.path.exists(ssh_config):
                 with open(ssh_config, 'r') as f:
                     for line in f:
-                        line = line.strip()
-                        if line.startswith("PermitRootLogin") and "yes" in line.split():
-                            return 50, "Root SSH Allowed", "Disable SSH Root Login in sshd_config"
+                        parts = line.split()
+                        # Precise check: PermitRootLogin must be the first word, yes the second
+                        # This avoids matching commented lines or "no" followed by comments
+                        if len(parts) >= 2 and parts[0] == "PermitRootLogin" and parts[1] == "yes":
+                            return -50, ["Root SSH Allowed"], ["Disable SSH Root Login in sshd_config"]
         except (PermissionError, Exception):
             pass
         
-        return 0, None, None
+        return 0, [], []
