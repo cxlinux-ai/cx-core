@@ -37,4 +37,11 @@
 ## Refactoring (SonarCloud)
 - [x] Fix `cortex/optimizer.py`: Redundant exceptions, Cognitive Complexity, unused params
 - [x] Fix `cortex/cli.py`: Complexity, unused variables
-- [x] Fix `cortex/packages.py`: Complexity, logic errors
+- [x] Fix `cortex/packages.py`: Unused variable and pass
+- [x] Fix Shell Scripts: Constants for duplicate literals
+
+## Cleanup Legacy Code
+- [x] Delete `cortex/health/` module (Legacy bounty artifact)
+- [x] Delete `scripts/verify_ubuntu_compatibility.py`
+- [x] Delete `tests/test_health_monitor.py`
+- [x] Remove `health` command from `cortex/cli.py`

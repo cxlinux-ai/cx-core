@@ -172,55 +172,6 @@ class CortexCLI:
             self._print_error("Unknown notify command")
             return 1
 
-    # --- New Health Command ---
-    def health(self, _):
-        """Run system health checks and show recommendations"""
-        from cortex.health.monitor import HealthMonitor
-        
-        self._print_status("🔍", "Running system health checks...")
-        monitor = HealthMonitor()
-        report = monitor.run_all()
-        
-        # --- Display Results ---
-        score = report['total_score']
-        
-        # Color code the score
-        score_color = "green"
-        if score < 60: score_color = "red"
-        elif score < 80: score_color = "yellow"
-        
-        console.print()
-        console.print(f"📊 [bold]System Health Score:[/bold] [{score_color}]{score}/100[/{score_color}]")
-        console.print()
-        
-        console.print("[bold]Factors:[/bold]")
-        recommendations = []
-        
-        for res in report['results']:
-            status_icon = "✅"
-            if res['status'] == 'WARNING': status_icon = "⚠️ "
-            elif res['status'] == 'CRITICAL': status_icon = "❌"
-            
-            console.print(f"   {status_icon}  {res['name']:<15}: {res['score']}/100 ({res['details']})")
-            
-            if res['recommendation']:
-                recommendations.append(res['recommendation'])
-        
-        console.print()
-        
-        if recommendations:
-            console.print("[bold]Recommendations:[/bold]")
-            for i, rec in enumerate(recommendations, 1):
-                console.print(f"   {i}. {rec}")
-            
-            console.print()
-            # Note: Auto-fix logic would go here, prompting user to apply specific commands.
-            # For this iteration, we display actionable advice.
-            console.print("[dim]Run suggested commands manually to improve your score.[/dim]")
-        else:
-            self._print_success("System is in excellent health! No actions needed.")
-            
-        return 0
 
     def cleanup(self, args):
         """Run system cleanup optimization"""
@@ -682,7 +633,6 @@ def show_rich_help():
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
     table.add_row("notify", "Manage desktop notifications")
-    table.add_row("health", "Check system health score") # Added this line
 
     console.print(table)
     console.print()
@@ -755,8 +705,6 @@ def main():
     send_parser.add_argument('--level', choices=['low', 'normal', 'critical'], default='normal')
     send_parser.add_argument('--actions', nargs='*', help='Action buttons')
     
-    # --- New Health Command ---
-    subparsers.add_parser('health', help='Check system health score')
     
     # --- Cleanup Command ---
     cleanup_parser = subparsers.add_parser('cleanup', help='Optimize disk space')
@@ -799,8 +747,7 @@ def main():
         elif args.command == 'notify':
             return cli.notify(args)
         # Handle new command
-        elif args.command == 'health':
-            return cli.health(args)
+
         elif args.command == 'cleanup':
             return cli.cleanup(args)
         else:

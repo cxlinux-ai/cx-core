@@ -9,6 +9,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+JQ_COUNT='. | length'
 
 REPO_DIR="$HOME/cortex"
 WORK_DIR="$HOME/Downloads/cortex-work"
@@ -47,11 +48,11 @@ show_dashboard() {
     echo -e "${BLUE}═══ CORTEX MVP DASHBOARD ═══${NC}"
     echo ""
     echo "📊 Issues:"
-    echo "  Total: $(gh issue list --limit 1000 --json number | jq '. | length')"
-    echo "  MVP Critical: $(gh issue list --label 'mvp-critical' --json number | jq '. | length')"
+    echo "  Total: $(gh issue list --limit 1000 --json number | jq "$JQ_COUNT")"
+    echo "  MVP Critical: $(gh issue list --label 'mvp-critical' --json number | jq "$JQ_COUNT")"
     echo ""
     echo "🔀 Pull Requests:"
-    echo "  Open: $(gh pr list --json number | jq '. | length')"
+    echo "  Open: $(gh pr list --json number | jq "$JQ_COUNT")"
     echo ""
     echo "👥 Recent activity:"
     gh pr list --state all --limit 5 --json number,title,author | \
@@ -142,8 +143,8 @@ weekly_report() {
         jq -r '.[] | "- PR #\(.number): \(.title)"'
     echo ""
     echo "## Metrics"
-    echo "- Open Issues: $(gh issue list --json number | jq '. | length')"
-    echo "- Open PRs: $(gh pr list --json number | jq '. | length')"
+    echo "- Open Issues: $(gh issue list --json number | jq "$JQ_COUNT")"
+    echo "- Open PRs: $(gh pr list --json number | jq "$JQ_COUNT")"
 }
 
 audit_repo() {
@@ -152,8 +153,8 @@ audit_repo() {
     echo "Branch: $(git branch --show-current)"
     echo "Last commit: $(git log -1 --oneline)"
     echo ""
-    echo "Issues: $(gh issue list --json number | jq '. | length') open"
-    echo "PRs: $(gh pr list --json number | jq '. | length') open"
+    echo "Issues: $(gh issue list --json number | jq "$JQ_COUNT") open"
+    echo "PRs: $(gh pr list --json number | jq "$JQ_COUNT") open"
     echo ""
     echo "Recent activity:"
     gh run list --limit 3

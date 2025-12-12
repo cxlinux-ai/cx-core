@@ -508,8 +508,6 @@ class PackageManager:
             opportunities["orphaned_size_bytes"] = total_kb * 1024
 
     def _get_yum_cleanable_items(self, opportunities: Dict[str, any]):
-        pm_cmd = "yum" if self.pm_type == PackageManagerType.YUM else "dnf"
-        
         # Check cache size
         cache_dir = "/var/cache/dnf" if self.pm_type == PackageManagerType.DNF else "/var/cache/yum"
         result = subprocess.run(
@@ -520,7 +518,6 @@ class PackageManager:
             opportunities["cache_size_bytes"] = int(result.stdout.strip())
         
         # Check for autoremovable packages - unimplemented logic
-        pass
 
 
     def get_cleanup_commands(self, item_type: str) -> List[str]:

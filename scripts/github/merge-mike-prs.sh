@@ -12,6 +12,7 @@ REPO="cortexlinux/cortex"
 GITHUB_TOKEN=$(grep GITHUB_TOKEN ~/.zshrc | cut -d'=' -f2 | tr -d '"' | tr -d "'")
 
 export GH_TOKEN="$GITHUB_TOKEN"
+SEPARATOR="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 echo "Merging PRs authored by @mikejmorgan-ai..."
 echo ""
@@ -20,9 +21,9 @@ echo ""
 MIKE_PRS=(41 36 34 23 22 20)
 
 for pr in "${MIKE_PRS[@]}"; do
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "$SEPARATOR"
     echo "PR #$pr"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "$SEPARATOR"
     
     # Get PR info
     pr_info=$(gh pr view $pr --repo $REPO --json title,state,mergeable 2>/dev/null || echo "")
@@ -71,9 +72,9 @@ for pr in "${MIKE_PRS[@]}"; do
     echo ""
 done
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "$SEPARATOR"
 echo "✅ MERGE PROCESS COMPLETE"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "$SEPARATOR"
 echo ""
 echo "Next steps:"
 echo "1. Review contributor PRs: #17, #21, #37, #38"
