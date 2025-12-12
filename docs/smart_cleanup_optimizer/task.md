@@ -38,12 +38,10 @@
 - [x] Fix `cortex/optimizer.py`: Redundant exceptions, Cognitive Complexity, unused params
 - [x] Fix `cortex/cli.py`: Complexity, unused variables
 - [x] Fix `cortex/packages.py`: Unused variable and pass
-- [x] Fix Shell Scripts: Constants for duplicate literals
 
 ## Cleanup Legacy Code
 - [x] Delete `cortex/health/` module (Legacy bounty artifact)
-- [x] Delete `scripts/verify_ubuntu_compatibility.py`
-- [x] Delete `tests/test_health_monitor.py`
-- [x] Remove `health` command from `cortex/cli.py`
+- [x] Delete `scripts/` directory (Legacy automation scripts)
 - [x] Delete `src/` directory (Legacy duplicate)
-- [x] Delete `cortex-cleanup.sh` and `test_output.txt`
+- [x] Delete `test_output.txt`
+- [x] Remove `health` command from `cortex/cli.py`
