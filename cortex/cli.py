@@ -221,6 +221,81 @@ class CortexCLI:
             
         return 0
 
+
+    # --- Cleanup Command ---
+    def cleanup(self, args):
+        """Run disk space optimizer"""
+        from cortex.optimizer import DiskOptimizer
+        
+        optimizer = DiskOptimizer()
+        
+        if args.cleanup_action == 'scan':
+            self._print_status("🔍", "Scanning for cleanup opportunities...")
+            results = optimizer.scan()
+            
+            console.print()
+            cx_header("Cleanup Opportunities")
+            
+            # Package Cache
+            cache_size = optimizer._format_size(results["package_cache"])
+            console.print(f"📦 [bold]Package Cache:[/bold] {cache_size}")
+            
+            # Orphaned Packages
+            orphans_count = len(results["orphaned_packages"])
+            orphans_size = optimizer._format_size(results["orphaned_size_est"])
+            console.print(f"🗑️  [bold]Orphaned Packages:[/bold] {orphans_count} packages (~{orphans_size})")
+            if orphans_count > 0 and self.verbose:
+                 for p in results["orphaned_packages"]:
+                     console.print(f"    - {p}", style="dim")
+            
+            # Logs
+            logs_count = len(results["logs"])
+            logs_size = optimizer._format_size(results["logs_size"])
+            console.print(f"📝 [bold]Old Logs:[/bold] {logs_count} files ({logs_size})")
+            
+            # Temp Files
+            temp_count = len(results["temp_files"])
+            temp_size = optimizer._format_size(results["temp_size"])
+            console.print(f"🧹 [bold]Temp Files:[/bold] {temp_count} files ({temp_size})")
+            
+            console.print()
+            total_size = optimizer._format_size(results["total_reclaimable"])
+            console.print(f"✨ [bold green]Total Reclaimable:[/bold green] {total_size}")
+            console.print()
+            console.print("[dim]Run 'cortex cleanup run --safe' to perform cleanup[/dim]")
+            return 0
+            
+        elif args.cleanup_action == 'run':
+            if not args.safe:
+                # Require confirmation if not explicitly safe (though implementation implies safe only for now)
+                # But specification says --safe mode. We'll default to requiring --safe for actual run 
+                # or prompt user. Let's implementing prompting or requiring --safe.
+                # Given the 'run --safe' spec, 'run' without safe might imply aggressive or just need confirmation.
+                # For safety let's require --safe or confirmation.
+                confirm = input("⚠️  Run cleanup? This will remove files. (y/n): ")
+                if confirm.lower() != 'y':
+                    print("Operation cancelled.")
+                    return 0
+            
+            self._print_status("🧹", "Cleaning up...")
+            stats = optimizer.clean(safe_mode=True)
+            
+            console.print()
+            for action in stats["actions"]:
+                 if "Failed" in action:
+                     console.print(f"❌ {action}", style="red")
+                 else:
+                     console.print(f"✓ {action}", style="green")
+            
+            console.print()
+            freed = optimizer._format_size(stats["freed_bytes"])
+            self._print_success(f"Cleanup complete! Freed {freed}")
+            return 0
+            
+        else:
+            self._print_error("Please specify a subcommand (scan/run)")
+            return 1
+
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
         # Validate input first
         is_valid, error = validate_install_request(software)
@@ -588,6 +663,7 @@ def show_rich_help():
     table.add_row("install <pkg>", "Install software")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
+    table.add_row("cleanup", "Optimize disk space")
     table.add_row("notify", "Manage desktop notifications")
     table.add_row("health", "Check system health score") # Added this line
 
@@ -662,6 +738,16 @@ def main():
     send_parser.add_argument('--level', choices=['low', 'normal', 'critical'], default='normal')
     send_parser.add_argument('--actions', nargs='*', help='Action buttons')
     
+
+    # --- Cleanup Command ---
+    cleanup_parser = subparsers.add_parser('cleanup', help='Optimize disk space')
+    cleanup_subs = cleanup_parser.add_subparsers(dest='cleanup_action', help='Cleanup actions')
+    
+    cleanup_subs.add_parser('scan', help='Scan for cleanable items')
+    
+    run_parser = cleanup_subs.add_parser('run', help='Execute cleanup')
+    run_parser.add_argument('--safe', action='store_true', help='Safe cleanup mode')
+
     # --- New Health Command ---
     health_parser = subparsers.add_parser('health', help='Check system health score')
     # --------------------------
@@ -693,6 +779,8 @@ def main():
             return cli.edit_pref(action=args.action, key=args.key, value=args.value)
         elif args.command == 'notify':
             return cli.notify(args)
+        elif args.command == 'cleanup':
+            return cli.cleanup(args)
         # Handle new command
         elif args.command == 'health':
             return cli.health(args)

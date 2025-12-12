@@ -451,3 +451,157 @@ class PackageManager:
         
         return None
 
+
+    def clean_cache(self, execute: bool = False, dry_run: bool = False) -> Tuple[bool, str]:
+        """
+        Clean package manager cache.
+        
+        Args:
+            execute: Whether to execute the command
+            dry_run: Whether to just show what would be done
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        cmd = []
+        if self.pm_type == PackageManagerType.APT:
+            cmd = ["sudo", "apt-get", "clean"]
+        elif self.pm_type in (PackageManagerType.YUM, PackageManagerType.DNF):
+            pm_cmd = "yum" if self.pm_type == PackageManagerType.YUM else "dnf"
+            cmd = ["sudo", pm_cmd, "clean", "all"]
+        
+        if not cmd:
+            return False, "Unsupported package manager for cache cleaning"
+            
+        if dry_run:
+            return True, f"Would run: {' '.join(cmd)}"
+            
+        if execute:
+            try:
+                subprocess.run(cmd, check=True)
+                return True, "Cache cleaned successfully"
+            except subprocess.CalledProcessError as e:
+                return False, f"Failed to clean cache: {e}"
+        
+        return True, f"Command to run: {' '.join(cmd)}"
+
+    def get_orphaned_packages(self) -> List[str]:
+        """
+        Get list of orphaned (unused dependency) packages.
+        
+        Returns:
+            List of package names
+        """
+        orphans = []
+        
+        if self.pm_type == PackageManagerType.APT:
+            # Try to use deborphan if available, otherwise parse autoremove
+            try:
+                # Check for deborphan first (more reliable)
+                result = subprocess.run(
+                    ["deborphan"], 
+                    capture_output=True, 
+                    text=True
+                )
+                if result.returncode == 0 and result.stdout:
+                    orphans = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+                    return orphans
+            except FileNotFoundError:
+                pass
+            
+            # Fallback to apt-get autoremove --dry-run
+            try:
+                env = {"LANG": "C"} # Force English output for parsing
+                result = subprocess.run(
+                    ["apt-get", "--dry-run", "autoremove"],
+                    capture_output=True,
+                    text=True,
+                    env=env
+                )
+                
+                capture = False
+                for line in result.stdout.split('\n'):
+                    if "The following packages will be REMOVED" in line:
+                        capture = True
+                        continue
+                    if capture:
+                        if not line.strip():  # Empty line ends the list
+                            break
+                        # Filter out non-package lines (stats etc)
+                        if "upgraded," in line or "newly installed," in line:
+                            break
+                        
+                        # Add packages from this line
+                        parts = line.strip().split()
+                        for p in parts:
+                            if not p.startswith("*"):  # Skip bullet points if any
+                                orphans.append(p)
+                                
+            except Exception:
+                pass
+                
+        elif self.pm_type in (PackageManagerType.YUM, PackageManagerType.DNF):
+            # For DNF/YUM usually 'autoremove' handles it, but listing is harder without executing
+            # simple 'package-cleanup --leaves' (yum-utils) or 'dnf repoquery --unneeded'
+            pm_cmd = "yum" if self.pm_type == PackageManagerType.YUM else "dnf"
+            
+            try:
+                # Try dnf repoquery if dnf
+                if self.pm_type == PackageManagerType.DNF:
+                    result = subprocess.run(
+                        ["dnf", "repoquery", "--unneeded", "--queryformat", "%{name}"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        orphans = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+                else:
+                    # Yum fallback (requires yum-utils usually, checking package-cleanup)
+                    result = subprocess.run(
+                        ["package-cleanup", "--quiet", "--leaves"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        orphans = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+            except FileNotFoundError:
+                pass
+
+        return sorted(list(set(orphans)))
+
+    def remove_packages(self, packages: List[str], execute: bool = False, dry_run: bool = False) -> Tuple[bool, str]:
+        """
+        Remove specified packages.
+        
+        Args:
+            packages: List of packages to remove
+            execute: Whether to execute command
+            dry_run: Whether to simulate
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        if not packages:
+            return True, "No packages to remove"
+            
+        cmd = []
+        if self.pm_type == PackageManagerType.APT:
+            cmd = ["sudo", "apt-get", "remove", "-y"] + packages
+        elif self.pm_type in (PackageManagerType.YUM, PackageManagerType.DNF):
+            pm_cmd = "yum" if self.pm_type == PackageManagerType.YUM else "dnf"
+            cmd = ["sudo", pm_cmd, "remove", "-y"] + packages
+            
+        if not cmd:
+            return False, "Unsupported package manager"
+            
+        if dry_run:
+            return True, f"Would run: {' '.join(cmd)}"
+            
+        if execute:
+            try:
+                subprocess.run(cmd, check=True)
+                return True, f"Successfully removed {len(packages)} packages"
+            except subprocess.CalledProcessError as e:
+                return False, f"Failed to remove packages: {e}"
+                
+        return True, f"Command to run: {' '.join(cmd)}"

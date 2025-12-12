@@ -1,0 +1,23 @@
+# Smart Cleanup and Disk Space Optimizer Task List
+
+- [x] リポジトリ構造の調査と設計
+- [x] ドキュメント作成 (`task.md`, `implementation_plan.md`)
+- [x] ユーザー実装承認
+- [x] `cortex/packages.py` の拡張
+    - [x] `clean_cache` メソッドの実装
+    - [x] `get_orphaned_packages` メソッドの実装
+    - [x] `remove_packages` メソッドの実装
+- [x] `cortex/optimizer.py` の新規作成 (クリーンアップロジックの中核)
+    - [x] `DiskOptimizer` クラスの設計
+    - [x] スキャン機能 (パッケージ、ログ、一時ファイル)
+    - [x] ログ圧縮・ローテーション機能
+    - [x] クリーンアップ実行機能
+- [x] `cortex/cli.py` へのコマンド追加
+    - [x] `cleanup` サブコマンド定義
+    - [x] `cleanup scan` ハンドラ
+    - [x] `cleanup run` ハンドラと `--safe` フラグ
+- [x] テストの作成
+    - [x] `tests/test_optimizer.py` の作成
+    - [x] 既存テストへの影響確認
+- [x] 動作確認 (Manual Verification)
+- [x] ドキュメント更新 (機能説明)
