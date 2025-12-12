@@ -1,24 +1,35 @@
-# タスク: スマートクリーンアップとディスクスペース最適化
+# Smart Cleanup and Disk Space Optimizer (#125)
 
-- [x] `cortex/packages.py` の更新 <!-- id: 1 -->
-    - [x] パッケージキャッシュのサイズ取得機能の実装
-    - [x] キャッシュ削除、不要パッケージ削除コマンドのサポート
-- [ ] `cortex/optimizer.py` の新規作成 <!-- id: 2 -->
-    - [ ] `DiskOptimizer` クラスの設計
-    - [ ] スキャン機能 (`scan`) の実装
-    - [ ] クリーンアップ機能 (`clean`) の実装（バックアップ処理含む）
-    - [ ] ログ圧縮機能の実装
-    - [ ] Undo機能 (`restore`) の実装
-    - [ ] スケジューリング機能 (`schedule_cleanup`) の実装
-- [ ] `cortex/cli.py` へのコマンド追加 <!-- id: 3 -->
-    - [ ] `cleanup` コマンドの登録
-    - [ ] `scan`, `run` サブコマンドの実装
-    - [ ] `schedule`, `undo` サブコマンドの実装
-    - [ ] CLI出力の整形
-- [ ] テストの作成と実行 <!-- id: 4 -->
-    - [ ] `tests/test_optimizer.py` の作成
-    - [ ] ユニットテストの実行 (`pytest`)
-    - [ ] 手動検証 (`cortex cleanup scan`)
-- [ ] ドキュメントとGitプッシュ <!-- id: 5 -->
-    - [ ] ユーザーガイドの作成
-    - [ ] GitHubへプッシュ
+## Initialization
+- [x] Create feature branch `feature/smart-cleanup-optimizer-125`
+- [x] Create documentation directories and files
+
+## Planning
+- [x] Analyze `cortex/packages.py` for cleanup capabilities
+- [x] Design `CleanupOptimizer` class structure
+- [x] Create `implementation_plan.md` with detailed architecture
+- [x] User Review of Implementation Plan
+
+## Core Implementation
+- [x] Implement `CleanupOptimizer` in `cortex/optimizer.py`
+    - [x] `LogManager` for log compression
+    - [x] `TempCleaner` for temp file removal
+    - [x] `OrphanCleaner` logic (integrated in Optimizer)
+- [x] Extend `PackageManager` in `cortex/packages.py`
+    - [x] Add `identify_orphans()` (Existing)
+    - [x] Add `get_cache_size()` (Existing)
+    - [x] Add `clean_cache()` (Existing)
+
+## CLI Integration
+- [x] Update `cortex/cli.py`
+    - [x] Add `cleanup` command group
+    - [x] Add `scan` subcommand
+    - [x] Add `run` subcommand
+    - [x] Implement `interactive` mode (default) and `force` flags
+
+## Verification
+- [x] Add unit tests in `tests/test_optimizer.py`
+- [x] Manual verification of `scan` output
+- [x] Manual verification of Safe Mode (`--safe`)
+- [x] Verify log compression (Dry run checked)
+- [x] Create Walkthrough

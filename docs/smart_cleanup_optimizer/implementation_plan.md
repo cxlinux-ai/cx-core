@@ -1,43 +1,55 @@
-# 実装計画: スマートクリーンアップとディスクスペース最適化
+# Implementation Plan - Smart Cleanup and Disk Space Optimizer (#125)
 
-## 目標
-不要なファイル（パッケージキャッシュ、orphanパッケージ、ログ、一時ファイル）をインテリジェントに削除し、ディスク使用量を最適化する機能を追加する。
+## Goal Description
+Implement an intelligent cleanup system that identifies unused packages, clears caches, removes orphaned dependencies, cleans temp files, and compresses logs. The system will provide both a "scan" mode to estimate reclaimable space and a "run" mode to execute cleanup with safety checks.
 
-## ユーザーレビューが必要な事項
-- `apt-get autoremove` などのコマンドを実行するため、sudo権限が必要になる場合がある。現状のCortexの権限モデルに従い、コマンド生成時に `sudo` を付与するか、ユーザーが `sudo cortex` で実行することを前提とするか確認が必要。（現状 `packages.py` は `apt install` を生成しており、sudoを含んでいないため、ユーザーが特権で実行するか、実行時にsudoが必要になる）
-- 安全第一のため、デフォルトでは確認を求めるか、`scan` モードを推奨する。
+## User Review Required
+> [!IMPORTANT]
+> - Confirm the logic for detecting "orphaned dependencies" (using `apt-get autoremove` simulation or similar?)
+> - Confirm log compression retention policy (e.g., compress logs older than 7 days, delete older than 30?)
+> - Review the CLI UX for `cortex cleanup scan` vs `cortex cleanup run`.
 
-## 提案する変更
+## Proposed Changes
 
-### `cortex/packages.py`
-- `PackageManager` クラスに以下のメソッドを追加:
-    - `get_cleanable_items()`: キャッシュサイズや不要パッケージのリストを取得。
-    - `get_cleanup_commands()`: 実際にクリーンアップを行うコマンドを生成。
+### Core Logic (`cortex/optimizer.py` - NEW)
+- Create `CleanupOptimizer` class.
+- **Components**:
+    - `scan()`: Aggregates stats from:
+        - `PackageManager.get_cleanable_items()`
+        - `LogManager.scan_logs()`
+        - `TempCleaner.scan_temp()`
+    - `clean(safe_mode=True)`: Generates commands and executes them using `InstallationCoordinator`.
+    - `LogManager`:
+        - `scan_logs()`: Checks `/var/log` for large/old files (e.g. `*.log`, `*.gz`).
+        - `get_compression_commands()`: Returns commands to gzip old logs (`find /var/log -name "*.log" -mtime +7 -exec gzip {} \+`).
+    - `TempCleaner`:
+        - `scan_temp()`: Checks `/tmp` and similar dirs.
+        - `get_cleanup_commands()`: Returns commands to remove temp files safely (`find /tmp -type f -atime +10 -delete`).
 
-### `cortex/optimizer.py` (新規作成)
-- `DiskOptimizer` クラス:
-    - `scan()`: システム全体のスキャンを統括し、`CleanupOpportunity`（種別、サイズ、説明）のリストを返す。
-    - `clean(opportunities)`: クリーンアップを実行。**重要なファイルのバックアップを作成し、Undo可能にする。**
-    - `compress_logs()`: `/var/log` 内の古いログを圧縮。
-    - `restore(cleanup_id)`: クリーンアップ操作を元に戻す（バックアップからの復元、パッケージの再インストール）。
-    - `schedule_cleanup(frequency)`: cron/systemdタイマーを用いた自動実行の設定。
+### Package Manager (`cortex/packages.py`)
+- Enhance `get_cleanable_items()` to be more robust (handle PermissionDenied gracefully).
+- Ensure `get_cleanup_commands` covers all package manager types properly.
 
-### `cortex/cli.py`
-- `cleanup` コマンドハンドラの追加。
-    - `scan`: 診断と見積もり。
-    - `run`: 実行（`--safe`でバックアップ必須、デフォルトで有効）。
-    - `schedule`: 自動実行スケジュールの設定（例: `cortex cleanup schedule --daily`）。
-    - `undo`: 直前のクリーンアップを取り消す。
+### CLI (`cortex/cli.py`)
+- Add `cleanup` command group.
+- `scan`: Calls `optimizer.scan()` and uses `rich` table to display potential savings.
+- `run`:
+    - Generates all cleanup commands.
+    - Shows them to user.
+    - Asks for confirmation (unless `--yes`).
+    - Uses `InstallationCoordinator` (existing class) to execute commands with progress bars.
 
+## Verification Plan
 
-## 検証計画
+### Automated Tests
+- Unit tests for `optimizer.py`:
+    - Mock `os.stat` and `os.walk` to test log/temp scanning.
+    - Mock `PackageManager` to test aggregation.
+- Integration tests:
+    - Verify `cleanup` command structure.
 
-### 自動テスト
-- `tests/test_optimizer.py` を作成。
-    - `scan` メソッドがパッケージマネージャーやファイルシステムから情報を収集するロジックをテスト（モックを使用）。
-    - ログ圧縮機能が正しいファイルを対象にするかテスト。
-
-### 手動検証手順
-1. `cortex cleanup scan` を実行し、エラーなく結果が表示されるか確認。
-2. `cortex cleanup run --dry-run` (もし実装すれば) または `run` で実行されるコマンドを確認。
-3. 実際に `cortex cleanup run` を実行し、ディスク空き容量が増えるか確認。
+### Manual Verification
+- **Safety Check**: Run `cortex cleanup scan` and verify it detects actual junk files without false positives.
+- **Execution**: Run `cortex cleanup run --safe --dry-run` to see generated commands.
+- **Log Compression**: Verify `gzip` commands are generated for old logs.
+- **Orphan Cleanup**: Verify `apt-get autoremove` is included.

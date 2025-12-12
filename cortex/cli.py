@@ -40,6 +40,7 @@ from cortex.validators import (
 )
 # Import Notification Manager
 from cortex.notification_manager import NotificationManager
+from cortex.optimizer import CleanupOptimizer
 
 
 class CortexCLI:
@@ -221,79 +222,90 @@ class CortexCLI:
             
         return 0
 
-
-    # --- Cleanup Command ---
     def cleanup(self, args):
-        """Run disk space optimizer"""
-        from cortex.optimizer import DiskOptimizer
-        
-        optimizer = DiskOptimizer()
+        """Run system cleanup optimization"""
+        optimizer = CleanupOptimizer()
         
         if args.cleanup_action == 'scan':
             self._print_status("🔍", "Scanning for cleanup opportunities...")
-            results = optimizer.scan()
+            opportunities = optimizer.scan()
+            
+            if not opportunities:
+                self._print_success("No cleanup opportunities found! system is clean.")
+                return 0
+                
+            total_bytes = sum(o.size_bytes for o in opportunities)
+            total_mb = total_bytes / (1024 * 1024)
             
             console.print()
-            cx_header("Cleanup Opportunities")
+            cx_header(f"Cleanup Scan Results ({total_mb:.1f} MB Reclaimable)")
             
-            # Package Cache
-            cache_size = optimizer._format_size(results["package_cache"])
-            console.print(f"📦 [bold]Package Cache:[/bold] {cache_size}")
+            from rich.table import Table
+            table = Table(box=None)
+            table.add_column("Type", style="cyan")
+            table.add_column("Description")
+            table.add_column("Size", justify="right", style="green")
             
-            # Orphaned Packages
-            orphans_count = len(results["orphaned_packages"])
-            orphans_size = optimizer._format_size(results["orphaned_size_est"])
-            console.print(f"🗑️  [bold]Orphaned Packages:[/bold] {orphans_count} packages (~{orphans_size})")
-            if orphans_count > 0 and self.verbose:
-                 for p in results["orphaned_packages"]:
-                     console.print(f"    - {p}", style="dim")
+            for opp in opportunities:
+                size_mb = opp.size_bytes / (1024 * 1024)
+                table.add_row(
+                    opp.type.replace('_', ' ').title(),
+                    opp.description,
+                    f"{size_mb:.1f} MB"
+                )
             
-            # Logs
-            logs_count = len(results["logs"])
-            logs_size = optimizer._format_size(results["logs_size"])
-            console.print(f"📝 [bold]Old Logs:[/bold] {logs_count} files ({logs_size})")
-            
-            # Temp Files
-            temp_count = len(results["temp_files"])
-            temp_size = optimizer._format_size(results["temp_size"])
-            console.print(f"🧹 [bold]Temp Files:[/bold] {temp_count} files ({temp_size})")
-            
+            console.print(table)
             console.print()
-            total_size = optimizer._format_size(results["total_reclaimable"])
-            console.print(f"✨ [bold green]Total Reclaimable:[/bold green] {total_size}")
-            console.print()
-            console.print("[dim]Run 'cortex cleanup run --safe' to perform cleanup[/dim]")
+            console.print("[dim]Run 'cortex cleanup run' to clean these items.[/dim]")
             return 0
             
         elif args.cleanup_action == 'run':
-            if not args.safe:
-                # Require confirmation if not explicitly safe (though implementation implies safe only for now)
-                # But specification says --safe mode. We'll default to requiring --safe for actual run 
-                # or prompt user. Let's implementing prompting or requiring --safe.
-                # Given the 'run --safe' spec, 'run' without safe might imply aggressive or just need confirmation.
-                # For safety let's require --safe or confirmation.
-                confirm = input("⚠️  Run cleanup? This will remove files. (y/n): ")
+            safe_mode = not args.force
+            
+            self._print_status("🔍", "Preparing cleanup plan...")
+            commands = optimizer.get_cleanup_plan(safe_mode=safe_mode)
+            
+            if not commands:
+                self._print_success("Nothing to clean!")
+                return 0
+                
+            console.print("[bold]Proposed Cleanup Operations:[/bold]")
+            for i, cmd in enumerate(commands, 1):
+                console.print(f"  {i}. {cmd}")
+            
+            if getattr(args, 'dry_run', False):
+                 console.print("\n[dim](Dry run mode - no changes made)[/dim]")
+                 return 0
+
+            if not args.yes:
+                if not safe_mode:
+                    console.print("\n[bold red]WARNING: Running in FORCE mode (no backups)[/bold red]")
+                
+                confirm = input("\nProceed with cleanup? (y/n): ")
                 if confirm.lower() != 'y':
                     print("Operation cancelled.")
                     return 0
             
-            self._print_status("🧹", "Cleaning up...")
-            stats = optimizer.clean(safe_mode=True)
+            # Use InstallationCoordinator for execution
+            def progress_callback(current, total, step):
+                print(f"[{current}/{total}] {step.description}")
             
-            console.print()
-            for action in stats["actions"]:
-                 if "Failed" in action:
-                     console.print(f"❌ {action}", style="red")
-                 else:
-                     console.print(f"✓ {action}", style="green")
+            coordinator = InstallationCoordinator(
+                commands=commands,
+                descriptions=[f"Cleanup Step {i+1}" for i in range(len(commands))],
+                progress_callback=progress_callback
+            )
             
-            console.print()
-            freed = optimizer._format_size(stats["freed_bytes"])
-            self._print_success(f"Cleanup complete! Freed {freed}")
-            return 0
-            
+            result = coordinator.execute()
+            if result.success:
+                self._print_success("Cleanup completed successfully!")
+                return 0
+            else:
+                self._print_error("Cleanup encountered errors.")
+                return 1
+                
         else:
-            self._print_error("Please specify a subcommand (scan/run)")
+            self._print_error("Unknown cleanup action")
             return 1
 
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
@@ -663,7 +675,6 @@ def show_rich_help():
     table.add_row("install <pkg>", "Install software")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
-    table.add_row("cleanup", "Optimize disk space")
     table.add_row("notify", "Manage desktop notifications")
     table.add_row("health", "Check system health score") # Added this line
 
@@ -738,18 +749,20 @@ def main():
     send_parser.add_argument('--level', choices=['low', 'normal', 'critical'], default='normal')
     send_parser.add_argument('--actions', nargs='*', help='Action buttons')
     
-
+    # --- New Health Command ---
+    health_parser = subparsers.add_parser('health', help='Check system health score')
+    
     # --- Cleanup Command ---
     cleanup_parser = subparsers.add_parser('cleanup', help='Optimize disk space')
     cleanup_subs = cleanup_parser.add_subparsers(dest='cleanup_action', help='Cleanup actions')
     
-    cleanup_subs.add_parser('scan', help='Scan for cleanable items')
+    scan_parser = cleanup_subs.add_parser('scan', help='Scan for cleanable items')
     
     run_parser = cleanup_subs.add_parser('run', help='Execute cleanup')
-    run_parser.add_argument('--safe', action='store_true', help='Safe cleanup mode')
-
-    # --- New Health Command ---
-    health_parser = subparsers.add_parser('health', help='Check system health score')
+    run_parser.add_argument('--safe', action='store_true', default=True, help='Run safely (with backups)')
+    run_parser.add_argument('--force', action='store_true', help='Force cleanup (no backups)')
+    run_parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation')
+    run_parser.add_argument('--dry-run', action='store_true', help='Show proposed changes without executing')
     # --------------------------
 
     args = parser.parse_args()
@@ -779,11 +792,13 @@ def main():
             return cli.edit_pref(action=args.action, key=args.key, value=args.value)
         elif args.command == 'notify':
             return cli.notify(args)
-        elif args.command == 'cleanup':
-            return cli.cleanup(args)
         # Handle new command
+        elif args.command == 'notify':
+            return cli.notify(args)
         elif args.command == 'health':
             return cli.health(args)
+        elif args.command == 'cleanup':
+            return cli.cleanup(args)
         else:
             parser.print_help()
             return 1
