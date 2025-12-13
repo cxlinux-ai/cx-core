@@ -1,101 +1,175 @@
-ds# 🧠 Cortex Linux
-### The AI-Native Operating System
+# Cortex Linux
 
-**Linux that understands you. No documentation required.**
+An AI-powered package manager for Debian/Ubuntu that understands natural language.
+
+![Cortex terminal demo](images/cortex_demo.gif)
+
+
+## Requirements
+
+- **OS:** Ubuntu 22.04+ / Debian 12+
+- **Python:** 3.10 or higher
+- **API Key:** Anthropic API key (get one at [console.anthropic.com](https://console.anthropic.com))
+
+Check your Python version:
 ```bash
-$ cortex install oracle-23-ai --optimize-gpu
-🧠 Analyzing system: NVIDIA RTX 4090 detected
-   Installing CUDA 12.3 + dependencies
-   Configuring Oracle for GPU acceleration  
-   Running validation tests
-✅ Oracle 23 AI ready at localhost:1521 (4m 23s)
+python3 --version  # Must be 3.10+
 ```
 
-## The Problem
+## Quick Start
 
-Installing complex software on Linux is broken:
-- 47 Stack Overflow tabs to install CUDA drivers
-- Dependency hell that wastes days
-- Configuration files written in ancient runes
-- "Works on my machine" syndrome
+### 1. Clone and enter the repository
+```bash
+git clone https://github.com/cortexlinux/cortex.git
+cd cortex
+```
 
-**Developers spend 30% of their time fighting the OS instead of building.**
+### 2. Create and activate virtual environment
+```bash
+python3 -m venv venv
 
-## The Solution
+# Linux/macOS (bash/zsh):
+source venv/bin/activate
 
-Cortex Linux embeds AI at the operating system level. Tell it what you need in plain English—it handles everything:
+# Linux/macOS (sh/dash):
+. venv/bin/activate
 
-- **Natural language commands** → System understands intent
-- **Hardware-aware optimization** → Automatically configures for your GPU/CPU
-- **Self-healing configuration** → Fixes broken dependencies automatically
-- **Enterprise-grade security** → AI actions are sandboxed and validated
+# Windows:
+venv\Scripts\activate
+```
 
-## Status: Early Development
+### 3. Install Cortex
+```bash
+pip install -e .
+```
 
-**Seeking contributors.** If you've ever spent 6 hours debugging a failed apt install, this project is for you.
+### 4. Configure your API key
+```bash
+echo 'ANTHROPIC_API_KEY=your-key-here' > .env
+```
 
-## Current Roadmap
+Replace `your-key-here` with your actual Anthropic API key.
 
-### Phase 1: Foundation (Weeks 1-2)
-- ✅ LLM integration layer (PR #5 by @Sahilbhatane)
-- ✅ Safe command execution sandbox (PR #6 by @dhvil)
-- ✅ Hardware detection (PR #4 by @dhvil)
-- [ ] Package manager AI wrapper
-- [ ] Basic multi-step orchestration
+### 5. Verify installation
+```bash
+cortex --version
+# Output: cortex, version 0.1.0
 
-### Phase 2: Intelligence (Weeks 2-5)
-- [ ] Dependency resolution AI
-- [ ] Configuration file generation
-- [ ] Multi-step installation orchestration
-- [ ] Error diagnosis and auto-fix
+cortex install nginx --dry-run
+# Should show installation plan
+```
 
-### Phase 3: Enterprise (Weeks 5-9)
-- [ ] Security hardening
-- [ ] Audit logging
-- [ ] Role-based access control
-- [ ] Enterprise deployment tools
+## Usage
 
-## Tech Stack
+### Preview installations (safe, default)
+```bash
+cortex install nginx --dry-run
+cortex install "something to edit PDFs" --dry-run
+```
 
-- **Base OS**: Ubuntu 24.04 LTS (Debian packaging)
-- **AI Layer**: Python 3.11+, LangChain, Claude API
-- **Security**: Firejail sandboxing, AppArmor policies
-- **Package Management**: apt wrapper with semantic understanding
-- **Hardware Detection**: hwinfo, lspci, nvidia-smi integration
+### Actually install
+```bash
+cortex install nginx --execute
+```
 
-## Get Involved
+### View history and rollback
+```bash
+cortex history
+cortex rollback <id>
+```
 
-**We need:**
-- Linux Kernel Developers
-- AI/ML Engineers
-- DevOps Experts
-- Technical Writers
-- Beta Testers
+### Check preferences
+```bash
+cortex check-pref
+```
 
-Browse [Issues](../../issues) for contribution opportunities.
+## Troubleshooting
 
-### Join the Community
+### "ANTHROPIC_API_KEY not set"
+```bash
+# Make sure .env file exists and contains your key
+cat .env
+# Should show: ANTHROPIC_API_KEY=sk-ant-...
 
-- **Discord**: https://discord.gg/uCqHvxjU83
-- **Email**: mike@cortexlinux.com
+# If missing, create it:
+echo 'ANTHROPIC_API_KEY=your-actual-key' > .env
+```
 
-## Why This Matters
+### "command not found: cortex"
+```bash
+# Make sure virtual environment is activated
+source venv/bin/activate  # or: . venv/bin/activate
 
-**Market Opportunity**: $50B+ (10x Cursor's $9B valuation)
+# Reinstall if needed
+pip install -e .
+```
 
-- Cursor wraps VS Code → $9B valuation
-- Cortex wraps entire OS → 10x larger market
-- Every data scientist, ML engineer, DevOps team needs this
+### "Python version too old"
+```bash
+# Check version
+python3 --version
 
-**Business Model**: Open source community edition + Enterprise subscriptions
+# Ubuntu/Debian - install newer Python:
+sudo apt update
+sudo apt install python3.11 python3.11-venv
 
-## Founding Team
+# Use specific version:
+python3.11 -m venv venv
+```
 
-**Michael J. Morgan** - CEO/Founder  
-AI Venture Holdings LLC | Patent holder in AI-accelerated systems
+### pip install fails
+```bash
+# Update pip first
+pip install --upgrade pip
 
-**You?** - Looking for technical co-founders from the contributor community.
+# Try again
+pip install -e .
 
----
+# If still failing, install build tools:
+sudo apt install python3-dev build-essential
+```
 
-⭐ **Star this repo to follow development**
+## Safety Features
+
+| Feature | Description |
+|---------|-------------|
+| **Dry-run default** | Shows planned commands without executing |
+| **Firejail sandbox** | Commands run in isolated environment |
+| **Rollback support** | Undo any installation with `cortex rollback` |
+| **Audit logging** | All actions logged to `~/.cortex/history.db` |
+| **No root by default** | Only uses sudo when explicitly needed |
+
+## Project Status
+
+### Completed
+- ✅ CLI with dry-run and execute modes
+- ✅ Claude and OpenAI integration
+- ✅ Installation history and rollback
+- ✅ User preferences (YAML-backed)
+- ✅ Hardware detection
+- ✅ Firejail sandboxing
+
+### In Progress
+- 🔄 Conflict resolution UI
+- 🔄 Multi-step orchestration
+- 🔄 Ollama local model support
+- 🔄 MCP server integration
+
+## Contributing
+
+We need:
+- Python developers (package manager features)
+- Linux kernel developers (kernel optimizations)
+- Technical writers (documentation)
+- Beta testers (bug reports)
+
+Bounties available for merged PRs. See issues labeled `bounty`.
+
+## Community
+
+- Discord: [discord.gg/uCqHvxjU83](https://discord.gg/uCqHvxjU83)
+- Email: mike@cortexlinux.com
+
+## License
+
+Apache 2.0

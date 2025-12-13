@@ -1,0 +1,7 @@
+# Development Dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=24.0.0
+ruff>=0.8.0
+isort>=5.13.0
+pre-commit>=3.0.0

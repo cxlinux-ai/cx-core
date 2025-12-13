@@ -1,0 +1,50 @@
+#!/bin/bash
+# /usr/bin/cortex-gpu-warmup
+# Warms up GPU before model loading to reduce cold start latency
+#
+# Usage: cortex-gpu-warmup
+
+set -e
+
+echo "Warming up GPU..."
+
+# NVIDIA GPU warmup
+if command -v nvidia-smi &> /dev/null; then
+    # Query GPU to wake it from power-saving state
+    nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader 2>/dev/null || true
+    
+    # Set persistence mode if we have permission
+    if [ "$(id -u)" = "0" ]; then
+        nvidia-smi -pm 1 2>/dev/null || true
+    fi
+    
+    # Set GPU to maximum performance mode
+    nvidia-smi -pl 350 2>/dev/null || true  # Adjust power limit as needed
+    
+    echo "NVIDIA GPU ready"
+fi
+
+# AMD GPU warmup (ROCm)
+if command -v rocm-smi &> /dev/null; then
+    rocm-smi --showmeminfo vram 2>/dev/null || true
+    echo "AMD GPU ready"
+fi
+
+# Intel GPU warmup
+if command -v intel_gpu_top &> /dev/null; then
+    timeout 1 intel_gpu_top -l 1 2>/dev/null || true
+    echo "Intel GPU ready"
+fi
+
+# Apply huge pages if configured
+if [ "${CORTEX_HUGE_PAGES:-auto}" = "auto" ]; then
+    HUGE_PAGES_AVAILABLE=$(cat /proc/meminfo | grep HugePages_Free | awk '{print $2}')
+    if [ "$HUGE_PAGES_AVAILABLE" -gt 0 ]; then
+        echo "Huge pages available: $HUGE_PAGES_AVAILABLE"
+    else
+        echo "WARNING: No huge pages available. Model loading may be slower."
+    fi
+fi
+
+echo "GPU warmup complete"
+exit 0

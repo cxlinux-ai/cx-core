@@ -1,0 +1,74 @@
+cortex_version: 0.2.0
+exported_at: '2025-11-14T14:23:15.123456'
+os: ubuntu-24.04
+
+hardware:
+  cpu:
+    model: AMD Ryzen 9 5950X 16-Core Processor
+    cores: 16
+    architecture: x86_64
+  gpu:
+    - vendor: NVIDIA
+      model: NVIDIA GeForce RTX 4090
+      vram: 24576
+      cuda: '12.3'
+  ram: 65536
+  storage:
+    - type: nvme
+      size: 2097152
+      device: nvme0n1
+    - type: ssd
+      size: 1048576
+      device: sda
+  network:
+    interfaces:
+      - name: eth0
+        speed_mbps: 1000
+    max_speed_mbps: 1000
+
+packages:
+  # System packages (APT)
+  - name: docker.io
+    version: 24.0.7-1ubuntu0
+    source: apt
+  - name: git
+    version: 1:2.43.0-1ubuntu1
+    source: apt
+  - name: curl
+    version: 8.5.0-2ubuntu1
+    source: apt
+  - name: build-essential
+    version: 12.10ubuntu1
+    source: apt
+  
+  # Python packages (PIP)
+  - name: numpy
+    version: 1.24.0
+    source: pip
+  - name: pandas
+    version: 2.0.0
+    source: pip
+  - name: torch
+    version: 2.1.0
+    source: pip
+  - name: transformers
+    version: 4.35.0
+    source: pip
+  
+  # Node.js global packages (NPM)
+  - name: typescript
+    version: 5.0.0
+    source: npm
+  - name: eslint
+    version: 8.0.0
+    source: npm
+
+preferences:
+  confirmations: minimal
+  verbosity: normal
+
+environment_variables:
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US:en
+  LC_ALL: en_US.UTF-8
+  SHELL: /bin/bash

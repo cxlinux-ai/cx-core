@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions / Discord
+    url: https://discord.gg/uCqHvxjU83
+    about: For general questions or discussion, join our Discord.
+  - name: Bounty Issues
+    url: https://github.com/cortexlinux/cortex/labels/bounty
+    about: Looking to earn? Check open bounty issues.

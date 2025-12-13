@@ -1,7 +1,25 @@
+# ==============================
+# Python
+# ==============================
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# ==============================
+# Virtual Environments
+# ==============================
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================
+# Distribution / Packaging
+# ==============================
 .Python
 build/
 develop-eggs/
@@ -15,10 +33,110 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
+
+# ==============================
+# PyInstaller
+# ==============================
+# Usually contains temporary files from pyinstaller builds
+*.manifest
+*.spec
+
+# ==============================
+# Installer logs
+# ==============================
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==============================
+# Unit test / Coverage reports
+# ==============================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ==============================
+# Translations
+# ==============================
+*.mo
+*.pot
+
+# ==============================
+# Django / Flask / FastAPI
+# ==============================
+*.log
+local_settings.py
+db.sqlite3
+instance/
+.webassets-cache
+
+# ==============================
+# Jupyter Notebook
+# ==============================
+.ipynb_checkpoints
+
+# ==============================
+# pyenv
+# ==============================
+.python-version
+
+# ==============================
+# pipenv
+# ==============================
+Pipfile.lock
+
+# ==============================
+# poetry
+# ==============================
+poetry.lock
+
+# ==============================
+# mypy / Pyre / pytype
+# ==============================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ==============================
+# IDEs and editors
+# ==============================
+.vscode/
+.idea/
+.spyproject/
+.ropeproject/
+.sublime-project
+.sublime-workspace
+
+# ==============================
+# OS-specific
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Logs & Misc
+# ==============================
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
 .env
 .venv
 env/
@@ -28,3 +146,17 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+*.out
+*~
+*.swo
+
+# ==============================
+# Cortex specific
+# ==============================
+.cortex/
+*.yaml.bak
+/tmp/
+.env
+
+# Internal admin files (bounties, payments, etc.)
+internal/

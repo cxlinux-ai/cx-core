@@ -1,0 +1,44 @@
+#!/bin/bash
+# /usr/bin/cortex-gpu-cleanup
+# Cleans up GPU memory after model service stops
+#
+# Usage: cortex-gpu-cleanup
+
+echo "Cleaning up GPU resources..."
+
+# NVIDIA: Clear compute processes
+if command -v nvidia-smi &> /dev/null; then
+    # List any remaining compute processes
+    nvidia-smi --query-compute-apps=pid,name,used_memory --format=csv,noheader 2>/dev/null || true
+    
+    # Force GPU memory reset (requires root)
+    if [ "$(id -u)" = "0" ]; then
+        # Reset GPU if no other processes using it
+        COMPUTE_PROCESSES=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | wc -l)
+        if [ "$COMPUTE_PROCESSES" -eq 0 ]; then
+            echo "No compute processes, GPU memory will be reclaimed"
+        fi
+    fi
+fi
+
+# AMD: Reset ROCm state
+if command -v rocm-smi &> /dev/null; then
+    rocm-smi --resetclocks 2>/dev/null || true
+fi
+
+# Clear CUDA cache directories
+CUDA_CACHE_DIRS=(
+    "/tmp/cuda-*"
+    "${HOME}/.nv"
+    "/var/tmp/cuda-*"
+)
+
+for dir in "${CUDA_CACHE_DIRS[@]}"; do
+    if ls $dir 1>/dev/null 2>&1; then
+        echo "Clearing CUDA cache: $dir"
+        rm -rf $dir 2>/dev/null || true
+    fi
+done
+
+echo "GPU cleanup complete"
+exit 0

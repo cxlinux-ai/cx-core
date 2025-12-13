@@ -1,0 +1,151 @@
+# Cortex Linux Model Service Template
+# /usr/lib/systemd/system/cortex-model@.service
+#
+# Usage:
+#   systemctl start cortex-model@llama3-8b
+#   systemctl status cortex-model@mistral-7b
+#   systemctl stop cortex-model@llama3-8b
+#
+# The %i and %I parameters are replaced with the instance name (model name)
+# %i = escaped instance name, %I = unescaped instance name
+
+[Unit]
+Description=Cortex LLM Model Service - %I
+Documentation=https://github.com/cortexlinux/cortex/blob/main/docs/MODEL_SERVICE.md
+After=network.target
+Wants=cortex-inference.slice
+
+# Wait for GPU driver to be ready
+After=nvidia-persistenced.service
+After=ollama.service
+
+# Don't start if system is low on memory
+ConditionMemoryPressure=!full
+
+[Service]
+Type=notify
+NotifyAccess=all
+
+# Run as dedicated service user (create with: useradd -r -s /bin/false cortex-llm)
+User=cortex-llm
+Group=cortex-llm
+
+# Resource isolation via slice
+Slice=cortex-inference.slice
+
+# =============================================================================
+# ENVIRONMENT
+# =============================================================================
+Environment=CORTEX_MODEL_NAME=%I
+Environment=CORTEX_MODEL_PATH=/var/lib/cortex/models/%I
+Environment=CORTEX_KV_CACHE_SIZE=8G
+Environment=CORTEX_CONTEXT_LENGTH=32768
+Environment=CORTEX_PORT=808%i
+Environment=CORTEX_HUGE_PAGES=auto
+Environment=CUDA_VISIBLE_DEVICES=0
+
+# Load additional environment from file if exists
+EnvironmentFile=-/etc/cortex/model-%I.env
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+# Working directory
+WorkingDirectory=/var/lib/cortex
+
+# Pre-start: Validate model exists, warm up GPU
+ExecStartPre=/usr/bin/cortex-model-validate %I
+ExecStartPre=/usr/bin/cortex-gpu-warmup
+
+# Main process: Start model server
+# Replace with actual serving command (Ollama, vLLM, llama.cpp, etc.)
+ExecStart=/usr/bin/cortex-serve \
+    --model %I \
+    --port ${CORTEX_PORT} \
+    --context-length ${CORTEX_CONTEXT_LENGTH} \
+    --kv-cache-size ${CORTEX_KV_CACHE_SIZE}
+
+# Graceful shutdown: Save KV cache state
+ExecStop=/usr/bin/cortex-serve --model %I --save-state --shutdown
+
+# Post-stop: Cleanup GPU memory
+ExecStopPost=/usr/bin/cortex-gpu-cleanup
+
+# =============================================================================
+# RESOURCE LIMITS
+# =============================================================================
+# Memory limits (adjust per model size)
+MemoryMax=90%
+MemoryHigh=80%
+MemorySwapMax=0
+
+# CPU weight (higher = more CPU when contended)
+CPUWeight=200
+
+# I/O weight for model loading
+IOWeight=100
+
+# GPU memory accounting (future cgroup v2 support)
+# AcceleratorMemoryMax=80%
+
+# File descriptor limits
+LimitNOFILE=1048576
+LimitNPROC=65536
+
+# Allow memory locking for huge pages
+LimitMEMLOCK=infinity
+
+# =============================================================================
+# RESTART POLICY
+# =============================================================================
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=SIGTERM SIGINT
+
+# Watchdog: Restart if service doesn't respond within 120s
+WatchdogSec=120
+
+# Start timeout (model loading can take time)
+TimeoutStartSec=300
+
+# Stop timeout (allow graceful KV cache save)
+TimeoutStopSec=120
+
+# =============================================================================
+# SECURITY HARDENING
+# =============================================================================
+# Filesystem isolation
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Writable paths for models and cache
+ReadWritePaths=/var/lib/cortex
+ReadWritePaths=/run/cortex
+ReadWritePaths=/tmp/cortex
+
+# GPU access requires /dev/nvidia* and /dev/dri
+DeviceAllow=/dev/nvidia* rw
+DeviceAllow=/dev/nvidiactl rw
+DeviceAllow=/dev/nvidia-uvm rw
+DeviceAllow=/dev/nvidia-uvm-tools rw
+DeviceAllow=/dev/dri rw
+
+# Network access for API serving
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# System call filter
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# Capabilities
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
