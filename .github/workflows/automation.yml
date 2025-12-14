@@ -35,7 +35,7 @@ jobs:
         ANTHROPIC_API_KEY: "test-key-for-ci"
         OPENAI_API_KEY: "test-key-for-ci"
       run: |
-        python -m pytest tests/ -v --cov=cortex --cov-report=xml --cov-report=term-missing --timeout=60
+        python -m pytest tests/ -v --tb=short --cov=cortex --cov-report=xml --cov-report=term-missing --timeout=60
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from cortex.cli import CortexCLI
 from cortex.user_preferences import PreferencesManager, ConflictSettings
-from dependency_resolver import DependencyResolver
+from cortex.dependency_resolver import DependencyResolver
 
 
 class TestConflictResolutionUI(unittest.TestCase):
@@ -342,7 +342,7 @@ class TestConflictDetectionWorkflow(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
     
-    @patch('dependency_resolver.DependencyResolver')
+    @patch('cortex.dependency_resolver.DependencyResolver')
     @patch('builtins.input')
     def test_conflict_detected_triggers_ui(self, mock_input, mock_resolver_class):
         """Test that detected conflicts trigger interactive UI."""
@@ -382,7 +382,7 @@ class TestConflictDetectionWorkflow(unittest.TestCase):
             choice = saved[conflict_key]
             self.assertEqual(choice, 'mysql-server')
     
-    @patch('dependency_resolver.subprocess.run')
+    @patch('cortex.dependency_resolver.subprocess.run')
     def test_dependency_resolver_detects_conflicts(self, mock_run):
         """Test that DependencyResolver correctly detects package conflicts."""
         # Mock apt-cache depends output
