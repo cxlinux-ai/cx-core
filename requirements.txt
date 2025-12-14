@@ -12,4 +12,4 @@ pyyaml>=6.0.0
 
 # Type hints for older Python versions
 typing-extensions>=4.0.0
-PyYAML
+PyYAML>=6.0.0
