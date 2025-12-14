@@ -673,6 +673,10 @@ class CortexCLI:
         from rich.prompt import Confirm
         from datetime import datetime
 
+        if not hasattr(args, 'cleanup_action') or args.cleanup_action is None:
+            self._print_error("Please specify a subcommand (scan/run/undo/schedule)")
+            return 1
+
         if args.cleanup_action == 'scan':
             scanner = CleanupScanner()
             self._print_status("🔍", "Scanning for cleanup opportunities...")

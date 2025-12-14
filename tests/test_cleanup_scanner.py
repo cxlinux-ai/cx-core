@@ -188,19 +188,19 @@ After this operation, 50.5 MB disk space will be freed.
     def test_scan_logs_with_files(self, scanner, tmp_path):
         """Test scan_logs with log files."""
         scanner.log_dir = tmp_path
-        
-        # Create a large, old log file
+
+        # Create an old log file (size threshold is controlled via min_size_mb)
         log_file = tmp_path / "test.log"
-        log_file.write_bytes(b"x" * (150 * 1024 * 1024))  # 150 MB
-        
+        log_file.write_bytes(b"x" * (2 * 1024 * 1024))  # 2 MB
+
         old_time = time.time() - (10 * 86400)
         import os
         os.utime(log_file, (old_time, old_time))
-        
-        result = scanner.scan_logs(min_size_mb=100, days_old=7)
-        
+
+        result = scanner.scan_logs(min_size_mb=1, days_old=7)
+
         assert result.count == 1
-        assert result.size_bytes == 150 * 1024 * 1024
+        assert result.size_bytes == 2 * 1024 * 1024
     
     def test_parse_autoremove_output_kb(self, scanner):
         """Test parsing autoremove output with KB units."""

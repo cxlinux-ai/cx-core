@@ -188,7 +188,7 @@ class TestDiskCleaner:
         assert log_file.exists()
     
     def test_run_cleanup_all_categories(self, cleaner):
-        """Test run_cleanup with all categories."""
+        """Test run_cleanup with all categories (non-safe mode)."""
         scan_results = [
             ScanResult("Package Cache", 1000, 5, []),
             ScanResult("Orphaned Packages", 2000, 3, ["pkg1"]),
@@ -201,7 +201,8 @@ class TestDiskCleaner:
              patch.object(cleaner, 'clean_temp_files', return_value=500), \
              patch.object(cleaner, 'compress_logs', return_value=800):
             
-            summary = cleaner.run_cleanup(scan_results)
+            # Use safe=False to include orphaned packages
+            summary = cleaner.run_cleanup(scan_results, safe=False)
             
             assert summary["Package Cache"] == 1000
             assert summary["Orphaned Packages"] == 2000

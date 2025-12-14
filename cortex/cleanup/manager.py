@@ -29,30 +29,42 @@ class CleanupManager:
     """
     Manages the quarantine (undo) system for cleaned files.
     """
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize quarantine storage and metadata paths."""
         self.quarantine_dir = Path.home() / ".cortex" / "trash"
         self.metadata_file = self.quarantine_dir / "metadata.json"
         self._ensure_dir()
 
-    def _ensure_dir(self):
+    def _ensure_dir(self) -> None:
         """Ensure quarantine directory exists with secure permissions."""
-        if not self.quarantine_dir.exists():
-            self.quarantine_dir.mkdir(parents=True, mode=0o700)
+        self.quarantine_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            # Ensure privacy even if pre-existing
+            self.quarantine_dir.chmod(0o700)
+        except OSError:
+            # Best-effort; callers still handle failures later
+            pass
 
     def _load_metadata(self) -> Dict[str, dict]:
         """Load metadata from JSON file."""
         if not self.metadata_file.exists():
             return {}
         try:
-            with open(self.metadata_file, 'r') as f:
+            with self.metadata_file.open("r", encoding="utf-8") as f:
                 return json.load(f)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError, ValueError):
             return {}
 
-    def _save_metadata(self, metadata: Dict[str, dict]):
-        """Save metadata to JSON file."""
-        with open(self.metadata_file, 'w') as f:
+    def _save_metadata(self, metadata: Dict[str, dict]) -> None:
+        """Save metadata to JSON file atomically."""
+        tmp = self.metadata_file.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
+        os.replace(tmp, self.metadata_file)
+        try:
+            self.metadata_file.chmod(0o600)
+        except OSError:
+            pass
 
     def quarantine_file(self, filepath_str: str) -> Optional[str]:
         """
@@ -147,20 +159,27 @@ class CleanupManager:
             items.append(QuarantineItem(**v))
         return sorted(items, key=lambda x: x.timestamp, reverse=True)
 
-    def cleanup_old_items(self, days: int = 30):
+    def cleanup_old_items(self, days: int = 30) -> None:
         """
         Remove quarantine items older than X days.
         
         Args:
             days (int): Age in days to expire items.
+            
+        Raises:
+            ValueError: If days is negative.
         """
+        if days < 0:
+            raise ValueError("days must be >= 0")
+            
         metadata = self._load_metadata()
         now = time.time()
         cutoff = now - (days * 86400)
         
         to_remove = []
         for item_id, data in metadata.items():
-            if data['timestamp'] < cutoff:
+            ts = data.get("timestamp")
+            if isinstance(ts, (int, float)) and ts < cutoff:
                 to_remove.append(item_id)
                 
         for item_id in to_remove:
@@ -174,3 +193,4 @@ class CleanupManager:
             
         if to_remove:
             self._save_metadata(metadata)
+

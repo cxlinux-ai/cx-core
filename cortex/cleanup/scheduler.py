@@ -137,7 +137,7 @@ class CleanupScheduler:
         )
         
         # Try to set up systemd timer first
-        systemd_result = self._setup_systemd_timer(interval)
+        systemd_result = self._setup_systemd_timer(interval, safe_mode)
         if systemd_result["success"]:
             self.save_config(config)
             return {
@@ -147,7 +147,7 @@ class CleanupScheduler:
             }
         
         # Fall back to cron
-        cron_result = self._setup_cron(interval)
+        cron_result = self._setup_cron(interval, safe_mode)
         if cron_result["success"]:
             self.save_config(config)
             return {
@@ -237,12 +237,13 @@ class CleanupScheduler:
         else:  # monthly
             return "0 3 1 * *"  # 3 AM 1st of month
     
-    def _setup_systemd_timer(self, interval: ScheduleInterval) -> Dict[str, Any]:
+    def _setup_systemd_timer(self, interval: ScheduleInterval, safe_mode: bool = True) -> Dict[str, Any]:
         """
         Set up systemd timer for scheduling.
         
         Args:
             interval: Scheduling interval.
+            safe_mode: If True, run with --safe flag; otherwise --force.
             
         Returns:
             dict: Result with success status.
@@ -258,6 +259,9 @@ class CleanupScheduler:
             if result.returncode not in (0, 1):  # 1 is "degraded" which is OK
                 return {"success": False, "error": "systemd not available"}
             
+            # Determine cleanup mode flag
+            mode_flag = "--safe" if safe_mode else "--force"
+            
             # Create service file
             service_content = f"""[Unit]
 Description=Cortex Disk Cleanup Service
@@ -265,7 +269,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env cortex cleanup run --safe --yes
+ExecStart=/usr/bin/env cortex cleanup run {mode_flag} --yes
 """
             
             # Create timer file
@@ -350,19 +354,21 @@ WantedBy=timers.target
         except (subprocess.TimeoutExpired, OSError):
             return False
     
-    def _setup_cron(self, interval: ScheduleInterval) -> Dict[str, Any]:
+    def _setup_cron(self, interval: ScheduleInterval, safe_mode: bool = True) -> Dict[str, Any]:
         """
         Set up cron job for scheduling.
         
         Args:
             interval: Scheduling interval.
+            safe_mode: If True, run with --safe flag; otherwise --force.
             
         Returns:
             dict: Result with success status.
         """
         try:
             cron_schedule = self._get_cron_schedule(interval)
-            cron_command = f"{cron_schedule} /usr/bin/env cortex cleanup run --safe --yes # cortex-cleanup"
+            mode_flag = "--safe" if safe_mode else "--force"
+            cron_command = f"{cron_schedule} /usr/bin/env cortex cleanup run {mode_flag} --yes # cortex-cleanup"
             
             # Get current crontab
             result = subprocess.run(

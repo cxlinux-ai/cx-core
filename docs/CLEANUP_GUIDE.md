@@ -15,13 +15,13 @@ Cortex provides intelligent disk cleanup capabilities that can:
 
 ```bash
 # Scan for cleanup opportunities
-$ cortex cleanup scan
+cortex cleanup scan
 
 # Run cleanup (with confirmation)
-$ cortex cleanup run
+cortex cleanup run
 
 # Run cleanup without confirmation (safe mode)
-$ cortex cleanup run --safe --yes
+cortex cleanup run --safe --yes
 ```
 
 ## Commands
@@ -31,11 +31,12 @@ $ cortex cleanup run --safe --yes
 Identify cleanup opportunities without making any changes:
 
 ```bash
-$ cortex cleanup scan
+cortex cleanup scan
 ```
 
 **Output example:**
-```
+
+```text
 💾 Cleanup Opportunities:
 
 Category           Items    Size
@@ -53,13 +54,13 @@ Execute cleanup operations:
 
 ```bash
 # Safe mode (default) - with confirmation
-$ cortex cleanup run
+cortex cleanup run
 
 # Safe mode - skip confirmation
-$ cortex cleanup run --safe --yes
+cortex cleanup run --safe --yes
 
 # Force mode - clean all items (use with caution)
-$ cortex cleanup run --force --yes
+cortex cleanup run --force --yes
 ```
 
 **Options:**
@@ -76,14 +77,15 @@ Restore files that were cleaned:
 
 ```bash
 # List restorable items
-$ cortex cleanup undo
+cortex cleanup undo
 
 # Restore a specific item
-$ cortex cleanup undo <item-id>
+cortex cleanup undo <item-id>
 ```
 
 **Example:**
-```bash
+
+```text
 $ cortex cleanup undo
 ID       File              Size       Date
 abc123   temp_file.txt     1.2 MB     2024-01-15 10:30
@@ -101,19 +103,19 @@ Configure automatic cleanup:
 
 ```bash
 # Show current schedule status
-$ cortex cleanup schedule --show
+cortex cleanup schedule --show
 
 # Enable weekly cleanup (default)
-$ cortex cleanup schedule --enable
+cortex cleanup schedule --enable
 
 # Enable daily cleanup
-$ cortex cleanup schedule --enable --interval daily
+cortex cleanup schedule --enable --interval daily
 
 # Enable monthly cleanup
-$ cortex cleanup schedule --enable --interval monthly
+cortex cleanup schedule --enable --interval monthly
 
 # Disable scheduled cleanup
-$ cortex cleanup schedule --disable
+cortex cleanup schedule --disable
 ```
 
 **Supported intervals:**
@@ -186,7 +188,7 @@ Some cleanup operations require root privileges:
 
 ```bash
 # Clean system package cache
-$ sudo cortex cleanup run
+sudo cortex cleanup run
 ```
 
 ### No Space Reclaimed
@@ -218,4 +220,4 @@ Default settings for cleanup:
 
 ---
 
-For more information, visit: https://cortexlinux.com/docs/cleanup
+For more information, visit: [Cortex Cleanup Documentation](https://cortexlinux.com/docs/cleanup)

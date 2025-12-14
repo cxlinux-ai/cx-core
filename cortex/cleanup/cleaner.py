@@ -39,8 +39,8 @@ class DiskCleaner:
         if self.dry_run:
             return size_freed
             
-        # Run apt-get clean
-        cmd = "sudo apt-get clean"
+        # Run apt-get clean (use -n for non-interactive mode)
+        cmd = "sudo -n apt-get clean"
         result = run_command(cmd, validate=True)
         
         if result.success:
@@ -65,7 +65,8 @@ class DiskCleaner:
         if self.dry_run:
             return 0 # Size is estimated in scanner
             
-        cmd = "sudo apt-get autoremove -y"
+        # Use -n for non-interactive mode
+        cmd = "sudo -n apt-get autoremove -y"
         result = run_command(cmd, validate=True)
         
         freed_bytes = 0
@@ -122,33 +123,25 @@ class DiskCleaner:
             filepath = Path(filepath_str)
             if not filepath.exists():
                 continue
+            
+            # Get size before any operation
+            try:
+                size = filepath.stat().st_size
+            except OSError:
+                size = 0
                 
             if self.dry_run:
-                try:
-                    freed_bytes += filepath.stat().st_size
-                except OSError:
-                    pass
+                freed_bytes += size
                 continue
                 
             # Move to quarantine
             item_id = self.manager.quarantine_file(str(filepath))
             if item_id:
-                # We assume success means we freed the file size.
-                # Ideally we should get the size from the manager or check before.
-                # But for now we don't have the size unless we check again.
-                # Let's assume the scanner's size is accurate enough for reporting,
-                # or check size before quarantine if we really need to return exact freed bytes here.
-                # But manager.quarantine_file moves it, so it's gone from original location.
-                pass
+                freed_bytes += size
             else:
-                # Failed to quarantine
-                pass
+                logger.warning(f"Failed to quarantine temp file: {filepath}")
                 
-        # Returning 0 here because calculating exact freed bytes per file during deletion 
-        # without re-statting every file (which might fail if moved) is complex.
-        # The CLI can use the scan result for total potential, or we can improve this.
-        # For now, let's return 0 and rely on the scan result or improve manager to return size.
-        return freed_bytes 
+        return freed_bytes
 
     def compress_logs(self, files: List[str]) -> int:
         """
@@ -216,7 +209,9 @@ class DiskCleaner:
                 summary["Package Cache"] = self.clean_package_cache()
                 
             elif result.category == "Orphaned Packages":
-                summary["Orphaned Packages"] = self.remove_orphaned_packages(result.items)
+                # Only remove orphaned packages in non-safe mode
+                if not safe:
+                    summary["Orphaned Packages"] = self.remove_orphaned_packages(result.items)
                 
             elif result.category == "Temporary Files":
                 summary["Temporary Files"] = self.clean_temp_files(result.items)
