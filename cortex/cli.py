@@ -20,6 +20,7 @@ from cortex.dependency_importer import (
 from cortex.env_manager import EnvironmentManager, get_env_manager
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
+from cortex.llm_router import LLMRouter, TaskType
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
 from cortex.stack_manager import StackManager
@@ -595,7 +596,6 @@ class CortexCLI:
             interpreter = CommandInterpreter(api_key=api_key, provider=provider)
 
             self._print_status("📦", "Planning installation...")
-
             for _ in range(10):
                 self._animate_spinner("Analyzing system requirements...")
             self._clear_line()
@@ -1636,6 +1636,28 @@ def main():
 
     # Wizard command
     wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
+    diagnose_parser = subparsers.add_parser(
+        "diagnose",
+        help="Diagnose installation or system errors",
+    )
+
+    diagnose_parser.add_argument(
+        "--image",
+        type=str,
+        help="Path to error screenshot (PNG, JPG, WebP)",
+    )
+
+    diagnose_parser.add_argument(
+        "--clipboard",
+        action="store_true",
+        help="Read error screenshot from clipboard",
+    )
+
+    diagnose_parser.add_argument(
+        "--text",
+        type=str,
+        help="Raw error text (fallback)",
+    )
 
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
@@ -1896,6 +1918,65 @@ def main():
                 dry_run=args.dry_run,
                 parallel=args.parallel,
             )
+        elif args.command == "diagnose":
+            import io
+
+            from PIL import Image, ImageGrab
+
+            image = None
+
+            if args.image:
+                try:
+                    image = Image.open(args.image)
+                except Exception as e:
+                    cli._print_error(f"Failed to load image: {e}")
+                    return 1
+
+            elif args.clipboard:
+                try:
+
+                    image = ImageGrab.grabclipboard()
+                    if image is None:
+                        cli._print_error("No image found in clipboard")
+                        return 1
+                except Exception as e:
+                    cli._print_error(f"Failed to read clipboard: {e}")
+                    return 1
+
+            # Get API key for LLM router (diagnose_image needs Claude Vision)
+            api_key = cli._get_api_key()
+            if not api_key:
+                return 1
+
+            router = LLMRouter(claude_api_key=api_key)
+            if image:
+                cx_print("🔍 Analyzing error screenshot...")
+                diagnosis = router.diagnose_image(image)
+                cx_print(diagnosis)
+                return 0
+
+            if args.text:
+                cx_print("🔍 Analyzing error message...", "info")
+
+                response = router.complete(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a Linux system debugging expert.",
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Diagnose this error and suggest fixes:\n{args.text}",
+                        },
+                    ],
+                    task_type=TaskType.ERROR_DEBUGGING,
+                )
+
+                cx_print(response.content)
+                return 0
+            cli._print_error("Provide an image, clipboard, or error message")
+            return 1
+
         elif args.command == "import":
             return cli.import_deps(args)
         elif args.command == "history":

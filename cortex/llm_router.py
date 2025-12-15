@@ -12,6 +12,8 @@ License: Modified MIT License
 """
 
 import asyncio
+import base64
+import io
 import json
 import logging
 import os
@@ -19,10 +21,13 @@ import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from anthropic import Anthropic, AsyncAnthropic
 from openai import AsyncOpenAI, OpenAI
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -325,6 +330,83 @@ class LLMRouter:
                 )
             else:
                 raise
+
+    def diagnose_image(self, image: "Image.Image") -> str:
+        """
+        Diagnose an error screenshot using Claude Vision.
+        Args:
+            image: A PIL Image object containing the error screenshot.
+
+        Returns:
+            Diagnosis text from Claude Vision, or a fallback message
+            if vision support is unavailable.
+        """
+        try:
+            from PIL import Image
+        except ImportError:
+            logger.warning("Pillow not installed, using fallback diagnosis")
+            return (
+                "Image diagnosis unavailable (missing pillow).\n"
+                "Install Pillow to enable image-based error diagnosis:\n"
+                "  pip install pillow\n"
+                "  # or\n"
+                "  cortex install pillow\n"
+            )
+
+        if not self.claude_client:
+            logger.warning("Claude Vision unavailable, using fallback diagnosis")
+            return (
+                "Claude Vision unavailable.\n"
+                "Configure Claude API key to enable image diagnosis:\n"
+                "  export ANTHROPIC_API_KEY='your-key'\n"
+                "  # or run:\n"
+                "  cortex wizard\n"
+            )
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        image_bytes = buf.getvalue()
+
+        try:
+            response = self.claude_client.messages.create(
+                model="claude-opus-4-1-20250805",
+                max_tokens=500,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": base64.b64encode(image_bytes).decode(),
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": "Diagnose this error screenshot and suggest fixes.",
+                            },
+                        ],
+                    }
+                ],
+            )
+            if response.content and hasattr(response.content[0], "text"):
+                return response.content[0].text
+            return "Claude Vision returned an empty response."
+
+        except Exception as e:
+            logger.warning(
+                "Claude Vision unavailable, using fallback diagnosis",
+                exc_info=True,
+            )
+            return (
+                "Claude Vision unavailable.\n"
+                "Possible reasons:\n"
+                "- Invalid or missing API key\n"
+                "- Network or rate limit error\n"
+                "- Claude service unavailable\n"
+            )
 
     def _complete_claude(
         self,

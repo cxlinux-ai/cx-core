@@ -4,6 +4,7 @@
 anthropic>=0.18.0
 openai>=1.0.0
 requests>=2.32.4
+pillow>=9.0.0
 
 # Configuration
 PyYAML>=6.0.0
