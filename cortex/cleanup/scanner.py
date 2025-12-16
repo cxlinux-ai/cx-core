@@ -1,9 +1,16 @@
 import time
-import glob
+import re
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Tuple
 from pathlib import Path
 from cortex.utils.commands import run_command
+
+# Unit multipliers for size parsing
+UNIT_MULTIPLIERS = {
+    'KB': 1024,
+    'MB': 1024 * 1024,
+    'GB': 1024 * 1024 * 1024,
+}
 
 @dataclass
 class ScanResult:
@@ -95,7 +102,7 @@ class CleanupScanner:
             items=packages
         )
 
-    def _parse_autoremove_output(self, stdout: str) -> tuple[List[str], int]:
+    def _parse_autoremove_output(self, stdout: str) -> Tuple[List[str], int]:
         """
         Helper to parse apt-get autoremove output.
         
@@ -103,14 +110,26 @@ class CleanupScanner:
             stdout (str): Output from apt-get command.
             
         Returns:
-            tuple[List[str], int]: List of packages and estimated size in bytes.
+            Tuple[List[str], int]: List of packages and estimated size in bytes.
+        """
+        packages = self._extract_packages(stdout)
+        size_bytes = self._extract_size(stdout)
+        return packages, size_bytes
+    
+    def _extract_packages(self, stdout: str) -> List[str]:
+        """
+        Extract package names from autoremove output.
+        
+        Args:
+            stdout (str): Output from apt-get command.
+            
+        Returns:
+            List[str]: List of package names.
         """
         packages = []
-        size_bytes = 0
-        lines = stdout.splitlines()
         capture = False
         
-        for line in lines:
+        for line in stdout.splitlines():
             if "The following packages will be REMOVED" in line:
                 capture = True
                 continue
@@ -118,30 +137,28 @@ class CleanupScanner:
                 if not line.startswith(" "):
                     capture = False
                     continue
-                # Add packages
-                pkgs = line.strip().split()
-                packages.extend(pkgs)
+                packages.extend(line.strip().split())
         
-        # Estimate size
-        for line in lines:
+        return packages
+    
+    def _extract_size(self, stdout: str) -> int:
+        """
+        Extract size in bytes from apt output.
+        
+        Args:
+            stdout (str): Output from apt-get command.
+            
+        Returns:
+            int: Size in bytes.
+        """
+        for line in stdout.splitlines():
             if "disk space will be freed" in line:
-                parts = line.split()
-                try:
-                    for i, part in enumerate(parts):
-                        if part.isdigit() or part.replace('.', '', 1).isdigit():
-                            val = float(part)
-                            unit = parts[i+1]
-                            if unit.upper().startswith('KB'):
-                                size_bytes = int(val * 1024)
-                            elif unit.upper().startswith('MB'):
-                                size_bytes = int(val * 1024 * 1024)
-                            elif unit.upper().startswith('GB'):
-                                size_bytes = int(val * 1024 * 1024 * 1024)
-                            break
-                except (ValueError, IndexError):
-                    pass
-                    
-        return packages, size_bytes
+                match = re.search(r'([\d.]+)\s*(KB|MB|GB)', line, re.IGNORECASE)
+                if match:
+                    value = float(match.group(1))
+                    unit = match.group(2).upper()
+                    return int(value * UNIT_MULTIPLIERS.get(unit, 1))
+        return 0
 
     def scan_temp_files(self, days_old: int = 7) -> ScanResult:
         """

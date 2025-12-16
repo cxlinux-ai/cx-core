@@ -166,7 +166,7 @@ class TestCleanupManager:
         # Quarantine a file
         test_file = tmp_path / "fresh.txt"
         test_file.write_text("fresh")
-        item_id = manager.quarantine_file(str(test_file))
+        _ = manager.quarantine_file(str(test_file))
         
         manager.cleanup_old_items(days=30)
         

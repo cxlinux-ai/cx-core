@@ -52,7 +52,7 @@ class CleanupManager:
         try:
             with self.metadata_file.open("r", encoding="utf-8") as f:
                 return json.load(f)
-        except (json.JSONDecodeError, OSError, ValueError):
+        except (json.JSONDecodeError, OSError):
             return {}
 
     def _save_metadata(self, metadata: Dict[str, dict]) -> None:

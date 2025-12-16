@@ -1,13 +1,27 @@
 import shutil
 import gzip
 import logging
-from typing import List, Dict
+import re
+from typing import List, Dict, Optional
 from pathlib import Path
 from cortex.utils.commands import run_command
 from cortex.cleanup.scanner import CleanupScanner, ScanResult
 from cortex.cleanup.manager import CleanupManager
 
 logger = logging.getLogger(__name__)
+
+# Category constants to avoid duplication
+CATEGORY_PACKAGE_CACHE = "Package Cache"
+CATEGORY_ORPHANED_PACKAGES = "Orphaned Packages"
+CATEGORY_TEMP_FILES = "Temporary Files"
+CATEGORY_OLD_LOGS = "Old Logs"
+
+# Unit multipliers for parsing
+UNIT_MULTIPLIERS = {
+    'KB': 1024,
+    'MB': 1024 * 1024,
+    'GB': 1024 * 1024 * 1024,
+}
 
 class DiskCleaner:
     """
@@ -87,25 +101,28 @@ class DiskCleaner:
         Returns:
             int: Bytes freed.
         """
-        freed_bytes = 0
         for line in stdout.splitlines():
             if "disk space will be freed" in line:
-                parts = line.split()
-                try:
-                    for i, part in enumerate(parts):
-                        if part.isdigit() or part.replace('.', '', 1).isdigit():
-                            val = float(part)
-                            unit = parts[i+1]
-                            if unit.upper().startswith('KB'):
-                                freed_bytes = int(val * 1024)
-                            elif unit.upper().startswith('MB'):
-                                freed_bytes = int(val * 1024 * 1024)
-                            elif unit.upper().startswith('GB'):
-                                freed_bytes = int(val * 1024 * 1024 * 1024)
-                            break
-                except Exception:
-                    pass
-        return freed_bytes
+                return self._extract_size_from_line(line)
+        return 0
+    
+    def _extract_size_from_line(self, line: str) -> int:
+        """
+        Extract size in bytes from a line containing size information.
+        
+        Args:
+            line (str): Line containing size info like "50.5 MB".
+            
+        Returns:
+            int: Size in bytes.
+        """
+        # Match patterns like "50.5 MB" or "512 KB"
+        match = re.search(r'([\d.]+)\s*(KB|MB|GB)', line, re.IGNORECASE)
+        if match:
+            value = float(match.group(1))
+            unit = match.group(2).upper()
+            return int(value * UNIT_MULTIPLIERS.get(unit, 1))
+        return 0
 
     def clean_temp_files(self, files: List[str]) -> int:
         """
@@ -198,25 +215,37 @@ class DiskCleaner:
             Dict[str, int]: Summary of bytes freed per category.
         """
         summary = {
-            "Package Cache": 0,
-            "Orphaned Packages": 0,
-            "Temporary Files": 0,
-            "Old Logs": 0
+            CATEGORY_PACKAGE_CACHE: 0,
+            CATEGORY_ORPHANED_PACKAGES: 0,
+            CATEGORY_TEMP_FILES: 0,
+            CATEGORY_OLD_LOGS: 0
         }
         
         for result in scan_results:
-            if result.category == "Package Cache":
-                summary["Package Cache"] = self.clean_package_cache()
-                
-            elif result.category == "Orphaned Packages":
-                # Only remove orphaned packages in non-safe mode
-                if not safe:
-                    summary["Orphaned Packages"] = self.remove_orphaned_packages(result.items)
-                
-            elif result.category == "Temporary Files":
-                summary["Temporary Files"] = self.clean_temp_files(result.items)
-                
-            elif result.category == "Old Logs":
-                summary["Old Logs"] = self.compress_logs(result.items)
+            freed = self._process_category(result, safe)
+            if result.category in summary:
+                summary[result.category] = freed
                 
         return summary
+    
+    def _process_category(self, result: ScanResult, safe: bool) -> int:
+        """
+        Process a single cleanup category.
+        
+        Args:
+            result (ScanResult): Scan result for the category.
+            safe (bool): Whether to use safe mode.
+            
+        Returns:
+            int: Bytes freed.
+        """
+        if result.category == CATEGORY_PACKAGE_CACHE:
+            return self.clean_package_cache()
+        elif result.category == CATEGORY_ORPHANED_PACKAGES:
+            # Only remove orphaned packages in non-safe mode
+            return self.remove_orphaned_packages(result.items) if not safe else 0
+        elif result.category == CATEGORY_TEMP_FILES:
+            return self.clean_temp_files(result.items)
+        elif result.category == CATEGORY_OLD_LOGS:
+            return self.compress_logs(result.items)
+        return 0

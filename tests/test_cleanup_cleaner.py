@@ -163,7 +163,7 @@ class TestDiskCleaner:
         log_file = tmp_path / "test.log"
         log_content = b"This is a test log " * 1000  # Compressible content
         log_file.write_bytes(log_content)
-        original_size = log_file.stat().st_size
+        original_size = log_file.stat().st_size  # noqa: F841 - used for documentation
         
         freed = cleaner.compress_logs([str(log_file)])
         

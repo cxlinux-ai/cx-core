@@ -14,6 +14,9 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Cron tag for identifying cleanup entries
+CRON_TAG = "# cortex-cleanup"
+
 
 class ScheduleInterval(Enum):
     """Supported scheduling intervals."""
@@ -93,7 +96,7 @@ class CleanupScheduler:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 return ScheduleConfig.from_dict(data)
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Failed to load schedule config: {e}")
             return ScheduleConfig()
     
@@ -368,7 +371,7 @@ WantedBy=timers.target
         try:
             cron_schedule = self._get_cron_schedule(interval)
             mode_flag = "--safe" if safe_mode else "--force"
-            cron_command = f"{cron_schedule} /usr/bin/env cortex cleanup run {mode_flag} --yes # cortex-cleanup"
+            cron_command = f"{cron_schedule} /usr/bin/env cortex cleanup run {mode_flag} --yes {CRON_TAG}"
             
             # Get current crontab
             result = subprocess.run(
@@ -383,7 +386,7 @@ WantedBy=timers.target
             # Remove existing cortex-cleanup entries
             lines = [
                 line for line in current_crontab.splitlines()
-                if "# cortex-cleanup" not in line
+                if CRON_TAG not in line
             ]
             
             # Add new entry
@@ -425,7 +428,7 @@ WantedBy=timers.target
             # Remove cortex-cleanup entries
             lines = [
                 line for line in result.stdout.splitlines()
-                if "# cortex-cleanup" not in line
+                if CRON_TAG not in line
             ]
             
             new_crontab = "\n".join(lines) + "\n" if lines else ""
@@ -449,6 +452,6 @@ WantedBy=timers.target
                 text=True,
                 timeout=10,
             )
-            return "# cortex-cleanup" in result.stdout
+            return CRON_TAG in result.stdout
         except (subprocess.TimeoutExpired, OSError):
             return False

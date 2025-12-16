@@ -779,7 +779,7 @@ class CortexCLI:
                 status = scheduler.get_status()
                 console.print("\n[bold cyan]🕐 Cleanup Schedule Status:[/bold cyan]")
                 if status['enabled']:
-                    console.print(f"Status: [green]Enabled[/green]")
+                    console.print("Status: [green]Enabled[/green]")
                     console.print(f"Interval: [yellow]{status['interval']}[/yellow]")
                     console.print(f"Safe mode: {'Yes' if status['safe_mode'] else 'No'}")
                     if status['systemd_active']:
@@ -811,7 +811,7 @@ class CortexCLI:
             status = scheduler.get_status()
             console.print("\n[bold cyan]🕐 Cleanup Schedule Status:[/bold cyan]")
             if status['enabled']:
-                console.print(f"Status: [green]Enabled[/green]")
+                console.print("Status: [green]Enabled[/green]")
                 console.print(f"Interval: [yellow]{status['interval']}[/yellow]")
             else:
                 console.print("Status: [dim]Disabled[/dim]")

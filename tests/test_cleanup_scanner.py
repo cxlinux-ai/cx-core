@@ -206,7 +206,7 @@ After this operation, 50.5 MB disk space will be freed.
         """Test parsing autoremove output with KB units."""
         output = "After this operation, 512 KB disk space will be freed."
         
-        packages, size = scanner._parse_autoremove_output(output)
+        _, size = scanner._parse_autoremove_output(output)
         
         assert size == 512 * 1024
     
@@ -214,7 +214,7 @@ After this operation, 50.5 MB disk space will be freed.
         """Test parsing autoremove output with GB units."""
         output = "After this operation, 1.5 GB disk space will be freed."
         
-        packages, size = scanner._parse_autoremove_output(output)
+        _, size = scanner._parse_autoremove_output(output)
         
         assert size == int(1.5 * 1024 * 1024 * 1024)
     
@@ -224,7 +224,7 @@ After this operation, 50.5 MB disk space will be freed.
   pkg1 pkg2 pkg3
 After this operation, 100 MB disk space will be freed."""
         
-        packages, size = scanner._parse_autoremove_output(output)
+        packages, _ = scanner._parse_autoremove_output(output)
         
         assert "pkg1" in packages
         assert "pkg2" in packages
