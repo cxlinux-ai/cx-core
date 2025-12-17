@@ -189,7 +189,7 @@ def validate_command(command: str, strict: bool = True) -> tuple[bool, str | Non
             parts = command.split()
             # Skip sudo and any flags (starting with -)
             actual_command_index = 1
-            while actual_command_index < len(parts) and parts[actual_command_index].startswith('-'):
+            while actual_command_index < len(parts) and parts[actual_command_index].startswith("-"):
                 actual_command_index += 1
             if actual_command_index < len(parts):
                 first_word = parts[actual_command_index]
