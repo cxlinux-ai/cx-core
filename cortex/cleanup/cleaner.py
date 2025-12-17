@@ -116,9 +116,8 @@ class DiskCleaner:
         Returns:
             int: Size in bytes.
         """
-        # NOSONAR: This regex has no nested quantifiers and cannot cause ReDoS.
-        # Input is apt-get output, not user-controlled.
-        match = re.search(r'([\d.]+)\s*(KB|MB|GB)', line, re.IGNORECASE)
+        # Use {0,20} instead of * to prevent potential ReDoS
+        match = re.search(r'([\d.]+)\s{0,20}(KB|MB|GB)', line, re.IGNORECASE)
         if match:
             value = float(match.group(1))
             unit = match.group(2).upper()
