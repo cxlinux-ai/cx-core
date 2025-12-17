@@ -1,7 +1,7 @@
 # Issue #40: Kimi K2 API Integration
 
-**Issue Link:** https://github.com/cortexlinux/cortex/issues/40  
-**PR Link:** https://github.com/cortexlinux/cortex/pull/192  
+**Issue Link:** [cortexlinux/cortex#40](https://github.com/cortexlinux/cortex/issues/40)  
+**PR Link:** [cortexlinux/cortex#192](https://github.com/cortexlinux/cortex/pull/192)  
 **Bounty:** $150  
 **Status:** ✅ Implemented  
 **Date Completed:** December 2, 2025
@@ -18,7 +18,7 @@ Successfully integrated Moonshot AI's Kimi K2 model as a new LLM provider for Co
 - `KIMI` enum value to `APIProvider`
 - `_call_kimi()` method for Kimi K2 HTTP API integration
 - Kimi-specific initialization in `_initialize_client()`
-- Default model detection for Kimi K2 (`kimi-k2/kimi-k2-turbo-preview`)
+- Default model detection for Kimi K2 (`kimi-k2-turbo-preview`)
 
 **Features:**
 - Full HTTP-based API integration using `requests` library
@@ -45,7 +45,7 @@ Successfully integrated Moonshot AI's Kimi K2 model as a new LLM provider for Co
 - `KIMI_API_KEY`: Required for Kimi K2 authentication
 - `CORTEX_PROVIDER`: Optional override (supports `openai`, `claude`, `kimi`, `fake`)
 - `KIMI_API_BASE_URL`: Optional base URL override
-- `KIMI_DEFAULT_MODEL`: Optional model override (default: `kimi-k2`)
+- `KIMI_DEFAULT_MODEL`: Optional model override (default: `kimi-k2-turbo-preview`)
 
 ### 3. Dependencies (LLM/requirements.txt)
 
@@ -89,7 +89,7 @@ Successfully integrated Moonshot AI's Kimi K2 model as a new LLM provider for Co
 ### Basic Usage
 
 ```bash
-# Set Kimi API key (get from https://platform.moonshot.ai/console/api-keys)
+# Set Kimi API key (get from Moonshot Console)
 export KIMI_API_KEY="sk-your-actual-key-here"
 
 # Install with Kimi K2 (auto-detected)
@@ -135,7 +135,7 @@ Headers:
 
 Body:
 {
-  "model": "kimi-k2",
+  "model": "kimi-k2-turbo-preview",
   "messages": [
     {"role": "system", "content": "System prompt..."},
     {"role": "user", "content": "User request..."}
@@ -187,7 +187,7 @@ Potential improvements for future iterations:
 
 ## Testing Results
 
-```
+```text
 Ran 143 tests in 10.136s
 
 OK (skipped=5)
@@ -211,7 +211,7 @@ For users upgrading:
 ## Related Issues
 
 - **Issue #16:** Integration test suite (optional, addressed in PR #192)
-- **Issue #11:** CLI interface improvements (referenced in commits)
+- **Issue #11:** CLI improvements (referenced in commits)
 - **Issue #8:** Multi-step coordinator (referenced in commits)
 
 ## Contributors
@@ -231,7 +231,7 @@ For users upgrading:
 
 ## References
 
-- **Kimi K2 Documentation:** https://platform.moonshot.ai/docs
-- **Original PR:** https://github.com/cortexlinux/cortex/pull/192
-- **Issue Discussion:** https://github.com/cortexlinux/cortex/issues/40
+- **Kimi K2 Documentation:** [Moonshot AI Docs](https://platform.moonshot.ai/docs)
+- **Original PR:** [cortexlinux/cortex#192](https://github.com/cortexlinux/cortex/pull/192)
+- **Issue Discussion:** [cortexlinux/cortex#40](https://github.com/cortexlinux/cortex/issues/40)
 - **CVE Fixes:** CVE-2024-35195, CVE-2024-37891, CVE-2023-32681
