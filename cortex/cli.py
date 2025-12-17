@@ -12,6 +12,7 @@ logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
+from cortex.demo import run_demo
 from cortex.coordinator import InstallationCoordinator, StepStatus
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
@@ -170,6 +171,15 @@ class CortexCLI:
             return 1
 
     # -------------------------------
+    def demo(self):
+        """
+        Docstring for demo
+        Run the one-command investor demo
+        
+        :param self: Description
+        """
+        return run_demo()
+        
 
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
         # Validate input first
