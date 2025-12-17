@@ -136,8 +136,14 @@ class LLMRouter:
             enable_fallback: Try alternate LLM if primary fails
             track_costs: Track token usage and costs
         """
-        self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.kimi_api_key = kimi_api_key or os.getenv("MOONSHOT_API_KEY")
+        # Important for tests: passing `None` explicitly should NOT fall back to env vars.
+        # Only use env vars when the caller didn't provide a value.
+        self.claude_api_key = (
+            claude_api_key if claude_api_key is not None else os.getenv("ANTHROPIC_API_KEY")
+        )
+        self.kimi_api_key = (
+            kimi_api_key if kimi_api_key is not None else os.getenv("MOONSHOT_API_KEY")
+        )
         self.default_provider = default_provider
         self.enable_fallback = enable_fallback
         self.track_costs = track_costs
