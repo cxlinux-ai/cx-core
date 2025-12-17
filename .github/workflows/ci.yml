@@ -71,6 +71,7 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
           pip install -e .
+          pip install pytest pytest-cov pytest-timeout pytest-asyncio pytest-mock
 
       - name: Run tests with coverage
         env:
