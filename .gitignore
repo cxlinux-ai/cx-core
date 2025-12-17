@@ -160,3 +160,48 @@ htmlcov/
 
 # Internal admin files (bounties, payments, etc.)
 internal/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+history.db
+
+# Audit logs
+*_audit.log
+audit.log
+
+# Generated files
+fork-contributor-contacts.csv
+cortex-code-stats.csv
+
+# Local scripts (not part of distribution)
+*.local.sh
+
+# Editor config (keep .editorconfig)
+.vscode/settings.json
+.idea/workspace.xml
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/

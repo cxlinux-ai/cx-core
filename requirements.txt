@@ -9,5 +9,8 @@ PyYAML>=6.0
 # Terminal UI
 rich>=13.0.0
 
+# Configuration
+pyyaml>=6.0.0
+
 # Type hints for older Python versions
 typing-extensions>=4.0.0

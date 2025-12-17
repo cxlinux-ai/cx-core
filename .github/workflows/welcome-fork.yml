@@ -1,0 +1,72 @@
+name: Welcome New Fork
+
+on:
+  fork:
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      discussions: write
+
+    steps:
+      - name: Get fork info
+        id: fork_info
+        run: |
+          echo "fork_owner=${{ github.event.forkee.owner.login }}" >> $GITHUB_OUTPUT
+          echo "fork_repo=${{ github.event.forkee.full_name }}" >> $GITHUB_OUTPUT
+          echo "fork_url=${{ github.event.forkee.html_url }}" >> $GITHUB_OUTPUT
+
+      - name: Create welcome discussion comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const forkOwner = '${{ steps.fork_info.outputs.fork_owner }}';
+            const forkUrl = '${{ steps.fork_info.outputs.fork_url }}';
+
+            // Find the feedback discussion (number 301)
+            const { data: discussions } = await github.rest.repos.listDiscussionsInOrg({
+              org: context.repo.owner,
+              repo: context.repo.repo,
+            }).catch(() => ({ data: [] }));
+
+            // Post welcome comment to the feedback discussion
+            const welcomeMessage = `## 🎉 Welcome @${forkOwner}!
+
+Thanks for forking Cortex Linux! We're excited to have you in the community.
+
+**Your fork:** ${forkUrl}
+
+---
+
+### We'd Love Your Feedback!
+
+As you explore the codebase, we'd really appreciate hearing from you:
+
+1. **Did everything work?** Any setup issues?
+2. **What would you improve?** Missing features, docs, or code quality?
+3. **What are you building?** We're curious about your use case!
+4. **Want to contribute?** PRs are always welcome!
+
+Feel free to reply here or open an issue. Happy coding! 🚀
+
+*— The Cortex Team*`;
+
+            // Create an issue to track new forks (internal tracking)
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🍴 New Fork: ${forkOwner}`,
+              body: `A new fork was created!\n\n- **User:** @${forkOwner}\n- **Fork URL:** ${forkUrl}\n- **Date:** ${new Date().toISOString()}\n\n---\n\n*This issue is auto-generated to track fork activity. Feel free to close after noting.*`,
+              labels: ['fork-tracking']
+            });
+
+            console.log(`Welcome issue created for ${forkOwner}`);
+
+      - name: Log fork event
+        run: |
+          echo "🍴 New fork detected!"
+          echo "   Owner: ${{ steps.fork_info.outputs.fork_owner }}"
+          echo "   Repo: ${{ steps.fork_info.outputs.fork_repo }}"
+          echo "   URL: ${{ steps.fork_info.outputs.fork_url }}"

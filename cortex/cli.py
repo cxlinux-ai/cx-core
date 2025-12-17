@@ -1,64 +1,54 @@
-import sys
-import os
 import argparse
-import time
 import logging
-from typing import List, Optional
+import os
+import subprocess
+import sys
+import time
 from datetime import datetime
+from typing import Optional
 
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from LLM.interpreter import CommandInterpreter
+from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
 from cortex.templates import TemplateManager, Template, TemplateFormat, InstallationStep
-from cortex.installation_history import (
-    InstallationHistory,
-    InstallationType,
-    InstallationStatus
-)
+from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
+from cortex.llm.interpreter import CommandInterpreter
+
+# Import the new Notification Manager
+from cortex.notification_manager import NotificationManager
 from cortex.user_preferences import (
     PreferencesManager,
+    format_preference_value,
     print_all_preferences,
-    format_preference_value
-)
-from cortex.branding import (
-    console,
-    cx_print,
-    cx_step,
-    cx_header,
-    show_banner,
-    VERSION
 )
 from cortex.validators import (
     validate_api_key,
     validate_install_request,
-    validate_installation_id,
-    ValidationError
 )
-# Import the new Notification Manager
-from cortex.notification_manager import NotificationManager
 
 
 class CortexCLI:
     def __init__(self, verbose: bool = False):
-        self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+        self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.prefs_manager = None  # Lazy initialization
         self.verbose = verbose
+        self.offline = False
 
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
         if self.verbose:
             console.print(f"[dim][DEBUG] {message}[/dim]")
 
-    def _get_api_key(self) -> Optional[str]:
+    def _get_api_key(self) -> str | None:
         # Check if using Ollama (no API key needed)
         provider = self._get_provider()
-        if provider == 'ollama':
+        if provider == "ollama":
             self._debug("Using Ollama (no API key required)")
             return "ollama-local"  # Placeholder for Ollama
 
@@ -68,23 +58,23 @@ class CortexCLI:
             cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
             cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
             return None
-        api_key = os.environ.get('ANTHROPIC_API_KEY') or os.environ.get('OPENAI_API_KEY')
+        api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
         return api_key
 
     def _get_provider(self) -> str:
         # Check environment variable for explicit provider choice
-        explicit_provider = os.environ.get('CORTEX_PROVIDER', '').lower()
-        if explicit_provider in ['ollama', 'openai', 'claude']:
+        explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+        if explicit_provider in ["ollama", "openai", "claude"]:
             return explicit_provider
 
         # Auto-detect based on available API keys
-        if os.environ.get('ANTHROPIC_API_KEY'):
-            return 'claude'
-        elif os.environ.get('OPENAI_API_KEY'):
-            return 'openai'
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return "claude"
+        elif os.environ.get("OPENAI_API_KEY"):
+            return "openai"
 
         # Fallback to Ollama for offline mode
-        return 'ollama'
+        return "ollama"
 
     def _print_status(self, emoji: str, message: str):
         """Legacy status print - maps to cx_print for Rich output"""
@@ -110,7 +100,7 @@ class CortexCLI:
         time.sleep(0.1)
 
     def _clear_line(self):
-        sys.stdout.write('\r\033[K')
+        sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
     # --- New Notification Method ---
@@ -123,32 +113,39 @@ class CortexCLI:
 
         mgr = NotificationManager()
 
-        if args.notify_action == 'config':
+        if args.notify_action == "config":
             console.print("[bold cyan]🔧 Current Notification Configuration:[/bold cyan]")
-            status = "[green]Enabled[/green]" if mgr.config.get('enabled', True) else "[red]Disabled[/red]"
+            status = (
+                "[green]Enabled[/green]"
+                if mgr.config.get("enabled", True)
+                else "[red]Disabled[/red]"
+            )
             console.print(f"Status: {status}")
-            console.print(f"DND Window: [yellow]{mgr.config['dnd_start']} - {mgr.config['dnd_end']}[/yellow]")
+            console.print(
+                f"DND Window: [yellow]{mgr.config['dnd_start']} - {mgr.config['dnd_end']}[/yellow]"
+            )
             console.print(f"History File: {mgr.history_file}")
             return 0
 
-        elif args.notify_action == 'enable':
+        elif args.notify_action == "enable":
             mgr.config["enabled"] = True
             # Addressing CodeRabbit feedback: Ideally should use a public method instead of private _save_config,
             # but keeping as is for a simple fix (or adding a save method to NotificationManager would be best).
-            mgr._save_config() 
+            mgr._save_config()
             self._print_success("Notifications enabled")
             return 0
 
-        elif args.notify_action == 'disable':
+        elif args.notify_action == "disable":
             mgr.config["enabled"] = False
             mgr._save_config()
             cx_print("Notifications disabled (Critical alerts will still show)", "warning")
             return 0
 
-        elif args.notify_action == 'dnd':
+        elif args.notify_action == "dnd":
             if not args.start or not args.end:
                 self._print_error("Please provide start and end times (HH:MM)")
                 return 1
+
             # Addressing CodeRabbit feedback: Add time format validation
             try:
                 datetime.strptime(args.start, "%H:%M")
@@ -162,17 +159,18 @@ class CortexCLI:
             self._print_success(f"DND Window updated: {args.start} - {args.end}")
             return 0
 
-        elif args.notify_action == 'send':
+        elif args.notify_action == "send":
             if not args.message:
                 self._print_error("Message required")
                 return 1
-            console.print(f"[dim]Sending notification...[/dim]")
+            console.print("[dim]Sending notification...[/dim]")
             mgr.send(args.title, args.message, level=args.level, actions=args.actions)
             return 0
 
         else:
             self._print_error("Unknown notify command")
             return 1
+
     # -------------------------------
 
     def install(self, software: str, execute: bool = False, dry_run: bool = False, template: Optional[str] = None):
@@ -206,14 +204,19 @@ class CortexCLI:
                 return 1
             provider = self._get_provider()
             self._print_status("🧠", "Understanding request...")
-            interpreter = CommandInterpreter(api_key=api_key, provider=provider)
+
+            interpreter = CommandInterpreter(
+                api_key=api_key, provider=provider, offline=self.offline
+            )
             self._print_status("📦", "Planning installation...")
             for _ in range(10):
                 self._animate_spinner("Analyzing system requirements...")
             self._clear_line()
             commands = interpreter.parse(f"install {software}")
             if not commands:
-                self._print_error("No commands generated. Please try again with a different request.")
+                self._print_error(
+                    "No commands generated. Please try again with a different request."
+                )
                 return 1
 
             # Extract packages from commands for tracking
@@ -221,10 +224,7 @@ class CortexCLI:
             # Record installation start
             if execute or dry_run:
                 install_id = history.record_installation(
-                    InstallationType.INSTALL,
-                    packages,
-                    commands,
-                    start_time
+                    InstallationType.INSTALL, packages, commands, start_time
                 )
             self._print_status("⚙️", f"Installing {software}...")
             print("\nGenerated commands:")
@@ -236,6 +236,7 @@ class CortexCLI:
                     history.update_installation(install_id, InstallationStatus.SUCCESS)
                 return 0
             if execute:
+
                 def progress_callback(current, total, step):
                     status_emoji = "⏳"
                     if step.status == StepStatus.SUCCESS:
@@ -250,7 +251,7 @@ class CortexCLI:
                     descriptions=[f"Step {i+1}" for i in range(len(commands))],
                     timeout=300,
                     stop_on_error=True,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
                 )
                 result = coordinator.execute()
                 if result.success:
@@ -267,9 +268,7 @@ class CortexCLI:
                     if install_id:
                         error_msg = result.error_message or "Installation failed"
                         history.update_installation(
-                            install_id,
-                            InstallationStatus.FAILED,
-                            error_msg
+                            install_id, InstallationStatus.FAILED, error_msg
                         )
                     if result.failed_step is not None:
                         self._print_error(f"Installation failed at step {result.failed_step + 1}")
@@ -301,7 +300,25 @@ class CortexCLI:
             self._print_error(f"Unexpected error: {str(e)}")
             return 1
 
-    def history(self, limit: int = 20, status: Optional[str] = None, show_id: Optional[str] = None):
+    def cache_stats(self) -> int:
+        try:
+            from cortex.semantic_cache import SemanticCache
+
+            cache = SemanticCache()
+            stats = cache.stats()
+            hit_rate = f"{stats.hit_rate * 100:.1f}%" if stats.total else "0.0%"
+
+            cx_header("Cache Stats")
+            cx_print(f"Hits: {stats.hits}", "info")
+            cx_print(f"Misses: {stats.misses}", "info")
+            cx_print(f"Hit rate: {hit_rate}", "info")
+            cx_print(f"Saved calls (approx): {stats.hits}", "info")
+            return 0
+        except Exception as e:
+            self._print_error(f"Unable to read cache stats: {e}")
+            return 1
+
+    def history(self, limit: int = 20, status: str | None = None, show_id: str | None = None):
         """Show installation history"""
         history = InstallationHistory()
 
@@ -329,7 +346,7 @@ class CortexCLI:
                     print(f"\nError: {record.error_message}")
 
                 if record.commands_executed:
-                    print(f"\nCommands executed:")
+                    print("\nCommands executed:")
                     for cmd in record.commands_executed:
                         print(f"  {cmd}")
 
@@ -344,16 +361,20 @@ class CortexCLI:
                     print("No installation records found.")
                     return 0
 
-                print(f"\n{'ID':<18} {'Date':<20} {'Operation':<12} {'Packages':<30} {'Status':<15}")
+                print(
+                    f"\n{'ID':<18} {'Date':<20} {'Operation':<12} {'Packages':<30} {'Status':<15}"
+                )
                 print("=" * 100)
 
                 for r in records:
-                    date = r.timestamp[:19].replace('T', ' ')
-                    packages = ', '.join(r.packages[:2])
+                    date = r.timestamp[:19].replace("T", " ")
+                    packages = ", ".join(r.packages[:2])
                     if len(r.packages) > 2:
                         packages += f" +{len(r.packages)-2}"
 
-                    print(f"{r.id:<18} {date:<20} {r.operation_type.value:<12} {packages:<30} {r.status.value:<15}")
+                    print(
+                        f"{r.id:<18} {date:<20} {r.operation_type.value:<12} {packages:<30} {r.status.value:<15}"
+                    )
 
                 return 0
         except Exception as e:
@@ -687,7 +708,7 @@ class CortexCLI:
             self.prefs_manager = PreferencesManager()
         return self.prefs_manager
 
-    def check_pref(self, key: Optional[str] = None):
+    def check_pref(self, key: str | None = None):
         """Check/display user preferences"""
         manager = self._get_prefs_manager()
 
@@ -710,12 +731,12 @@ class CortexCLI:
             self._print_error(f"Failed to read preferences: {str(e)}")
             return 1
 
-    def edit_pref(self, action: str, key: Optional[str] = None, value: Optional[str] = None):
+    def edit_pref(self, action: str, key: str | None = None, value: str | None = None):
         """Edit user preferences (add/set, delete/remove, list)"""
         manager = self._get_prefs_manager()
 
         try:
-            if action in ['add', 'set', 'update']:
+            if action in ["add", "set", "update"]:
                 if not key or not value:
                     self._print_error("Key and value required")
                     return 1
@@ -724,7 +745,7 @@ class CortexCLI:
                 print(f"  New value: {format_preference_value(manager.get(key))}")
                 return 0
 
-            elif action in ['delete', 'remove', 'reset-key']:
+            elif action in ["delete", "remove", "reset-key"]:
                 if not key:
                     self._print_error("Key required")
                     return 1
@@ -733,23 +754,23 @@ class CortexCLI:
                 # (In a real implementation we would reset to default)
                 return 0
 
-            elif action in ['list', 'show', 'display']:
+            elif action in ["list", "show", "display"]:
                 return self.check_pref()
 
-            elif action == 'reset-all':
+            elif action == "reset-all":
                 confirm = input("⚠️  Reset ALL preferences? (y/n): ")
-                if confirm.lower() == 'y':
+                if confirm.lower() == "y":
                     manager.reset()
                     self._print_success("Preferences reset")
                 return 0
-            
-            elif action == 'validate':
-                 errors = manager.validate()
-                 if errors:
-                     print("❌ Errors found")
-                 else:
-                     self._print_success("Valid")
-                 return 0
+
+            elif action == "validate":
+                errors = manager.validate()
+                if errors:
+                    print("❌ Errors found")
+                else:
+                    self._print_success("Valid")
+                return 0
 
             else:
                 self._print_error(f"Unknown action: {action}")
@@ -774,15 +795,15 @@ class CortexCLI:
             cx_print(f"API Provider: [bold]{provider}[/bold]", "success")
         else:
             # Check for Ollama
-            ollama_provider = os.environ.get('CORTEX_PROVIDER', '').lower()
-            if ollama_provider == 'ollama':
+            ollama_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+            if ollama_provider == "ollama":
                 cx_print("API Provider: [bold]Ollama (local)[/bold]", "success")
             else:
                 cx_print("API Provider: [bold]Not configured[/bold]", "warning")
                 cx_print("  Run: cortex wizard", "info")
 
         # Check Firejail
-        firejail_path = shutil.which('firejail')
+        firejail_path = shutil.which("firejail")
         if firejail_path:
             cx_print(f"Firejail: [bold]Available[/bold] ({firejail_path})", "success")
         else:
@@ -834,16 +855,33 @@ def show_rich_help():
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
     table.add_row("notify", "Manage desktop notifications")  # Added this line
+    table.add_row("cache stats", "Show LLM cache statistics")
 
     console.print(table)
     console.print()
     console.print("[dim]Learn more: https://cortexlinux.com/docs[/dim]")
 
 
+def shell_suggest(text: str) -> int:
+    """
+    Internal helper used by shell hotkey integration.
+    Prints a single suggested command to stdout.
+    """
+    try:
+        from cortex.shell_integration import suggest_command
+
+        suggestion = suggest_command(text)
+        if suggestion:
+            print(suggestion)
+        return 0
+    except Exception:
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(
-        prog='cortex',
-        description='AI-powered Linux command interpreter',
+        prog="cortex",
+        description="AI-powered Linux command interpreter",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -872,66 +910,91 @@ Environment Variables:
     )
 
     # Global flags
-    parser.add_argument('--version', '-V', action='version', version=f'cortex {VERSION}')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed output')
+    parser.add_argument("--version", "-V", action="version", version=f"cortex {VERSION}")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output")
+    parser.add_argument(
+        "--offline", action="store_true", help="Use cached responses only (no network calls)"
+    )
 
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Demo command
-    demo_parser = subparsers.add_parser('demo', help='See Cortex in action')
+    demo_parser = subparsers.add_parser("demo", help="See Cortex in action")
 
     # Wizard command
-    wizard_parser = subparsers.add_parser('wizard', help='Configure API key interactively')
+    wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
 
     # Status command
-    status_parser = subparsers.add_parser('status', help='Show system status')
+    status_parser = subparsers.add_parser("status", help="Show system status")
 
     # Install command
-    install_parser = subparsers.add_parser('install', help='Install software using natural language or template')
+    install_parser = subparsers.add_parser("install", help="Install software using natural language or template")
     install_group = install_parser.add_mutually_exclusive_group(required=True)
-    install_group.add_argument('software', type=str, nargs='?', help='Software to install (natural language)')
-    install_group.add_argument('--template', type=str, help='Install from template (e.g., lamp, mean, mern)')
-    install_parser.add_argument('--execute', action='store_true', help='Execute the generated commands')
-    install_parser.add_argument('--dry-run', action='store_true', help='Show commands without executing')
+    install_group.add_argument("software", type=str, nargs="?", help="Software to install (natural language)")
+    install_group.add_argument("--template", type=str, help="Install from template (e.g., lamp, mean, mern)")
+    install_parser.add_argument("--execute", action="store_true", help="Execute the generated commands")
+    install_parser.add_argument("--dry-run", action="store_true", help="Show commands without executing")
 
     # History command
-    history_parser = subparsers.add_parser('history', help='View history')
-    history_parser.add_argument('--limit', type=int, default=20)
-    history_parser.add_argument('--status', choices=['success', 'failed'])
-    history_parser.add_argument('show_id', nargs='?')
+    history_parser = subparsers.add_parser("history", help="View history")
+    history_parser.add_argument("--limit", type=int, default=20)
+    history_parser.add_argument("--status", choices=["success", "failed"])
+    history_parser.add_argument("show_id", nargs="?")
 
     # Rollback command
-    rollback_parser = subparsers.add_parser('rollback', help='Rollback an installation')
-    rollback_parser.add_argument('id', help='Installation ID to rollback')
-    rollback_parser.add_argument('--dry-run', action='store_true', help='Show rollback actions without executing')
+    rollback_parser = subparsers.add_parser("rollback", help="Rollback an installation")
+    rollback_parser.add_argument("id", help="Installation ID to rollback")
+    rollback_parser.add_argument("--dry-run", action="store_true", help="Show rollback actions without executing")
 
     # Preferences commands
-    check_pref_parser = subparsers.add_parser('check-pref', help='Check preferences')
-    check_pref_parser.add_argument('key', nargs='?')
+    check_pref_parser = subparsers.add_parser("check-pref", help="Check preferences")
+    check_pref_parser.add_argument("key", nargs="?")
 
-    edit_pref_parser = subparsers.add_parser('edit-pref', help='Edit preferences')
-    edit_pref_parser.add_argument('action', choices=['set', 'add', 'delete', 'list', 'validate'])
-    edit_pref_parser.add_argument('key', nargs='?')
-    edit_pref_parser.add_argument('value', nargs='?')
+    edit_pref_parser = subparsers.add_parser("edit-pref", help="Edit preferences")
+    edit_pref_parser.add_argument("action", choices=["set", "add", "delete", "list", "validate"])
+    edit_pref_parser.add_argument("key", nargs="?")
+    edit_pref_parser.add_argument("value", nargs="?")
 
     # --- New Notify Command ---
-    notify_parser = subparsers.add_parser('notify', help='Manage desktop notifications')
-    notify_subs = notify_parser.add_subparsers(dest='notify_action', help='Notify actions')
+    notify_parser = subparsers.add_parser("notify", help="Manage desktop notifications")
+    notify_subs = notify_parser.add_subparsers(dest="notify_action", help="Notify actions")
 
-    notify_subs.add_parser('config', help='Show configuration')
-    notify_subs.add_parser('enable', help='Enable notifications')
-    notify_subs.add_parser('disable', help='Disable notifications')
+    notify_subs.add_parser("config", help="Show configuration")
+    notify_subs.add_parser("enable", help="Enable notifications")
+    notify_subs.add_parser("disable", help="Disable notifications")
 
-    dnd_parser = notify_subs.add_parser('dnd', help='Configure DND window')
-    dnd_parser.add_argument('start', help='Start time (HH:MM)')
-    dnd_parser.add_argument('end', help='End time (HH:MM)')
+    dnd_parser = notify_subs.add_parser("dnd", help="Configure DND window")
+    dnd_parser.add_argument("start", help="Start time (HH:MM)")
+    dnd_parser.add_argument("end", help="End time (HH:MM)")
 
-    send_parser = notify_subs.add_parser('send', help='Send test notification')
-    send_parser.add_argument('message', help='Notification message')
-    send_parser.add_argument('--title', default='Cortex Notification')
-    send_parser.add_argument('--level', choices=['low', 'normal', 'critical'], default='normal')
-    send_parser.add_argument('--actions', nargs='*', help='Action buttons')
+    send_parser = notify_subs.add_parser("send", help="Send test notification")
+    send_parser.add_argument("message", help="Notification message")
+    send_parser.add_argument("--title", default="Cortex Notification")
+    send_parser.add_argument("--level", choices=["low", "normal", "critical"], default="normal")
+    send_parser.add_argument("--actions", nargs="*", help="Action buttons")
     # --------------------------
+
+    # Template commands
+    template_parser = subparsers.add_parser("template", help="Manage installation templates")
+    template_subs = template_parser.add_subparsers(dest="template_action", help="Template actions")
+    template_subs.add_parser("list", help="List all available templates")
+    
+    template_create_parser = template_subs.add_parser("create", help="Create a new template")
+    template_create_parser.add_argument("name", help="Template name")
+    
+    template_import_parser = template_subs.add_parser("import", help="Import a template from file")
+    template_import_parser.add_argument("file_path", help="Path to template file")
+    template_import_parser.add_argument("--name", help="Override template name")
+    
+    template_export_parser = template_subs.add_parser("export", help="Export a template to file")
+    template_export_parser.add_argument("name", help="Template name")
+    template_export_parser.add_argument("file_path", help="Output file path")
+    template_export_parser.add_argument("--format", choices=["yaml", "json"], default="yaml", help="Export format")
+
+    # Cache commands
+    cache_parser = subparsers.add_parser("cache", help="Cache operations")
+    cache_subs = cache_parser.add_subparsers(dest="cache_action", help="Cache actions")
+    cache_subs.add_parser("stats", help="Show cache statistics")
 
     args = parser.parse_args()
 
@@ -940,43 +1003,49 @@ Environment Variables:
         return 0
 
     cli = CortexCLI(verbose=args.verbose)
+    cli.offline = bool(getattr(args, "offline", False))
 
     try:
-        if args.command == 'demo':
+        if args.command == "demo":
             return cli.demo()
-        elif args.command == 'wizard':
+        elif args.command == "wizard":
             return cli.wizard()
-        elif args.command == 'status':
+        elif args.command == "status":
             return cli.status()
-        elif args.command == 'install':
+        elif args.command == "install":
             if args.template:
                 return cli.install("", execute=args.execute, dry_run=args.dry_run, template=args.template)
             else:
                 # software is guaranteed to be set due to mutually_exclusive_group(required=True)
                 return cli.install(args.software, execute=args.execute, dry_run=args.dry_run)
-        elif args.command == 'history':
+        elif args.command == "history":
             return cli.history(limit=args.limit, status=args.status, show_id=args.show_id)
-        elif args.command == 'rollback':
+        elif args.command == "rollback":
             return cli.rollback(args.id, dry_run=args.dry_run)
-        elif args.command == 'template':
-            if args.template_action == 'list':
+        elif args.command == "template":
+            if args.template_action == "list":
                 return cli.template_list()
-            elif args.template_action == 'create':
+            elif args.template_action == "create":
                 return cli.template_create(args.name)
-            elif args.template_action == 'import':
+            elif args.template_action == "import":
                 return cli.template_import(args.file_path, args.name)
-            elif args.template_action == 'export':
+            elif args.template_action == "export":
                 return cli.template_export(args.name, args.file_path, args.format)
             else:
-                template_parser.print_help()
+                parser.print_help()
                 return 1
-        elif args.command == 'check-pref':
+        elif args.command == "check-pref":
             return cli.check_pref(key=args.key)
-        elif args.command == 'edit-pref':
+        elif args.command == "edit-pref":
             return cli.edit_pref(action=args.action, key=args.key, value=args.value)
         # Handle the new notify command
-        elif args.command == 'notify':
+        elif args.command == "notify":
             return cli.notify(args)
+        elif args.command == "cache":
+            if getattr(args, "cache_action", None) == "stats":
+                return cli.cache_stats()
+            parser.print_help()
+            return 1
         else:
             parser.print_help()
             return 1
@@ -987,5 +1056,6 @@ Environment Variables:
         print(f"❌ Unexpected error: {e}", file=sys.stderr)
         return 1
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sys.exit(main())

@@ -5,125 +5,119 @@ This module provides safe command execution with validation and sandboxing.
 All commands should go through these utilities to prevent shell injection.
 """
 
-import subprocess
-import shlex
-import re
-from typing import List, Tuple, Optional
-from dataclasses import dataclass
 import logging
+import re
+import shlex
+import subprocess
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 # Dangerous patterns that should never be executed
 DANGEROUS_PATTERNS = [
     # File system destruction
-    r'rm\s+-rf\s+[/\*]',
-    r'rm\s+-rf\s+\$',
-    r'rm\s+--no-preserve-root',
-    r':\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}',  # Fork bomb
-
+    r"rm\s+-rf\s+[/\*]",
+    r"rm\s+-rf\s+\$",
+    r"rm\s+--no-preserve-root",
+    r":\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}",  # Fork bomb
     # Disk operations
-    r'dd\s+if=.*of=/dev/',
-    r'mkfs\.',
-    r'wipefs',
-
+    r"dd\s+if=.*of=/dev/",
+    r"mkfs\.",
+    r"wipefs",
     # Network attacks
-    r'curl\s+.*\|\s*sh',
-    r'curl\s+.*\|\s*bash',
-    r'wget\s+.*\|\s*sh',
-    r'wget\s+.*\|\s*bash',
-    r'curl\s+-o\s+-\s+.*\|\s*',
-
+    r"curl\s+.*\|\s*sh",
+    r"curl\s+.*\|\s*bash",
+    r"wget\s+.*\|\s*sh",
+    r"wget\s+.*\|\s*bash",
+    r"curl\s+-o\s+-\s+.*\|\s*",
     # Code execution
-    r'\beval\s+',
+    r"\beval\s+",
     r'python\s+-c\s+["\'].*exec',
     r'python\s+-c\s+["\'].*import\s+os',
-    r'base64\s+-d\s+.*\|',
-    r'\$\(.*\)',  # Command substitution (dangerous in some contexts)
-
+    r"base64\s+-d\s+.*\|",
+    r"\$\(.*\)",  # Command substitution (dangerous in some contexts)
     # System modification
-    r'>\s*/etc/',
-    r'chmod\s+777',
-    r'chmod\s+\+s',
-    r'chown\s+.*:.*\s+/',
-
+    r">\s*/etc/",
+    r"chmod\s+777",
+    r"chmod\s+\+s",
+    r"chown\s+.*:.*\s+/",
     # Privilege escalation
-    r'sudo\s+su\s*$',
-    r'sudo\s+-i\s*$',
-
+    r"sudo\s+su\s*$",
+    r"sudo\s+-i\s*$",
     # Environment manipulation
-    r'export\s+LD_PRELOAD',
-    r'export\s+LD_LIBRARY_PATH.*=/',
+    r"export\s+LD_PRELOAD",
+    r"export\s+LD_LIBRARY_PATH.*=/",
 ]
 
 # Commands that are allowed (allowlist for package management)
 ALLOWED_COMMAND_PREFIXES = [
-    'apt',
-    'apt-get',
-    'apt-cache',
-    'dpkg',
-    'yum',
-    'dnf',
-    'pacman',
-    'zypper',
-    'pip',
-    'pip3',
-    'npm',
-    'systemctl',
-    'service',
-    'docker',
-    'docker-compose',
-    'kubectl',
-    'git',
-    'curl',  # Only for downloading, not piping to shell
-    'wget',  # Only for downloading, not piping to shell
-    'tar',
-    'unzip',
-    'chmod',
-    'chown',
-    'mkdir',
-    'cp',
-    'mv',
-    'ln',
-    'cat',
-    'echo',
-    'tee',
-    'grep',
-    'sed',
-    'awk',
-    'head',
-    'tail',
-    'sort',
-    'uniq',
-    'wc',
-    'ls',
-    'find',
-    'which',
-    'whereis',
-    'id',
-    'whoami',
-    'hostname',
-    'uname',
-    'lsb_release',
-    'nvidia-smi',
-    'nvcc',
-    'make',
-    'cmake',
-    'gcc',
-    'g++',
-    'python',
-    'python3',
-    'node',
-    'java',
-    'go',
-    'rustc',
-    'cargo',
+    "apt",
+    "apt-get",
+    "apt-cache",
+    "dpkg",
+    "yum",
+    "dnf",
+    "pacman",
+    "zypper",
+    "pip",
+    "pip3",
+    "npm",
+    "systemctl",
+    "service",
+    "docker",
+    "docker-compose",
+    "kubectl",
+    "git",
+    "curl",  # Only for downloading, not piping to shell
+    "wget",  # Only for downloading, not piping to shell
+    "tar",
+    "unzip",
+    "chmod",
+    "chown",
+    "mkdir",
+    "cp",
+    "mv",
+    "ln",
+    "cat",
+    "echo",
+    "tee",
+    "grep",
+    "sed",
+    "awk",
+    "head",
+    "tail",
+    "sort",
+    "uniq",
+    "wc",
+    "ls",
+    "find",
+    "which",
+    "whereis",
+    "id",
+    "whoami",
+    "hostname",
+    "uname",
+    "lsb_release",
+    "nvidia-smi",
+    "nvcc",
+    "make",
+    "cmake",
+    "gcc",
+    "g++",
+    "python",
+    "python3",
+    "node",
+    "java",
+    "go",
+    "rustc",
+    "cargo",
 ]
 
 
 @dataclass
 class CommandResult:
     """Result of a command execution."""
+
     success: bool
     stdout: str
     stderr: str
@@ -133,10 +127,11 @@ class CommandResult:
 
 class CommandValidationError(Exception):
     """Raised when a command fails validation."""
+
     pass
 
 
-def validate_command(command: str, strict: bool = True) -> Tuple[bool, Optional[str]]:
+def validate_command(command: str, strict: bool = True) -> tuple[bool, str | None]:
     """
     Validate a command for security.
 
@@ -158,39 +153,39 @@ def validate_command(command: str, strict: bool = True) -> Tuple[bool, Optional[
             return False, f"Dangerous pattern detected: {pattern}"
 
     # Check for shell metacharacters that could enable injection
-    dangerous_chars = ['`', '$', '&&', '||', ';', '\n', '\r']
+    dangerous_chars = ["`", "$", "&&", "||", ";", "\n", "\r"]
     for char in dangerous_chars:
         if char in command:
             # Allow some patterns like $(dpkg --print-architecture)
-            if char == '$' and '$(' in command:
+            if char == "$" and "$(" in command:
                 # Only allow specific safe command substitutions
                 safe_substitutions = [
-                    '$(dpkg --print-architecture)',
-                    '$(lsb_release -cs)',
-                    '$(uname -r)',
-                    '$(uname -m)',
-                    '$(whoami)',
-                    '$(hostname)',
+                    "$(dpkg --print-architecture)",
+                    "$(lsb_release -cs)",
+                    "$(uname -r)",
+                    "$(uname -m)",
+                    "$(whoami)",
+                    "$(hostname)",
                 ]
                 # Check if all $(...) patterns are in safe list
-                found_subs = re.findall(r'\$\([^)]+\)', command)
+                found_subs = re.findall(r"\$\([^)]+\)", command)
                 for sub in found_subs:
                     if sub not in safe_substitutions:
                         return False, f"Unsafe command substitution: {sub}"
-            elif char == '&&' or char == '||':
+            elif char == "&&" or char == "||":
                 # Allow chained commands, but validate each part
                 continue
-            elif char == ';':
+            elif char == ";":
                 # Semicolon is dangerous - could chain arbitrary commands
-                return False, f"Semicolon not allowed in commands"
-            elif char == '`':
-                return False, f"Backtick command substitution not allowed"
+                return False, "Semicolon not allowed in commands"
+            elif char == "`":
+                return False, "Backtick command substitution not allowed"
 
     # Strict mode: command must start with allowed prefix
     if strict:
         first_word = command.split()[0]
         # Handle sudo prefix
-        if first_word == 'sudo':
+        if first_word == "sudo":
             parts = command.split()
             if len(parts) > 1:
                 first_word = parts[1]
@@ -212,13 +207,13 @@ def sanitize_command(command: str) -> str:
         Sanitized command string
     """
     # Remove null bytes
-    command = command.replace('\x00', '')
+    command = command.replace("\x00", "")
 
     # Remove control characters
-    command = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', command)
+    command = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", command)
 
     # Normalize whitespace
-    command = ' '.join(command.split())
+    command = " ".join(command.split())
 
     return command
 
@@ -229,7 +224,7 @@ def run_command(
     validate: bool = True,
     use_shell: bool = False,
     capture_output: bool = True,
-    cwd: Optional[str] = None
+    cwd: str | None = None,
 ) -> CommandResult:
     """
     Execute a command safely with validation.
@@ -267,18 +262,14 @@ def run_command(
                 capture_output=capture_output,
                 text=True,
                 timeout=timeout,
-                cwd=cwd
+                cwd=cwd,
             )
         else:
             # Safer: parse command and execute without shell
             # This prevents most injection attacks
             args = shlex.split(command)
             result = subprocess.run(
-                args,
-                capture_output=capture_output,
-                text=True,
-                timeout=timeout,
-                cwd=cwd
+                args, capture_output=capture_output, text=True, timeout=timeout, cwd=cwd
             )
 
         return CommandResult(
@@ -286,7 +277,7 @@ def run_command(
             stdout=result.stdout if capture_output else "",
             stderr=result.stderr if capture_output else "",
             return_code=result.returncode,
-            command=command
+            command=command,
         )
 
     except subprocess.TimeoutExpired:
@@ -295,7 +286,7 @@ def run_command(
             stdout="",
             stderr=f"Command timed out after {timeout} seconds",
             return_code=-1,
-            command=command
+            command=command,
         )
     except FileNotFoundError as e:
         return CommandResult(
@@ -303,24 +294,18 @@ def run_command(
             stdout="",
             stderr=f"Command not found: {e}",
             return_code=-1,
-            command=command
+            command=command,
         )
     except Exception as e:
         logger.exception(f"Error executing command: {command}")
         return CommandResult(
-            success=False,
-            stdout="",
-            stderr=str(e),
-            return_code=-1,
-            command=command
+            success=False, stdout="", stderr=str(e), return_code=-1, command=command
         )
 
 
 def run_command_chain(
-    commands: List[str],
-    timeout_per_command: int = 300,
-    stop_on_error: bool = True
-) -> List[CommandResult]:
+    commands: list[str], timeout_per_command: int = 300, stop_on_error: bool = True
+) -> list[CommandResult]:
     """
     Execute a chain of commands safely.
 

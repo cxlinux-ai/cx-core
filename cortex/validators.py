@@ -6,42 +6,49 @@ Validates user input and provides helpful error messages.
 
 import os
 import re
-from typing import Optional, Tuple
 
 
 class ValidationError(Exception):
     """Custom exception for validation errors with user-friendly messages"""
 
-    def __init__(self, message: str, suggestion: Optional[str] = None):
+    def __init__(self, message: str, suggestion: str | None = None):
         self.message = message
         self.suggestion = suggestion
         super().__init__(message)
 
 
-def validate_api_key() -> Tuple[bool, Optional[str], Optional[str]]:
+def validate_api_key() -> tuple[bool, str | None, str | None]:
     """
     Validate that an API key is configured.
 
     Returns:
         Tuple of (is_valid, provider, error_message)
     """
-    anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
-    openai_key = os.environ.get('OPENAI_API_KEY')
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    openai_key = os.environ.get("OPENAI_API_KEY")
 
     if anthropic_key:
-        if not anthropic_key.startswith('sk-ant-'):
-            return (False, None, "ANTHROPIC_API_KEY doesn't look valid (should start with 'sk-ant-')")
-        return (True, 'claude', None)
+        if not anthropic_key.startswith("sk-ant-"):
+            return (
+                False,
+                None,
+                "ANTHROPIC_API_KEY doesn't look valid (should start with 'sk-ant-')",
+            )
+        return (True, "claude", None)
 
     if openai_key:
-        if not openai_key.startswith('sk-'):
+        if not openai_key.startswith("sk-"):
             return (False, None, "OPENAI_API_KEY doesn't look valid (should start with 'sk-')")
-        return (True, 'openai', None)
+        return (True, "openai", None)
 
-    return (False, None, "No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.")
+    return (
+        False,
+        None,
+        "No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.",
+    )
 
 
-def validate_package_name(name: str) -> Tuple[bool, Optional[str]]:
+def validate_package_name(name: str) -> tuple[bool, str | None]:
     """
     Validate a package name for safety.
 
@@ -49,14 +56,14 @@ def validate_package_name(name: str) -> Tuple[bool, Optional[str]]:
         Tuple of (is_valid, error_message)
     """
     # Check for shell injection attempts
-    dangerous_chars = [';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '\n', '\r']
+    dangerous_chars = [";", "|", "&", "$", "`", "(", ")", "{", "}", "<", ">", "\n", "\r"]
 
     for char in dangerous_chars:
         if char in name:
             return (False, f"Package name contains invalid character: '{char}'")
 
     # Check for path traversal
-    if '..' in name or name.startswith('/'):
+    if ".." in name or name.startswith("/"):
         return (False, "Package name cannot contain path components")
 
     # Check reasonable length
@@ -69,7 +76,7 @@ def validate_package_name(name: str) -> Tuple[bool, Optional[str]]:
     return (True, None)
 
 
-def validate_install_request(request: str) -> Tuple[bool, Optional[str]]:
+def validate_install_request(request: str) -> tuple[bool, str | None]:
     """
     Validate a natural language install request.
 
@@ -85,11 +92,11 @@ def validate_install_request(request: str) -> Tuple[bool, Optional[str]]:
 
     # Check for obvious shell injection in natural language
     shell_patterns = [
-        r';\s*rm\s',
-        r';\s*sudo\s',
-        r'\|\s*bash',
-        r'\$\(',
-        r'`[^`]+`',
+        r";\s*rm\s",
+        r";\s*sudo\s",
+        r"\|\s*bash",
+        r"\$\(",
+        r"`[^`]+`",
     ]
 
     for pattern in shell_patterns:
@@ -99,7 +106,7 @@ def validate_install_request(request: str) -> Tuple[bool, Optional[str]]:
     return (True, None)
 
 
-def validate_installation_id(install_id: str) -> Tuple[bool, Optional[str]]:
+def validate_installation_id(install_id: str) -> tuple[bool, str | None]:
     """
     Validate an installation ID format.
 
@@ -107,7 +114,7 @@ def validate_installation_id(install_id: str) -> Tuple[bool, Optional[str]]:
         Tuple of (is_valid, error_message)
     """
     # IDs should be alphanumeric with dashes (UUID-like)
-    if not re.match(r'^[a-zA-Z0-9\-_]+$', install_id):
+    if not re.match(r"^[a-zA-Z0-9\-_]+$", install_id):
         return (False, "Invalid installation ID format")
 
     if len(install_id) > 100:
@@ -128,17 +135,9 @@ def sanitize_command(command: str) -> str:
         Sanitized command string
     """
     # Mask API keys in output
-    sanitized = re.sub(
-        r'(ANTHROPIC_API_KEY|OPENAI_API_KEY)=\S+',
-        r'\1=***',
-        command
-    )
+    sanitized = re.sub(r"(ANTHROPIC_API_KEY|OPENAI_API_KEY)=\S+", r"\1=***", command)
 
     # Mask bearer tokens
-    sanitized = re.sub(
-        r'Bearer\s+\S+',
-        'Bearer ***',
-        sanitized
-    )
+    sanitized = re.sub(r"Bearer\s+\S+", "Bearer ***", sanitized)
 
     return sanitized
