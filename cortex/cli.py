@@ -14,7 +14,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
-from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
+from cortex.installation_history import (
+    InstallationHistory,
+    InstallationStatus,
+    InstallationType,
+)
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.notification_manager import NotificationManager
 from cortex.stack_manager import StackManager

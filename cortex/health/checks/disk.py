@@ -1,13 +1,14 @@
 import shutil
-from ..monitor import HealthCheck, CheckResult
+
+from ..monitor import CheckResult, HealthCheck
+
 
 class DiskCheck(HealthCheck):
     """Check root filesystem disk usage."""
 
     def run(self) -> CheckResult:
-        """
-        Calculate disk usage percentage.
-        
+        """Calculate disk usage percentage.
+
         Returns:
             CheckResult based on usage thresholds.
         """
@@ -25,7 +26,7 @@ class DiskCheck(HealthCheck):
                 recommendation="Check disk mounts and permissions",
                 weight=0.20
             )
-        
+
         # Explicit early returns to avoid static analysis confusion
         if usage_percent > 90:
             return CheckResult(
@@ -37,7 +38,7 @@ class DiskCheck(HealthCheck):
                 recommendation="Clean up disk space immediately",
                 weight=0.20
             )
-            
+
         if usage_percent > 80:
             return CheckResult(
                 name="Disk Usage",

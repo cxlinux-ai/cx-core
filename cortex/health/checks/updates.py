@@ -1,5 +1,6 @@
 import subprocess
-from ..monitor import HealthCheck, CheckResult
+
+from ..monitor import CheckResult, HealthCheck
 
 # Command constants (full paths for security)
 APT_CMD = "/usr/bin/apt"
@@ -81,9 +82,11 @@ class UpdateCheck(HealthCheck):
             )
 
         status = "OK"
-        if score < 50: status = "CRITICAL"
-        elif score < 90: status = "WARNING"
-        
+        if score < 50:
+            status = "CRITICAL"
+        elif score < 90:
+            status = "WARNING"
+
         details = f"{pkg_count} packages, {sec_count} security updates pending"
         if pkg_count == 0 and sec_count == 0:
             details = "System up to date"

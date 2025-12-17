@@ -1,6 +1,7 @@
-import subprocess
 import os
-from ..monitor import HealthCheck, CheckResult
+import subprocess
+
+from ..monitor import CheckResult, HealthCheck
 
 # Command constants (full paths for security - avoids PATH manipulation attacks)
 SYSTEMCTL_CMD = "/usr/bin/systemctl"
@@ -34,7 +35,7 @@ class SecurityCheck(HealthCheck):
         score = 100
         issues = []
         recommendations = []
-        
+
         # 1. Firewall (UFW) Check
         ufw_active = False
         try:
@@ -66,8 +67,10 @@ class SecurityCheck(HealthCheck):
             score -= 50
 
         status = "OK"
-        if score < 50: status = "CRITICAL"
-        elif score < 100: status = "WARNING"
+        if score < 50:
+            status = "CRITICAL"
+        elif score < 100:
+            status = "WARNING"
 
         return CheckResult(
             name="Security Posture",
@@ -92,7 +95,7 @@ class SecurityCheck(HealthCheck):
             if not os.path.exists(SSH_CONFIG_PATH):
                 return
 
-            with open(SSH_CONFIG_PATH, 'r') as f:
+            with open(SSH_CONFIG_PATH) as f:
                 for line in f:
                     stripped = line.strip()
                     # Check for uncommented PermitRootLogin yes
