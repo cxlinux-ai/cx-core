@@ -189,13 +189,6 @@ class CortexCLI:
 
     # -------------------------------
 
-    def install(
-        self,
-        software: str,
-        execute: bool = False,
-        dry_run: bool = False,
-        simulate: bool = False,
-    ):
     # Run system health checks
     def doctor(self):
         from cortex.doctor import SystemDoctor
@@ -203,11 +196,17 @@ class CortexCLI:
         doctor = SystemDoctor()
         return doctor.run_checks()
 
-    def install(self, software: str, execute: bool = False, dry_run: bool = False):
+    def install(
+        self,
+        software: str,
+        execute: bool = False,
+        dry_run: bool = False,
+        simulate: bool = False,
+    ):
         # Validate input first
         is_valid, error = validate_install_request(software)
         if not is_valid:
-            self._print_error(error)
+            self._print_error(error or "Invalid install request")
             return 1
 
         # Handle simulation mode early (no install execution)
