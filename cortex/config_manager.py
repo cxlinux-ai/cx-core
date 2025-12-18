@@ -77,6 +77,10 @@ class ConfigManager:
         # Cortex targets Linux. On non-POSIX systems (e.g., Windows), uid/gid ownership
         # APIs like os.getuid/os.chown are unavailable, so skip strict enforcement.
         if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+            try:
+                os.chmod(directory, 0o700)
+            except OSError:
+                pass
             return
 
         try:
@@ -88,7 +92,11 @@ class ConfigManager:
             # Check and fix ownership if needed
             if stat_info.st_uid != current_uid or stat_info.st_gid != current_gid:
                 try:
-                    os.chown(directory, current_uid, current_gid)
+                    if hasattr(os, "chown"):
+                        os.chown(directory, current_uid, current_gid)
+                    else:
+                        # Cannot change ownership on this platform
+                        pass
                 except PermissionError:
                     raise PermissionError(
                         f"Directory {directory} is owned by uid={stat_info.st_uid}, "

@@ -21,11 +21,6 @@ import shutil
 import subprocess
 import sys
 import time
-
-try:
-    import resource  # POSIX-only
-except ImportError:  # pragma: no cover
-    resource = None
 from datetime import datetime
 from typing import Any
 
