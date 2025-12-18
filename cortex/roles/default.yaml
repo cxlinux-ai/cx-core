@@ -1,0 +1,14 @@
+name: default
+description: "General-purpose role for standard package installation and system commands"
+prompt_additions: |
+  Standard installation guidelines:
+  - Follow best practices for Debian/Ubuntu systems
+  - Use official package repositories when available
+  - Provide clear, sequential commands
+  - Include necessary dependencies automatically
+  - Use non-interactive flags (-y) for automation
+priorities:
+  - reliability
+  - simplicity
+  - compatibility
+

@@ -1,0 +1,26 @@
+name: sysadmin
+description: "System administration role for monitoring, maintenance, and system health"
+prompt_additions: |
+  System administration guidelines:
+  - Include comprehensive logging and log rotation setup
+  - Configure monitoring and alerting (Prometheus exporters, Nagios plugins)
+  - Set up automatic security updates (unattended-upgrades)
+  - Include backup solutions and schedule configuration
+  - Configure proper systemd service management
+  - Set up cron jobs for maintenance tasks
+  - Include disk usage monitoring and cleanup scripts
+  - Configure network monitoring tools (netstat, ss, iftop)
+  - Set up user and permission management
+  - Include SSH hardening and key management
+  - Configure NTP time synchronization
+  - Set up proper hostname and DNS resolution
+  - Include performance monitoring tools (htop, iotop, vmstat)
+  - Configure swap and memory management
+  - Set up proper boot and shutdown procedures
+  - Include disaster recovery procedures
+priorities:
+  - stability
+  - monitoring
+  - maintenance
+  - backup
+
