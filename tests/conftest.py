@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-
 """Pytest configuration.
 
 Some tests in this repository import implementation modules as if they were top-level

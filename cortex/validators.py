@@ -7,21 +7,20 @@ Validates user input and provides helpful error messages.
 import os
 import re
 
-
 # Dangerous command patterns to block for security
 DANGEROUS_PATTERNS = [
-    r'rm\s+-rf\s+[/\*]',
-    r'rm\s+--no-preserve-root',
-    r'dd\s+if=.*of=/dev/',
-    r'curl\s+.*\|\s*sh',
-    r'curl\s+.*\|\s*bash',
-    r'wget\s+.*\|\s*sh',
-    r'wget\s+.*\|\s*bash',
-    r'\beval\s+',
-    r'base64\s+-d\s+.*\|',
-    r'>\s*/etc/',
-    r'chmod\s+777',
-    r'chmod\s+\+s',
+    r"rm\s+-rf\s+[/\*]",
+    r"rm\s+--no-preserve-root",
+    r"dd\s+if=.*of=/dev/",
+    r"curl\s+.*\|\s*sh",
+    r"curl\s+.*\|\s*bash",
+    r"wget\s+.*\|\s*sh",
+    r"wget\s+.*\|\s*bash",
+    r"\beval\s+",
+    r"base64\s+-d\s+.*\|",
+    r">\s*/etc/",
+    r"chmod\s+777",
+    r"chmod\s+\+s",
 ]
 
 

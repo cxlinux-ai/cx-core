@@ -304,15 +304,15 @@ class TestSecurityFeatures(unittest.TestCase):
         """Test that all dangerous patterns are blocked."""
         for pattern in self.executor.DANGEROUS_PATTERNS:
             # Create a command matching the pattern
-            test_cmd = pattern.replace(r'\s+', ' ').replace(r'[/\*]', '/')
-            test_cmd = test_cmd.replace(r'\s*', ' ')
-            test_cmd = test_cmd.replace(r'\$HOME', '$HOME')
-            test_cmd = test_cmd.replace(r'\.', '.')
-            test_cmd = test_cmd.replace(r'\+', '+')
-            test_cmd = test_cmd.replace(r'\|', '|')
-            test_cmd = test_cmd.replace(r'.*', 'http://example.com/script.sh')
-            test_cmd = test_cmd.replace(r'[0-7]{3,4}', '777')
-            
+            test_cmd = pattern.replace(r"\s+", " ").replace(r"[/\*]", "/")
+            test_cmd = test_cmd.replace(r"\s*", " ")
+            test_cmd = test_cmd.replace(r"\$HOME", "$HOME")
+            test_cmd = test_cmd.replace(r"\.", ".")
+            test_cmd = test_cmd.replace(r"\+", "+")
+            test_cmd = test_cmd.replace(r"\|", "|")
+            test_cmd = test_cmd.replace(r".*", "http://example.com/script.sh")
+            test_cmd = test_cmd.replace(r"[0-7]{3,4}", "777")
+
             is_valid, violation = self.executor.validate_command(test_cmd)
             self.assertFalse(is_valid, f"Pattern should be blocked: {pattern}")
 
