@@ -42,7 +42,6 @@ MANIFEST
 # ==============================
 # PyInstaller
 # ==============================
-# Usually contains temporary files from pyinstaller builds
 *.manifest
 *.spec
 
