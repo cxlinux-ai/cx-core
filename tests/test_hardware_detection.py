@@ -3,6 +3,7 @@ Tests for Hardware Detection Module
 
 Issue: #253
 """
+
 import json
 import os
 import subprocess

@@ -21,6 +21,7 @@ from cortex.sandbox.sandbox_executor import (
     ExecutionResult,
     SandboxExecutor,
 )
+from cortex.validators import DANGEROUS_PATTERNS
 
 
 class TestSandboxExecutor(unittest.TestCase):
@@ -302,16 +303,25 @@ class TestSecurityFeatures(unittest.TestCase):
 
     def test_dangerous_patterns_blocked(self):
         """Test that all dangerous patterns are blocked."""
-        for pattern in self.executor.DANGEROUS_PATTERNS:
-            # Create a command matching the pattern
-            test_cmd = pattern.replace(r"\s+", " ").replace(r"[/\*]", "/")
-            test_cmd = test_cmd.replace(r"\s*", " ")
-            test_cmd = test_cmd.replace(r"\$HOME", "$HOME")
-            test_cmd = test_cmd.replace(r"\.", ".")
-            test_cmd = test_cmd.replace(r"\+", "+")
-            test_cmd = test_cmd.replace(r"\|", "|")
-            test_cmd = test_cmd.replace(r".*", "http://example.com/script.sh")
-            test_cmd = test_cmd.replace(r"[0-7]{3,4}", "777")
+        for pattern in DANGEROUS_PATTERNS:
+            # Create a command that should match the regex pattern.
+            # Some patterns include regex character classes/lookaheads that can't be
+            # naively converted by string replacement.
+            if "python\\s+-c" in pattern and "exec" in pattern:
+                test_cmd = 'python -c "exec(\'print(1)\')"'
+            elif "python\\s+-c" in pattern and "__import__" in pattern:
+                test_cmd = 'python -c "__import__(\'os\')"'
+            elif "/dev/(?!null" in pattern:
+                test_cmd = "echo hi > /dev/sda"
+            else:
+                test_cmd = pattern.replace(r"\s+", " ").replace(r"[/\*]", "/")
+                test_cmd = test_cmd.replace(r"\s*", " ")
+                test_cmd = test_cmd.replace(r"\$HOME", "$HOME")
+                test_cmd = test_cmd.replace(r"\.", ".")
+                test_cmd = test_cmd.replace(r"\+", "+")
+                test_cmd = test_cmd.replace(r"\|", "|")
+                test_cmd = test_cmd.replace(r".*", "http://example.com/script.sh")
+                test_cmd = test_cmd.replace(r"[0-7]{3,4}", "777")
 
             is_valid, violation = self.executor.validate_command(test_cmd)
             self.assertFalse(is_valid, f"Pattern should be blocked: {pattern}")

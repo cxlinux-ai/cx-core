@@ -29,6 +29,8 @@ except ImportError:  # pragma: no cover
 from datetime import datetime
 from typing import Any
 
+from cortex.validators import DANGEROUS_PATTERNS
+
 
 class CommandBlocked(Exception):
     """Raised when a command is blocked."""
@@ -150,44 +152,6 @@ class SandboxExecutor:
         "dpkg -i",
     }
 
-    # Dangerous patterns to block
-    DANGEROUS_PATTERNS = [
-        r"rm\s+-rf\s+[/\*]",  # rm -rf / or rm -rf /*
-        r"rm\s+-rf\s+\$HOME",  # rm -rf $HOME
-        r"rm\s+--no-preserve-root",  # rm with no-preserve-root
-        r"dd\s+if=",  # dd command
-        r"mkfs\.",  # mkfs commands
-        r"fdisk",  # fdisk
-        r"parted",  # parted
-        r"wipefs",  # wipefs
-        r"format\s+",  # format commands
-        r">\s*/dev/",  # Redirect to device files
-        r"chmod\s+[0-7]{3,4}\s+/",  # chmod on root
-        r"chmod\s+777",  # World-writable permissions
-        r"chmod\s+\+s",  # Setuid bit
-        r"chown\s+.*\s+/",  # chown on root
-        # Remote code execution patterns
-        r"curl\s+.*\|\s*sh",  # curl pipe to shell
-        r"curl\s+.*\|\s*bash",  # curl pipe to bash
-        r"wget\s+.*\|\s*sh",  # wget pipe to shell
-        r"wget\s+.*\|\s*bash",  # wget pipe to bash
-        r"curl\s+-o\s+-\s+.*\|",  # curl output to pipe
-        # Code injection patterns
-        r"\beval\s+",  # eval command
-        r'python\s+-c\s+["\'].*exec',  # python -c exec
-        r'python\s+-c\s+["\'].*__import__',  # python -c import
-        r"base64\s+-d\s+.*\|",  # base64 decode to pipe
-        r">\s*/etc/",  # Write to /etc
-        # Privilege escalation
-        r"sudo\s+su\s*$",  # sudo su
-        r"sudo\s+-i\s*$",  # sudo -i (interactive root)
-        # Environment manipulation
-        r"export\s+LD_PRELOAD",  # LD_PRELOAD hijacking
-        r"export\s+LD_LIBRARY_PATH.*=/",  # Library path hijacking
-        # Fork bomb
-        r":\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}",  # :(){ :|:& };:
-    ]
-
     # Allowed directories for file operations
     ALLOWED_DIRECTORIES = [
         "/tmp",
@@ -302,7 +266,7 @@ class SandboxExecutor:
             Tuple of (is_valid, violation_reason)
         """
         # Check for dangerous patterns
-        for pattern in self.DANGEROUS_PATTERNS:
+        for pattern in DANGEROUS_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 return False, f"Dangerous pattern detected: {pattern}"
 
@@ -600,6 +564,7 @@ class SandboxExecutor:
             # Set resource limits if not using Firejail
             preexec_fn = None
             if os.name != "nt" and not self.firejail_path and resource is not None:
+
                 def set_resource_limits():
                     """Set resource limits for the subprocess."""
                     try:

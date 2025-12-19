@@ -93,6 +93,7 @@ class TestCommandInterpreter(unittest.TestCase):
 
         interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
         interpreter.client = mock_client
+        interpreter.cache = None
 
         result = interpreter._call_openai("install docker")
         self.assertEqual(result, ["apt update"])
@@ -163,21 +164,17 @@ class TestCommandInterpreter(unittest.TestCase):
 
     @patch("openai.OpenAI")
     def test_parse_with_context(self, mock_openai):
-        mock_client = Mock()
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '{"commands": ["apt update"]}'
-        mock_client.chat.completions.create.return_value = mock_response
-
         interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
-        interpreter.client = mock_client
+        interpreter.parse = Mock(return_value=["apt update"])
 
         system_info = {"os": "ubuntu", "version": "22.04"}
         result = interpreter.parse_with_context("install docker", system_info=system_info)
 
         self.assertEqual(result, ["apt update"])
-        call_args = mock_client.chat.completions.create.call_args
-        self.assertIn("ubuntu", call_args[1]["messages"][1]["content"])
+        interpreter.parse.assert_called_once()
+
+        enriched_input = interpreter.parse.call_args[0][0]
+        self.assertIn("ubuntu", enriched_input)
 
     def test_system_prompt_format(self):
         interpreter = CommandInterpreter.__new__(CommandInterpreter)

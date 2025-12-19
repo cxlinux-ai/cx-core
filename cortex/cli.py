@@ -285,19 +285,11 @@ class CortexCLI:
                         total_duration = 0.0
                         if parallel_tasks:
                             max_end = max(
-                                (
-                                    t.end_time
-                                    for t in parallel_tasks
-                                    if t.end_time is not None
-                                ),
+                                (t.end_time for t in parallel_tasks if t.end_time is not None),
                                 default=None,
                             )
                             min_start = min(
-                                (
-                                    t.start_time
-                                    for t in parallel_tasks
-                                    if t.start_time is not None
-                                ),
+                                (t.start_time for t in parallel_tasks if t.start_time is not None),
                                 default=None,
                             )
                             if max_end is not None and min_start is not None:
@@ -305,14 +297,10 @@ class CortexCLI:
 
                         if success:
                             self._print_success(f"{software} installed successfully!")
-                            print(
-                                f"\nCompleted in {total_duration:.2f} seconds (parallel mode)"
-                            )
+                            print(f"\nCompleted in {total_duration:.2f} seconds (parallel mode)")
 
                             if install_id:
-                                history.update_installation(
-                                    install_id, InstallationStatus.SUCCESS
-                                )
+                                history.update_installation(install_id, InstallationStatus.SUCCESS)
                                 print(f"\n📝 Installation recorded (ID: {install_id})")
                                 print(f"   To rollback: cortex rollback {install_id}")
 
@@ -321,11 +309,7 @@ class CortexCLI:
                         failed_tasks = [
                             t for t in parallel_tasks if getattr(t.status, "value", "") == "failed"
                         ]
-                        error_msg = (
-                            failed_tasks[0].error
-                            if failed_tasks
-                            else "Installation failed"
-                        )
+                        error_msg = failed_tasks[0].error if failed_tasks else "Installation failed"
 
                         if install_id:
                             history.update_installation(

@@ -199,6 +199,7 @@ class HardwareDetector:
         if callable(uname_fn):
             return uname_fn()
         return platform.uname()
+
     def detect(self, force_refresh: bool = False) -> SystemInfo:
         """
         Detect all hardware information.
