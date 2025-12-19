@@ -28,8 +28,15 @@ except ImportError:  # pragma: no cover
     resource = None
 from datetime import datetime
 from typing import Any
-
 from cortex.validators import DANGEROUS_PATTERNS
+
+try:
+    import resource  # type: ignore
+
+    HAS_RESOURCE = True
+except ImportError:  # pragma: no cover
+    resource = None  # type: ignore
+    HAS_RESOURCE = False
 
 
 class CommandBlocked(Exception):
@@ -567,6 +574,8 @@ class SandboxExecutor:
 
                 def set_resource_limits():
                     """Set resource limits for the subprocess."""
+                    if not HAS_RESOURCE:
+                        return
                     try:
                         # Memory limit (RSS - Resident Set Size)
                         memory_bytes = self.max_memory_mb * 1024 * 1024

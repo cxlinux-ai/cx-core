@@ -72,9 +72,9 @@ class ConfigManager:
         Raises:
             PermissionError: If ownership or permissions cannot be secured
         """
-        # Windows (and some restricted environments) do not provide POSIX ownership APIs.
-        # The uid/gid + 0o700 invariant is only enforceable on POSIX.
-        if os.name == "nt" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+        # Cortex targets Linux. On non-POSIX systems (e.g., Windows), uid/gid ownership
+        # APIs like os.getuid/os.chown are unavailable, so skip strict enforcement.
+        if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
             return
 
         try:

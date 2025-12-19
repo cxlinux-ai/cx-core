@@ -1,0 +1,39 @@
+{
+  "stacks": [
+    {
+      "id": "ml",
+      "name": "Machine Learning (GPU)",
+      "description": "PyTorch, CUDA, Jupyter, pandas, numpy, matplotlib",
+      "packages": ["pytorch", "cuda", "jupyter", "numpy", "pandas", "matplotlib"],
+      "hardware": "gpu"
+    },
+    {
+      "id": "ml-cpu",
+      "name": "Machine Learning (CPU)",
+      "description": "PyTorch CPU-only version",
+      "packages": ["pytorch-cpu", "jupyter", "numpy", "pandas"],
+      "hardware": "cpu"
+    },
+    {
+      "id": "webdev",
+      "name": "Web Development",
+      "description": "Node, npm, nginx, postgres",
+      "packages": ["nodejs", "npm", "nginx", "postgresql"],
+      "hardware": "any"
+    },
+    {
+      "id": "devops",
+      "name": "DevOps Tools",
+      "description": "Docker, kubectl, terraform, ansible",
+      "packages": ["docker", "kubectl", "terraform", "ansible"],
+      "hardware": "any"
+    },
+    {
+      "id": "data",
+      "name": "Data Science",
+      "description": "Python, pandas, jupyter, postgres client",
+      "packages": ["python3", "pandas", "jupyter", "sqlalchemy"],
+      "hardware": "any"
+    }
+  ]
+}

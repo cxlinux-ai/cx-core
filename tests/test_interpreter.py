@@ -142,7 +142,10 @@ class TestCommandInterpreter(unittest.TestCase):
         mock_response.choices[0].message.content = '{"commands": ["apt update", "rm -rf /"]}'
         mock_client.chat.completions.create.return_value = mock_response
 
-        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
+        mock_cache = Mock()
+        mock_cache.get_commands.return_value = None
+
+        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai", cache=mock_cache)
         interpreter.client = mock_client
 
         result = interpreter.parse("test command", validate=True)
@@ -156,7 +159,10 @@ class TestCommandInterpreter(unittest.TestCase):
         mock_response.choices[0].message.content = '{"commands": ["apt update", "rm -rf /"]}'
         mock_client.chat.completions.create.return_value = mock_response
 
-        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
+        mock_cache = Mock()
+        mock_cache.get_commands.return_value = None
+
+        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai", cache=mock_cache)
         interpreter.client = mock_client
 
         result = interpreter.parse("test command", validate=False)
@@ -164,8 +170,17 @@ class TestCommandInterpreter(unittest.TestCase):
 
     @patch("openai.OpenAI")
     def test_parse_with_context(self, mock_openai):
-        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
-        interpreter.parse = Mock(return_value=["apt update"])
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = '{"commands": ["apt update"]}'
+        mock_client.chat.completions.create.return_value = mock_response
+
+        mock_cache = Mock()
+        mock_cache.get_commands.return_value = None
+
+        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai", cache=mock_cache)
+        interpreter.client = mock_client
 
         system_info = {"os": "ubuntu", "version": "22.04"}
         result = interpreter.parse_with_context("install docker", system_info=system_info)
@@ -214,7 +229,10 @@ class TestCommandInterpreter(unittest.TestCase):
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai")
+        mock_cache = Mock()
+        mock_cache.get_commands.return_value = None
+
+        interpreter = CommandInterpreter(api_key=self.api_key, provider="openai", cache=mock_cache)
         interpreter.client = mock_client
 
         result = interpreter.parse("install docker")

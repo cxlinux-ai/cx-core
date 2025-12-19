@@ -3,6 +3,10 @@
 # LLM Provider APIs
 anthropic>=0.18.0
 openai>=1.0.0
+requests>=2.32.4
+
+# Configuration
+PyYAML>=6.0.0
 
 # Terminal UI
 rich>=13.0.0

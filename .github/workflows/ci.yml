@@ -68,22 +68,24 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install -U pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
           pip install -e .
           pip install pytest pytest-cov pytest-timeout pytest-asyncio pytest-mock
 
       - name: Run tests with coverage
-        continue-on-error: true  # Allow CI to pass while tests are being fixed
         env:
           ANTHROPIC_API_KEY: "test-key-for-ci"
           OPENAI_API_KEY: "test-key-for-ci"
         run: |
-          pytest tests/ -v \
+          pytest tests/ test/ -v --tb=short \
             --cov=cortex \
             --cov-report=xml \
             --cov-report=term-missing \
             --cov-fail-under=0 \
             --timeout=60 \
-            --ignore=tests/integration
+            --ignore=tests/integration \
+            --ignore=test/integration
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'

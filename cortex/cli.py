@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from typing import Any
 
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -15,9 +16,8 @@ from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
-
-# Import the new Notification Manager
 from cortex.notification_manager import NotificationManager
+from cortex.stack_manager import StackManager
 from cortex.user_preferences import (
     PreferencesManager,
     format_preference_value,
@@ -171,6 +171,113 @@ class CortexCLI:
 
     # -------------------------------
 
+    def stack(self, args: argparse.Namespace) -> int:
+        """Handle `cortex stack` commands (list/describe/install/dry-run)."""
+        try:
+            manager = StackManager()
+
+            # Validate --dry-run requires a stack name
+            if args.dry_run and not args.name:
+                self._print_error(
+                    "--dry-run requires a stack name (e.g., `cortex stack ml --dry-run`)"
+                )
+                return 1
+
+            # List stacks (default when no name/describe)
+            if args.list or (not args.name and not args.describe):
+                return self._handle_stack_list(manager)
+
+            # Describe a specific stack
+            if args.describe:
+                return self._handle_stack_describe(manager, args.describe)
+
+            # Install a stack (only remaining path)
+            return self._handle_stack_install(manager, args)
+
+        except FileNotFoundError as e:
+            self._print_error(f"stacks.json not found. Ensure cortex/stacks.json exists: {e}")
+            return 1
+        except ValueError as e:
+            self._print_error(f"stacks.json is invalid or malformed: {e}")
+            return 1
+
+    def _handle_stack_list(self, manager: StackManager) -> int:
+        """List all available stacks."""
+        stacks = manager.list_stacks()
+        cx_print("\n📦 Available Stacks:\n", "info")
+        for stack in stacks:
+            pkg_count = len(stack.get("packages", []))
+            console.print(f"  [green]{stack.get('id', 'unknown')}[/green]")
+            console.print(f"    {stack.get('name', 'Unnamed Stack')}")
+            console.print(f"    {stack.get('description', 'No description')}")
+            console.print(f"    [dim]({pkg_count} packages)[/dim]\n")
+        cx_print("Use: cortex stack <name> to install a stack", "info")
+        return 0
+
+    def _handle_stack_describe(self, manager: StackManager, stack_id: str) -> int:
+        """Describe a specific stack."""
+        stack = manager.find_stack(stack_id)
+        if not stack:
+            self._print_error(f"Stack '{stack_id}' not found. Use --list to see available stacks.")
+            return 1
+        description = manager.describe_stack(stack_id)
+        console.print(description)
+        return 0
+
+    def _handle_stack_install(self, manager: StackManager, args: argparse.Namespace) -> int:
+        """Install a stack with optional hardware-aware selection."""
+        original_name = args.name
+        suggested_name = manager.suggest_stack(args.name)
+
+        if suggested_name != original_name:
+            cx_print(
+                f"💡 No GPU detected, using '{suggested_name}' instead of '{original_name}'",
+                "info",
+            )
+
+        stack = manager.find_stack(suggested_name)
+        if not stack:
+            self._print_error(
+                f"Stack '{suggested_name}' not found. Use --list to see available stacks."
+            )
+            return 1
+
+        packages = stack.get("packages", [])
+        if not packages:
+            self._print_error(f"Stack '{suggested_name}' has no packages configured.")
+            return 1
+
+        if args.dry_run:
+            return self._handle_stack_dry_run(stack, packages)
+
+        return self._handle_stack_real_install(stack, packages)
+
+    def _handle_stack_dry_run(self, stack: dict[str, Any], packages: list[str]) -> int:
+        """Preview packages that would be installed without executing."""
+        cx_print(f"\n📋 Stack: {stack['name']}", "info")
+        console.print("\nPackages that would be installed:")
+        for pkg in packages:
+            console.print(f"  • {pkg}")
+        console.print(f"\nTotal: {len(packages)} packages")
+        cx_print("\nDry run only - no commands executed", "warning")
+        return 0
+
+    def _handle_stack_real_install(self, stack: dict[str, Any], packages: list[str]) -> int:
+        """Install all packages in the stack."""
+        cx_print(f"\n🚀 Installing stack: {stack['name']}\n", "success")
+
+        # Batch into a single LLM request
+        packages_str = " ".join(packages)
+        result = self.install(software=packages_str, execute=True, dry_run=False)
+
+        if result != 0:
+            self._print_error(f"Failed to install stack '{stack['name']}'")
+            return 1
+
+        self._print_success(f"\n✅ Stack '{stack['name']}' installed successfully!")
+        console.print(f"Installed {len(packages)} packages")
+        return 0
+
     # Run system health checks
     def doctor(self):
         from cortex.doctor import SystemDoctor
@@ -190,6 +297,19 @@ class CortexCLI:
         if not is_valid:
             self._print_error(error)
             return 1
+
+        # Special-case the ml-cpu stack:
+        # The LLM sometimes generates outdated torch==1.8.1+cpu installs
+        # which fail on modern Python. For the "pytorch-cpu jupyter numpy pandas"
+        # combo, force a supported CPU-only PyTorch recipe instead.
+        normalized = " ".join(software.split()).lower()
+
+        if normalized == "pytorch-cpu jupyter numpy pandas":
+            software = (
+                "pip3 install torch torchvision torchaudio "
+                "--index-url https://download.pytorch.org/whl/cpu && "
+                "pip3 install jupyter numpy pandas"
+            )
 
         api_key = self._get_api_key()
         if not api_key:
@@ -651,6 +771,7 @@ def show_rich_help():
     table.add_row("rollback <id>", "Undo installation")
     table.add_row("notify", "Manage desktop notifications")  # Added this line
     table.add_row("cache stats", "Show LLM cache statistics")
+    table.add_row("stack <name>", "Install the stack")
     table.add_row("doctor", "System health check")
 
     console.print(table)
@@ -752,6 +873,17 @@ def main():
     send_parser.add_argument("--actions", nargs="*", help="Action buttons")
     # --------------------------
 
+    # Stack command
+    stack_parser = subparsers.add_parser("stack", help="Manage pre-built package stacks")
+    stack_parser.add_argument(
+        "name", nargs="?", help="Stack name to install (ml, ml-cpu, webdev, devops, data)"
+    )
+    stack_group = stack_parser.add_mutually_exclusive_group()
+    stack_group.add_argument("--list", "-l", action="store_true", help="List all available stacks")
+    stack_group.add_argument("--describe", "-d", metavar="STACK", help="Show details about a stack")
+    stack_parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be installed (requires stack name)"
+    )
     # Cache commands
     cache_parser = subparsers.add_parser("cache", help="Cache operations")
     cache_subs = cache_parser.add_subparsers(dest="cache_action", help="Cache actions")
@@ -791,6 +923,8 @@ def main():
         # Handle the new notify command
         elif args.command == "notify":
             return cli.notify(args)
+        elif args.command == "stack":
+            return cli.stack(args)
         elif args.command == "doctor":
             return cli.doctor()
         elif args.command == "cache":
