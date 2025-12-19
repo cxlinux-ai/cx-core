@@ -5,6 +5,8 @@ import sys
 import time
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
@@ -15,6 +17,7 @@ from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
+from cortex.batch_installer import BatchInstaller, PackageStatus
 
 # Import the new Notification Manager
 from cortex.notification_manager import NotificationManager
@@ -179,6 +182,16 @@ class CortexCLI:
         return doctor.run_checks()
 
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
+        # Check if multiple packages are provided (space-separated)
+        package_names = [pkg.strip() for pkg in software.split() if pkg.strip()]
+        
+        # If multiple packages, use batch installer
+        if len(package_names) > 1:
+            return self._install_batch(package_names, execute=execute, dry_run=dry_run)
+        
+        # Single package - use existing flow
+        software = package_names[0] if package_names else software
+        
         # Validate input first
         is_valid, error = validate_install_request(software)
         if not is_valid:
@@ -311,6 +324,120 @@ class CortexCLI:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             self._print_error(f"Unexpected error: {str(e)}")
+            return 1
+
+    def _install_batch(
+        self, package_names: list[str], execute: bool = False, dry_run: bool = False
+    ) -> int:
+        """
+        Install multiple packages in batch with parallel execution.
+
+        Args:
+            package_names: List of package names to install
+            execute: Whether to actually execute commands
+            dry_run: If True, only show what would be executed
+
+        Returns:
+            Exit code (0 for success, 1 for failure)
+        """
+        self._print_status("🧠", f"Analyzing {len(package_names)} packages...")
+
+        # Initialize batch installer
+        def progress_callback(current: int, total: int, pkg_install):
+            """Progress callback for batch installation"""
+            status_emoji = "⏳"
+            if pkg_install.status == PackageStatus.SUCCESS:
+                status_emoji = "✅"
+            elif pkg_install.status == PackageStatus.FAILED:
+                status_emoji = "❌"
+            elif pkg_install.status == PackageStatus.INSTALLING:
+                status_emoji = "→"
+            elif pkg_install.status == PackageStatus.SKIPPED:
+                status_emoji = "⏭️"
+
+            duration_str = ""
+            if pkg_install.duration():
+                duration_str = f" ({int(pkg_install.duration())}s)"
+
+            print(f"[{current}/{total}] {status_emoji} {pkg_install.name}{duration_str}")
+
+        installer = BatchInstaller(
+            max_workers=4,
+            progress_callback=progress_callback,
+            enable_rollback=True,
+        )
+
+        try:
+            # Execute batch installation
+            result = installer.install_batch(
+                package_names, execute=execute, dry_run=dry_run
+            )
+
+            # Display results
+            print(f"\n📦 Total dependencies: {result.total_dependencies}")
+            print(f"⚡ Optimized dependencies: {result.optimized_dependencies}")
+            print(f"⚡ Parallel download: {installer.max_workers} workers\n")
+
+            # Show individual package results
+            for pkg in result.packages:
+                if pkg.status == PackageStatus.SUCCESS:
+                    status_emoji = "✅"
+                elif pkg.status == PackageStatus.SKIPPED:
+                    status_emoji = "⏭️"
+                elif pkg.status == PackageStatus.FAILED:
+                    status_emoji = "❌"
+                else:
+                    status_emoji = "⏳"
+                duration_str = f" ({int(pkg.duration())}s)" if pkg.duration() else ""
+                print(f"{status_emoji} {pkg.name}{duration_str}")
+                if pkg.error_message:
+                    print(f"   Error: {pkg.error_message}")
+
+            # Summary
+            total_time = result.total_duration
+            time_str = f"{int(total_time // 60)}m {int(total_time % 60)}s"
+            print(f"\nTotal time: {time_str}")
+
+            if result.time_saved:
+                saved_str = f"{int(result.time_saved // 60)}m {int(result.time_saved % 60)}s"
+                print(f"Time saved vs sequential: {saved_str}")
+
+            # Record installation history (skip if history DB unavailable)
+            if execute or dry_run:
+                try:
+                    history = InstallationHistory()
+                    all_commands = []
+                    for pkg in result.packages:
+                        all_commands.extend(pkg.commands)
+
+                    install_id = history.record_installation(
+                        InstallationType.INSTALL,
+                        package_names,
+                        all_commands,
+                        datetime.now(),
+                    )
+
+                    if result.success_rate == 100.0 or (dry_run and len(result.skipped) == len(package_names)):
+                        history.update_installation(install_id, InstallationStatus.SUCCESS)
+                        if not dry_run:
+                            print(f"\n📝 Installation recorded (ID: {install_id})")
+                    else:
+                        error_msg = f"{len(result.failed)} packages failed"
+                        history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                        if not dry_run:
+                            print(f"\n📝 Installation recorded (ID: {install_id})")
+                            print(f"   {len(result.failed)} packages failed")
+                except Exception as e:
+                    # History recording is optional, don't fail the whole operation
+                    logger.debug(f"Could not record installation history: {e}")
+
+            # Return appropriate exit code
+            if len(result.failed) > 0:
+                return 1
+            return 0
+
+        except Exception as e:
+            self._print_error(f"Batch installation failed: {str(e)}")
             return 1
 
     def cache_stats(self) -> int:
@@ -564,10 +691,10 @@ def show_rich_help():
     table.add_row("demo", "See Cortex in action")
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
-    table.add_row("install <pkg>", "Install software")
+    table.add_row("install <pkg>", "Install software (supports multiple packages)")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
-    table.add_row("notify", "Manage desktop notifications")  # Added this line
+    table.add_row("notify", "Manage desktop notifications")
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("doctor", "System health check")
 
@@ -621,8 +748,8 @@ def main():
     doctor_parser = subparsers.add_parser("doctor", help="Run system health check")
 
     # Install command
-    install_parser = subparsers.add_parser("install", help="Install software")
-    install_parser.add_argument("software", type=str, help="Software to install")
+    install_parser = subparsers.add_parser("install", help="Install software (supports multiple packages)")
+    install_parser.add_argument("software", nargs="+", help="Software to install (can specify multiple packages)")
     install_parser.add_argument("--execute", action="store_true", help="Execute commands")
     install_parser.add_argument("--dry-run", action="store_true", help="Show commands only")
 
@@ -687,7 +814,9 @@ def main():
         elif args.command == "status":
             return cli.status()
         elif args.command == "install":
-            return cli.install(args.software, execute=args.execute, dry_run=args.dry_run)
+            # Join multiple package names into a single string
+            software = " ".join(args.software) if isinstance(args.software, list) else args.software
+            return cli.install(software, execute=args.execute, dry_run=args.dry_run)
         elif args.command == "history":
             return cli.history(limit=args.limit, status=args.status, show_id=args.show_id)
         elif args.command == "rollback":
