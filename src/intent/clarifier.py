@@ -23,9 +23,7 @@ class Clarifier:
         # 2. If user says "machine learning tools" but nothing specific
         generic_terms = ["ml", "machine learning", "deep learning", "ai tools"]
         if any(term in text for term in generic_terms) and len(intents) == 0:
-            return (
-                "Which ML frameworks do you need? (PyTorch, TensorFlow, JupyterLab...)"
-            )
+            return "Which ML frameworks do you need? (PyTorch, TensorFlow, JupyterLab...)"
 
         # 3. If user asks to install CUDA but no GPU exists in context
         if any(i.target == "cuda" for i in intents) and "gpu" not in text:

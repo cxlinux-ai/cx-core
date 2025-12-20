@@ -24,9 +24,7 @@ class LLMIntentAgent:
     - session context
     """
 
-    def __init__(
-        self, api_key: str | None = None, model: str = "claude-3-5-sonnet-20240620"
-    ):
+    def __init__(self, api_key: str | None = None, model: str = "claude-3-5-sonnet-20240620"):
 
         # LLM is enabled ONLY if SDK + API key is available
         if Anthropic is None or api_key is None:
@@ -92,9 +90,7 @@ class LLMIntentAgent:
     # ----------------------------------------------
     # LLM enhancement of intents
     # ----------------------------------------------
-    def enhance_intents_with_llm(
-        self, text: str, intents: list[Intent]
-    ) -> list[Intent]:
+    def enhance_intents_with_llm(self, text: str, intents: list[Intent]) -> list[Intent]:
 
         prompt = f"""
 You are an installation-intent expert. Convert the user request into structured intents.
@@ -116,9 +112,7 @@ Format: "install: package" or "configure: component"
         )
 
         # ---- Safety check ----
-        if not getattr(response, "content", None) or not hasattr(
-            response.content[0], "text"
-        ):
+        if not getattr(response, "content", None) or not hasattr(response.content[0], "text"):
             return intents
 
         llm_output = response.content[0].text.lower().split("\n")
@@ -161,13 +155,9 @@ Return bullet list only.
         )
 
         # ---- Safety check ----
-        if not getattr(response, "content", None) or not hasattr(
-            response.content[0], "text"
-        ):
+        if not getattr(response, "content", None) or not hasattr(response.content[0], "text"):
             return []
 
         return [
-            line.strip()
-            for line in response.content[0].text.strip().split("\n")
-            if line.strip()
+            line.strip() for line in response.content[0].text.strip().split("\n") if line.strip()
         ]
