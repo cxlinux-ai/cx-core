@@ -15,11 +15,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
-from cortex.templates import TemplateManager, Template, TemplateFormat, InstallationStep
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.notification_manager import NotificationManager
 from cortex.stack_manager import StackManager
+from cortex.templates import InstallationStep, Template, TemplateFormat, TemplateManager
 from cortex.user_preferences import (
     PreferencesManager,
     format_preference_value,
@@ -291,7 +291,7 @@ class CortexCLI:
         software: str,
         execute: bool = False,
         dry_run: bool = False,
-        template: Optional[str] = None,
+        template: str | None = None,
     ):
         # Validate input first (only if not using template)
         if not template:
@@ -554,7 +554,7 @@ class CortexCLI:
             # Display template info
             print(f"\n{template.name} Template:")
             print(f"   {template.description}")
-            print(f"\n   Packages:")
+            print("\n   Packages:")
             for pkg in template.packages:
                 print(f"   - {pkg}")
 
@@ -768,7 +768,7 @@ class CortexCLI:
                     packages.append(pkg)
 
                 # Create template
-                from cortex.templates import Template, HardwareRequirements
+                from cortex.templates import HardwareRequirements, Template
 
                 template = Template(
                     name=name,
@@ -811,7 +811,7 @@ class CortexCLI:
             self._print_error(f"Failed to create template: {str(e)}")
             return 1
 
-    def template_import(self, file_path: str, name: Optional[str] = None):
+    def template_import(self, file_path: str, name: str | None = None):
         """Import a template from a file."""
         try:
             template_manager = TemplateManager()

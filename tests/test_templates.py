@@ -3,25 +3,25 @@
 Unit tests for Cortex Linux Template System
 """
 
-import unittest
-import tempfile
-import shutil
-import os
 import json
-import yaml
+import os
+import shutil
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
-import sys
+import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cortex.templates import (
-    Template,
-    TemplateManager,
-    TemplateValidator,
-    TemplateFormat,
     HardwareRequirements,
     InstallationStep,
+    Template,
+    TemplateFormat,
+    TemplateManager,
+    TemplateValidator,
 )
 
 
@@ -271,7 +271,7 @@ class TestTemplateManager(unittest.TestCase):
         self.assertTrue(export_path.exists())
 
         # Verify content
-        with open(export_path, "r") as f:
+        with open(export_path) as f:
             data = yaml.safe_load(f)
             self.assertEqual(data["name"], "test-template")
 
@@ -338,7 +338,7 @@ class TestTemplateFormat(unittest.TestCase):
         self.assertEqual(template_path.suffix, ".yaml")
 
         # Verify it's valid YAML
-        with open(template_path, "r") as f:
+        with open(template_path) as f:
             data = yaml.safe_load(f)
             self.assertEqual(data["name"], "yaml-test")
 
@@ -356,7 +356,7 @@ class TestTemplateFormat(unittest.TestCase):
         self.assertEqual(template_path.suffix, ".json")
 
         # Verify it's valid JSON
-        with open(template_path, "r") as f:
+        with open(template_path) as f:
             data = json.load(f)
             self.assertEqual(data["name"], "json-test")
 

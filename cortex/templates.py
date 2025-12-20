@@ -7,19 +7,20 @@ and custom template creation, validation, and hardware-aware selection.
 """
 
 import json
-import yaml
 import os
 import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.hwprofiler import HardwareProfiler
 from cortex.packages import PackageManager, PackageManagerType
+from src.hwprofiler import HardwareProfiler
 
 
 class TemplateFormat(Enum):
@@ -33,13 +34,13 @@ class TemplateFormat(Enum):
 class HardwareRequirements:
     """Hardware requirements for a template."""
 
-    min_ram_mb: Optional[int] = None
-    min_cores: Optional[int] = None
-    min_storage_mb: Optional[int] = None
+    min_ram_mb: int | None = None
+    min_cores: int | None = None
+    min_storage_mb: int | None = None
     requires_gpu: bool = False
-    gpu_vendor: Optional[str] = None  # "NVIDIA", "AMD", "Intel"
+    gpu_vendor: str | None = None  # "NVIDIA", "AMD", "Intel"
     requires_cuda: bool = False
-    min_cuda_version: Optional[str] = None
+    min_cuda_version: str | None = None
 
 
 @dataclass
@@ -48,8 +49,8 @@ class InstallationStep:
 
     command: str
     description: str
-    rollback: Optional[str] = None
-    verify: Optional[str] = None
+    rollback: str | None = None
+    verify: str | None = None
     requires_root: bool = True
 
 
@@ -60,15 +61,15 @@ class Template:
     name: str
     description: str
     version: str
-    author: Optional[str] = None
-    packages: List[str] = field(default_factory=list)
-    steps: List[InstallationStep] = field(default_factory=list)
-    hardware_requirements: Optional[HardwareRequirements] = None
-    post_install: List[str] = field(default_factory=list)
-    verification_commands: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    author: str | None = None
+    packages: list[str] = field(default_factory=list)
+    steps: list[InstallationStep] = field(default_factory=list)
+    hardware_requirements: HardwareRequirements | None = None
+    post_install: list[str] = field(default_factory=list)
+    verification_commands: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert template to dictionary."""
         result = {
             "name": self.name,
@@ -110,7 +111,7 @@ class Template:
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Template":
+    def from_dict(cls, data: dict[str, Any]) -> "Template":
         """Create template from dictionary."""
         # Parse hardware requirements
         hw_req = None
@@ -169,7 +170,7 @@ class TemplateValidator:
     DANGEROUS_SHELL_CHARS = [";", "|", "&", ">", "<", "`", "\\"]
 
     @staticmethod
-    def _validate_post_install_commands(post_install: List[str]) -> List[str]:
+    def _validate_post_install_commands(post_install: list[str]) -> list[str]:
         """
         Validate post_install commands for security.
 
@@ -216,7 +217,7 @@ class TemplateValidator:
         return errors
 
     @staticmethod
-    def validate(template: Template) -> Tuple[bool, List[str]]:
+    def validate(template: Template) -> tuple[bool, list[str]]:
         """
         Validate a template.
 
@@ -269,7 +270,7 @@ class TemplateValidator:
 class TemplateManager:
     """Manages installation templates."""
 
-    def __init__(self, templates_dir: Optional[str] = None):
+    def __init__(self, templates_dir: str | None = None):
         """
         Initialize template manager.
 
@@ -286,11 +287,11 @@ class TemplateManager:
         self.user_templates_dir = Path.home() / ".cortex" / "templates"
         self.user_templates_dir.mkdir(parents=True, exist_ok=True)
 
-        self._templates_cache: Dict[str, Template] = {}
+        self._templates_cache: dict[str, Template] = {}
         self._hardware_profiler = HardwareProfiler()
         self._package_manager = PackageManager()
 
-    def _get_template_path(self, name: str) -> Optional[Path]:
+    def _get_template_path(self, name: str) -> Path | None:
         """Find template file by name."""
         # Check user templates first
         for ext in [".yaml", ".yml", ".json"]:
@@ -306,7 +307,7 @@ class TemplateManager:
 
         return None
 
-    def load_template(self, name: str) -> Optional[Template]:
+    def load_template(self, name: str) -> Template | None:
         """Load a template by name."""
         if name in self._templates_cache:
             return self._templates_cache[name]
@@ -316,7 +317,7 @@ class TemplateManager:
             return None
 
         try:
-            with open(template_path, "r", encoding="utf-8") as f:
+            with open(template_path, encoding="utf-8") as f:
                 if template_path.suffix in [".yaml", ".yml"]:
                     data = yaml.safe_load(f)
                 else:
@@ -331,7 +332,7 @@ class TemplateManager:
     def save_template(
         self,
         template: Template,
-        name: Optional[str] = None,
+        name: str | None = None,
         format: TemplateFormat = TemplateFormat.YAML,
     ) -> Path:
         """
@@ -364,7 +365,7 @@ class TemplateManager:
 
         return template_path
 
-    def list_templates(self) -> Dict[str, Dict[str, Any]]:
+    def list_templates(self) -> dict[str, dict[str, Any]]:
         """List all available templates."""
         templates = {}
 
@@ -417,7 +418,7 @@ class TemplateManager:
 
         return templates
 
-    def check_hardware_compatibility(self, template: Template) -> Tuple[bool, List[str]]:
+    def check_hardware_compatibility(self, template: Template) -> tuple[bool, list[str]]:
         """
         Check if current hardware meets template requirements.
 
@@ -497,7 +498,7 @@ class TemplateManager:
         is_compatible = len(warnings) == 0
         return is_compatible, warnings
 
-    def generate_commands(self, template: Template) -> List[str]:
+    def generate_commands(self, template: Template) -> list[str]:
         """
         Generate installation commands from template.
 
@@ -523,7 +524,7 @@ class TemplateManager:
 
         return commands
 
-    def import_template(self, file_path: str, name: Optional[str] = None) -> Template:
+    def import_template(self, file_path: str, name: str | None = None) -> Template:
         """
         Import a template from a file.
 
@@ -539,7 +540,7 @@ class TemplateManager:
             raise FileNotFoundError(f"Template file not found: {file_path}")
 
         try:
-            with open(template_path, "r", encoding="utf-8") as f:
+            with open(template_path, encoding="utf-8") as f:
                 if template_path.suffix in [".yaml", ".yml"]:
                     data = yaml.safe_load(f)
                 else:
