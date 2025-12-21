@@ -42,7 +42,12 @@ class GitManager:
             ["git", "log", "--oneline", "--relative-date"],
             cwd=self.config_path,
             capture_output=True,
-            text=True,
-            check=True
+            text=True
         )
+
+        if result.returncode != 0:
+            # No commits yet
+            return ""
+
         return result.stdout.strip()
+
