@@ -309,6 +309,30 @@ class CortexCLI:
         # which fail on modern Python. For the "pytorch-cpu jupyter numpy pandas"
         # combo, force a supported CPU-only PyTorch recipe instead.
         normalized = " ".join(software.split()).lower()
+        # 🔍 Early check: suggest alternatives before LLM call
+        from cortex.suggestions.package_suggester import (
+            show_suggestions,
+            suggest_alternatives,
+        )
+
+        # If user input looks like a single package name and not a full sentence
+        if " " not in normalized:
+            alternatives = suggest_alternatives(normalized)
+
+            # Heuristic: no obvious known package match
+            if alternatives and normalized not in [p["name"] for p in alternatives]:
+                self._print_error(f"Package '{software}' not found")
+                show_suggestions(alternatives)
+
+                choice = input("\nInstall the first recommended option instead? [Y/n]: ")
+                if choice.lower() in ("", "y", "yes"):
+                    return self.install(
+                        alternatives[0]["name"],
+                        execute=execute,
+                        dry_run=dry_run,
+                        parallel=parallel,
+                    )
+                return 1
 
         if normalized == "pytorch-cpu jupyter numpy pandas":
             software = (
@@ -346,9 +370,27 @@ class CortexCLI:
             commands = interpreter.parse(f"install {software}")
 
             if not commands:
-                self._print_error(
-                    "No commands generated. Please try again with a different request."
+                from cortex.suggestions.package_suggester import (
+                    show_suggestions,
+                    suggest_alternatives,
                 )
+
+                self._print_error(f"Package '{software}' not found")
+
+                alternatives = suggest_alternatives(software)
+
+                if alternatives:
+                    show_suggestions(alternatives)
+
+                    choice = input("\nInstall the first recommended option instead? [Y/n]: ")
+                    if choice.lower() in ("", "y", "yes"):
+                        return self.install(
+                            alternatives[0]["name"],
+                            execute=execute,
+                            dry_run=dry_run,
+                            parallel=parallel,
+                        )
+
                 return 1
 
             # Extract packages from commands for tracking
