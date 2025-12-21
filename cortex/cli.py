@@ -197,11 +197,21 @@ class CortexCLI:
             print("⚠️ No GPU detected (CPU mode)")
             has_gpu = False
 
-        if getattr(hw, "cpu", None):
-            print(f"✔ CPU: {hw.cpu}")
+        cpu_model = getattr(hw.cpu, "model", None) if hw.cpu else None
+        if cpu_model:
+            print(f"✔ CPU: {cpu_model}")
+        else:
+            print("✔ CPU detected")
 
-        if getattr(hw, "memory_gb", None):
-            print(f"✔ RAM: {hw.memory_gb} GB")
+        # RAM (safe detection, same logic as demo)
+        if hasattr(hw, "memory") and hw.memory:
+            ram_gb = getattr(hw.memory, "total_gb", None)
+            if ram_gb:
+                print(f"✔ RAM: {ram_gb} GB")
+            else:
+                print("✔ RAM detected")
+        else:
+            print("✔ RAM: Unknown")
 
         # 2️⃣ Provider selection
         print("\n🤖 Select default LLM provider:\n")
