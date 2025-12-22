@@ -160,7 +160,7 @@ class TestEnvironmentValidator:
             "https://example.com",
             "postgres://user:pass@localhost:5432/db",
             "redis://localhost:6379",
-            "ftp://files.example.com/path",
+            "sftp://files.example.com/path",
         ]
         for url in valid_urls:
             is_valid, error = EnvironmentValidator.validate(url, "url")
