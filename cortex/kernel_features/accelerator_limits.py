@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 
+from cortex.utils.db_pool import get_connection_pool
+
 CORTEX_DB = Path.home() / ".cortex/limits.db"
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 
@@ -52,24 +54,53 @@ class ResourceLimits:
 
 class LimitsDatabase:
     def __init__(self):
+        """
+        Initialize the LimitsDatabase.
+        
+        Ensures the directory for the Cortex SQLite file exists, creates a connection pool for the database, and ensures the `profiles` table (columns: `name` primary key, `config`) is present.
+        """
         CORTEX_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(CORTEX_DB) as conn:
+        self._pool = get_connection_pool(str(CORTEX_DB), pool_size=5)
+        with self._pool.get_connection() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS profiles (name TEXT PRIMARY KEY, config TEXT)")
 
     def save(self, limits: ResourceLimits):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        """
+        Persist a ResourceLimits profile to the database, replacing any existing profile with the same name.
+        
+        Parameters:
+            limits (ResourceLimits): The resource limits profile to save; stored as JSON in the `profiles` table under its `name`.
+        """
+        with self._pool.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO profiles VALUES (?,?)",
                 (limits.name, json.dumps(asdict(limits))),
             )
 
     def get(self, name: str) -> ResourceLimits | None:
-        with sqlite3.connect(CORTEX_DB) as conn:
+        """
+        Retrieve a saved resource limits profile by name.
+        
+        Parameters:
+            name (str): Profile name to look up in the database.
+        
+        Returns:
+            ResourceLimits | None: The deserialized ResourceLimits for the profile if found, `None` if no profile exists with that name.
+        """
+        with self._pool.get_connection() as conn:
             row = conn.execute("SELECT config FROM profiles WHERE name=?", (name,)).fetchone()
             return ResourceLimits(**json.loads(row[0])) if row else None
 
     def list_all(self):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        """
+        Return all saved ResourceLimits profiles from the database.
+        
+        Retrieves each profile's JSON config from the profiles table and deserializes it into a ResourceLimits instance.
+        
+        Returns:
+            list[ResourceLimits]: List of ResourceLimits objects representing all stored profiles (empty list if none).
+        """
+        with self._pool.get_connection() as conn:
             return [
                 ResourceLimits(**json.loads(r[0]))
                 for r in conn.execute("SELECT config FROM profiles")

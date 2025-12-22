@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import subprocess
+import threading
 from dataclasses import asdict, dataclass
 
 logging.basicConfig(level=logging.INFO)
@@ -64,6 +65,13 @@ class DependencyResolver:
     }
 
     def __init__(self):
+        """
+        Initialize a DependencyResolver instance, setting up thread-safe caches and populating installed packages.
+        
+        Creates two locks for thread-safe access: one protecting the dependency cache and one protecting the installed packages set. Initializes an empty dependency_cache and installed_packages collection, then refreshes the installed_packages cache by calling _refresh_installed_packages to populate current system packages.
+        """
+        self._cache_lock = threading.Lock()  # Protect dependency_cache
+        self._packages_lock = threading.Lock()  # Protect installed_packages
         self.dependency_cache: dict[str, DependencyGraph] = {}
         self.installed_packages: set[str] = set()
         self._refresh_installed_packages()
@@ -79,25 +87,45 @@ class DependencyResolver:
             return (False, "", str(e))
 
     def _refresh_installed_packages(self) -> None:
-        """Refresh cache of installed packages"""
+        """
+        Update the resolver's installed package cache from the system package database.
+        
+        Queries `dpkg -l` to collect installed package names and replaces the resolver's
+        installed_packages set with the discovered names while holding `_packages_lock`.
+        Logs the refresh start and the number of packages found.
+        """
         logger.info("Refreshing installed packages cache...")
         success, stdout, _ = self._run_command(["dpkg", "-l"])
 
         if success:
+            new_packages = set()
             for line in stdout.split("\n"):
                 if line.startswith("ii"):
                     parts = line.split()
                     if len(parts) >= 2:
-                        self.installed_packages.add(parts[1])
-
-        logger.info(f"Found {len(self.installed_packages)} installed packages")
+                        new_packages.add(parts[1])
+            
+            with self._packages_lock:
+                self.installed_packages = new_packages
+                logger.info(f"Found {len(self.installed_packages)} installed packages")
 
     def is_package_installed(self, package_name: str) -> bool:
-        """Check if package is installed"""
-        return package_name in self.installed_packages
+        """
+        Check whether the given package is currently recorded as installed.
+        
+        Returns:
+            True if the package is in the installed package set, False otherwise.
+        """
+        with self._packages_lock:
+            return package_name in self.installed_packages
 
     def get_installed_version(self, package_name: str) -> str | None:
-        """Get version of installed package"""
+        """
+        Retrieve the installed package's version string.
+        
+        Returns:
+            str: The installed package version, or `None` if the package is not installed or the version cannot be determined.
+        """
         if not self.is_package_installed(package_name):
             return None
 
@@ -201,18 +229,24 @@ class DependencyResolver:
 
     def resolve_dependencies(self, package_name: str, recursive: bool = True) -> DependencyGraph:
         """
-        Resolve all dependencies for a package
-
-        Args:
-            package_name: Package to resolve dependencies for
-            recursive: Whether to resolve transitive dependencies
+        Compute a DependencyGraph for the given package.
+        
+        Includes direct dependencies, optional transitive dependencies (when requested), detected conflicts, and a suggested installation order. The resolved graph is stored in the resolver's cache for subsequent calls.
+        
+        Parameters:
+            package_name (str): Package to analyze.
+            recursive (bool): If True, include transitive (second-level) dependencies in the graph.
+        
+        Returns:
+            DependencyGraph: Object containing `package_name`, `direct_dependencies`, `all_dependencies`, `conflicts`, and `installation_order`.
         """
         logger.info(f"Resolving dependencies for {package_name}...")
 
-        # Check cache
-        if package_name in self.dependency_cache:
-            logger.info(f"Using cached dependencies for {package_name}")
-            return self.dependency_cache[package_name]
+        # Check cache (thread-safe)
+        with self._cache_lock:
+            if package_name in self.dependency_cache:
+                logger.info(f"Using cached dependencies for {package_name}")
+                return self.dependency_cache[package_name]
 
         # Get dependencies from multiple sources
         apt_deps = self.get_apt_dependencies(package_name)
@@ -254,8 +288,9 @@ class DependencyResolver:
             installation_order=installation_order,
         )
 
-        # Cache result
-        self.dependency_cache[package_name] = graph
+        # Cache result (thread-safe)
+        with self._cache_lock:
+            self.dependency_cache[package_name] = graph
 
         return graph
 

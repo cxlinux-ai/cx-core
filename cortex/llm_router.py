@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -117,14 +118,14 @@ class LLMRouter:
         track_costs: bool = True,
     ):
         """
-        Initialize LLM Router.
-
-        Args:
-            claude_api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env)
-            kimi_api_key: Moonshot API key (defaults to MOONSHOT_API_KEY env)
-            default_provider: Fallback provider if routing fails
-            enable_fallback: Try alternate LLM if primary fails
-            track_costs: Track token usage and costs
+        Create an LLMRouter and initialize provider clients, configuration, and usage tracking.
+        
+        Parameters:
+            claude_api_key (str | None): Anthropic (Claude) API key; if omitted, reads ANTHROPIC_API_KEY from the environment.
+            kimi_api_key (str | None): Moonshot (Kimi K2) API key; if omitted, reads MOONSHOT_API_KEY from the environment.
+            default_provider (LLMProvider): Provider to use when routing rules don't specify or preferred provider is unavailable.
+            enable_fallback (bool): If True, allows falling back to the alternate provider when the chosen provider is unavailable or fails.
+            track_costs (bool): If True, enable tracking of token usage and estimated USD costs (protected by an internal lock).
         """
         self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY")
         self.kimi_api_key = kimi_api_key or os.getenv("MOONSHOT_API_KEY")
@@ -161,7 +162,8 @@ class LLMRouter:
         # Rate limiting for parallel calls
         self._rate_limit_semaphore: asyncio.Semaphore | None = None
 
-        # Cost tracking
+        # Cost tracking (protected by lock for thread-safety)
+        self._stats_lock = threading.Lock()
         self.total_cost_usd = 0.0
         self.request_count = 0
         self.provider_stats = {
@@ -382,42 +384,73 @@ class LLMRouter:
     def _calculate_cost(
         self, provider: LLMProvider, input_tokens: int, output_tokens: int
     ) -> float:
-        """Calculate cost in USD for this request."""
+        """
+        Compute the USD cost for the given provider using the request's input and output token counts.
+        
+        The calculation uses the provider's per-million-token input and output rates from the router's COSTS mapping.
+        
+        Parameters:
+            provider (LLMProvider): Provider whose rates are applied.
+            input_tokens (int): Number of input tokens.
+            output_tokens (int): Number of output tokens.
+        
+        Returns:
+            float: Total cost in USD for the request.
+        """
         costs = self.COSTS[provider]
         input_cost = (input_tokens / 1_000_000) * costs["input"]
         output_cost = (output_tokens / 1_000_000) * costs["output"]
         return input_cost + output_cost
 
     def _update_stats(self, response: LLMResponse):
-        """Update usage statistics."""
-        self.total_cost_usd += response.cost_usd
-        self.request_count += 1
+        """
+        Update aggregate and per-provider usage statistics using data from `response` in a thread-safe manner.
+        
+        Parameters:
+            response (LLMResponse): Response whose `cost_usd`, `tokens_used`, and `provider` are applied to the router's aggregates.
+        
+        Detailed behavior:
+            - Increments `total_cost_usd` by `response.cost_usd`.
+            - Increments `request_count` by 1.
+            - For the provider `response.provider`, increments `requests`, adds `tokens_used` to `tokens`, and adds `cost_usd` to `cost`.
+        """
+        with self._stats_lock:
+            self.total_cost_usd += response.cost_usd
+            self.request_count += 1
 
-        stats = self.provider_stats[response.provider]
-        stats["requests"] += 1
-        stats["tokens"] += response.tokens_used
-        stats["cost"] += response.cost_usd
+            stats = self.provider_stats[response.provider]
+            stats["requests"] += 1
+            stats["tokens"] += response.tokens_used
+            stats["cost"] += response.cost_usd
 
     def get_stats(self) -> dict[str, Any]:
         """
-        Get usage statistics.
-
+        Return a snapshot of accumulated usage statistics.
+        
+        Provides a thread-safe snapshot of total request and cost aggregates and per-provider metrics. The returned dictionary contains:
+        - total_requests: total number of completed requests.
+        - total_cost_usd: total cost across providers in USD, rounded to 4 decimal places.
+        - providers: mapping with per-provider entries:
+            - claude: { requests, tokens, cost_usd }
+            - kimi_k2: { requests, tokens, cost_usd }
+        
         Returns:
-            Dictionary with request counts, tokens, costs per provider
+            dict: A dictionary with keys `total_requests`, `total_cost_usd`, and `providers` where each provider entry contains `requests`, `tokens`, and `cost_usd`.
         """
-        return {
-            "total_requests": self.request_count,
-            "total_cost_usd": round(self.total_cost_usd, 4),
-            "providers": {
-                "claude": {
-                    "requests": self.provider_stats[LLMProvider.CLAUDE]["requests"],
-                    "tokens": self.provider_stats[LLMProvider.CLAUDE]["tokens"],
-                    "cost_usd": round(self.provider_stats[LLMProvider.CLAUDE]["cost"], 4),
-                },
-                "kimi_k2": {
-                    "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
-                    "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
-                    "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
+        with self._stats_lock:
+            return {
+                "total_requests": self.request_count,
+                "total_cost_usd": round(self.total_cost_usd, 4),
+                "providers": {
+                    "claude": {
+                        "requests": self.provider_stats[LLMProvider.CLAUDE]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.CLAUDE]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.CLAUDE]["cost"], 4),
+                    },
+                    "kimi_k2": {
+                        "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
                 },
             },
         }

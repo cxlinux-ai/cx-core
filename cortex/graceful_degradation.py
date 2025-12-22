@@ -11,6 +11,7 @@ import hashlib
 import logging
 import os
 import sqlite3
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +72,26 @@ class ResponseCache:
     """SQLite-based cache for LLM responses."""
 
     def __init__(self, db_path: Path | None = None):
+        """
+        Initialize the response cache, ensuring the storage path exists and preparing the database.
+        
+        Parameters:
+            db_path (Path | None): Filesystem path to the SQLite database file. If omitted, defaults to
+                ~/.cortex/response_cache.db. The parent directory will be created if it does not exist.
+        """
         self.db_path = db_path or Path.home() / ".cortex" / "response_cache.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._pool: SQLiteConnectionPool | None = None
         self._init_db()
 
     def _init_db(self):
-        """Initialize the cache database."""
-        with sqlite3.connect(self.db_path) as conn:
+        """
+        Set up the response cache database and connection pool.
+        
+        Creates a connection pool for the cache file and ensures the required schema exists: the `response_cache` table (with columns `query_hash`, `query`, `response`, `created_at`, `hit_count`, `last_used`) and the `idx_last_used` index.
+        """
+        self._pool = get_connection_pool(str(self.db_path), pool_size=5)
+        with self._pool.get_connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS response_cache (
@@ -102,10 +118,19 @@ class ResponseCache:
         return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
     def get(self, query: str) -> CachedResponse | None:
-        """Retrieve a cached response."""
+        """
+        Retrieve a cached response for the given query and update its usage metadata.
+        
+        If a cached entry exists for the normalized query hash, increments the entry's hit count
+        and updates its last-used timestamp before returning it.
+        
+        Returns:
+            CachedResponse: The cached response with an incremented `hit_count` and updated `last_used`.
+            `None` if no cached entry exists for the query.
+        """
         query_hash = self._hash_query(query)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM response_cache WHERE query_hash = ?", (query_hash,)
@@ -136,10 +161,17 @@ class ResponseCache:
         return None
 
     def put(self, query: str, response: str) -> CachedResponse:
-        """Store a response in the cache."""
+        """
+        Store or replace a cached LLM response for the given query.
+        
+        The cache entry is created or replaced using a hash derived from the normalized query. The stored entry is initialized with a hit count of 0 and no last-used timestamp.
+        
+        Returns:
+            CachedResponse: The created cache record with `query_hash` derived from the normalized query and `created_at` set to the current time; `hit_count` will be 0 and `last_used` will be None.
+        """
         query_hash = self._hash_query(query)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO response_cache
@@ -155,11 +187,20 @@ class ResponseCache:
         )
 
     def get_similar(self, query: str, limit: int = 5) -> list[CachedResponse]:
-        """Get similar cached responses using simple keyword matching."""
+        """
+        Find cached responses whose queries share keywords with the given query, ranked by keyword overlap.
+        
+        Parameters:
+            query (str): The query text to match against cached entries.
+            limit (int): Maximum number of similar cached responses to return.
+        
+        Returns:
+            list[CachedResponse]: Up to `limit` cached responses ordered by descending keyword overlap (case-insensitive, whitespace token matching).
+        """
         keywords = set(query.lower().split())
         results = []
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM response_cache ORDER BY hit_count DESC LIMIT 100")
 
@@ -185,10 +226,18 @@ class ResponseCache:
         return [r[1] for r in results[:limit]]
 
     def clear_old_entries(self, days: int = 30) -> int:
-        """Remove entries older than specified days."""
+        """
+        Delete cache entries older than the specified number of days.
+        
+        Parameters:
+            days (int): Threshold age in days; entries with created_at earlier than now minus this many days will be removed.
+        
+        Returns:
+            deleted_count (int): Number of cache rows deleted.
+        """
         cutoff = datetime.now() - timedelta(days=days)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             cursor = conn.execute(
                 "DELETE FROM response_cache WHERE created_at < ?", (cutoff.isoformat(),)
             )
@@ -196,8 +245,16 @@ class ResponseCache:
             return cursor.rowcount
 
     def get_stats(self) -> dict[str, Any]:
-        """Get cache statistics."""
-        with sqlite3.connect(self.db_path) as conn:
+        """
+        Return statistics about the response cache.
+        
+        Returns:
+            stats (dict): Dictionary with keys:
+                - total_entries (int): Number of rows in the cache.
+                - total_hits (int): Sum of `hit_count` across all cached entries.
+                - db_size_kb (float): Size of the cache database file in kilobytes (0 if the file does not exist).
+        """
+        with self._pool.get_connection() as conn:
             conn.row_factory = sqlite3.Row
 
             total = conn.execute("SELECT COUNT(*) as count FROM response_cache").fetchone()["count"]
@@ -499,15 +556,48 @@ class GracefulDegradation:
 
 
 # CLI Integration
+# Global instance for degradation manager (thread-safe)
+_degradation_instance = None
+_degradation_lock = threading.Lock()
+
+
 def get_degradation_manager() -> GracefulDegradation:
-    """Get or create the global degradation manager."""
-    if not hasattr(get_degradation_manager, "_instance"):
-        get_degradation_manager._instance = GracefulDegradation()
-    return get_degradation_manager._instance
+    """
+    Return the module-level GracefulDegradation singleton, initializing it once using a thread-safe double-checked locking pattern.
+    
+    Returns:
+        degradation_manager (GracefulDegradation): The shared GracefulDegradation instance used by the module.
+    """
+    global _degradation_instance
+    # Fast path: avoid lock if already initialized
+    if _degradation_instance is None:
+        with _degradation_lock:
+            # Double-checked locking pattern
+            if _degradation_instance is None:
+                _degradation_instance = GracefulDegradation()
+    return _degradation_instance
 
 
 def process_with_fallback(query: str, llm_fn: Callable | None = None) -> dict[str, Any]:
-    """Convenience function for processing queries with fallback."""
+    """
+    Process a user query using the global GracefulDegradation manager and its configured fallback strategies.
+    
+    Parameters:
+    	query (str): The user-provided query or command string to process.
+    	llm_fn (Callable | None): Optional callable used to invoke an LLM with the query; if None the manager uses its configured LLM behaviour and fallbacks.
+    
+    Returns:
+    	dict[str, Any]: Result dictionary containing at minimum:
+    		- query (str): original query
+    		- response (str): chosen textual response or suggestion
+    		- source (str): origin of the response ("llm", "cache", "cache_similar", "pattern_matching", "manual_mode")
+    		- confidence (float): confidence score for the response
+    		- mode (FallbackMode): current operating mode
+    		- cached (bool): whether the response was served from cache
+    		Optional fields may include:
+    		- command (str): suggested shell/apt command when applicable
+    		- similar_query (str): a similar cached query that was used
+    """
     manager = get_degradation_manager()
     return manager.process_query(query, llm_fn)
 

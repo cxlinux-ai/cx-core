@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
+
 
 @dataclass(frozen=True)
 class CacheStats:
@@ -52,12 +54,18 @@ class SemanticCache:
         max_entries: int | None = None,
         similarity_threshold: float | None = None,
     ):
-        """Initialize semantic cache.
-
-        Args:
-            db_path: Path to SQLite database file
-            max_entries: Maximum cache entries before LRU eviction (default: 500)
-            similarity_threshold: Cosine similarity threshold for matches (default: 0.86)
+        """
+        Create a SemanticCache configured to persist LLM responses to a SQLite database.
+        
+        Ensures the database directory exists and initializes the SQLite connection pool and schema.
+        
+        Parameters:
+            db_path (str): Path to the SQLite database file.
+            max_entries (int | None): Maximum number of cache entries before LRU eviction.
+                If None, reads CORTEX_CACHE_MAX_ENTRIES from the environment or defaults to 500.
+            similarity_threshold (float | None): Minimum cosine similarity required to consider
+                a cached entry a semantic match. If None, reads CORTEX_CACHE_SIMILARITY_THRESHOLD
+                from the environment or defaults to 0.86.
         """
         self.db_path = db_path
         self.max_entries = (
@@ -71,9 +79,15 @@ class SemanticCache:
             else float(os.environ.get("CORTEX_CACHE_SIMILARITY_THRESHOLD", "0.86"))
         )
         self._ensure_db_directory()
+        self._pool: SQLiteConnectionPool | None = None
         self._init_database()
 
     def _ensure_db_directory(self) -> None:
+        """
+        Ensure the parent directory for the configured database path exists, and fall back to a user-local directory on permission errors.
+        
+        Attempts to create the parent directory for self.db_path (recursively). If directory creation raises PermissionError, creates ~/.cortex and updates self.db_path to use ~/ .cortex/cache.db.
+        """
         db_dir = Path(self.db_path).parent
         try:
             db_dir.mkdir(parents=True, exist_ok=True)
@@ -83,8 +97,15 @@ class SemanticCache:
             self.db_path = str(user_dir / "cache.db")
 
     def _init_database(self) -> None:
-        conn = sqlite3.connect(self.db_path)
-        try:
+        # Initialize connection pool (thread-safe singleton)
+        """
+        Initialize the persistent SQLite-backed cache schema and create a thread-safe connection pool.
+        
+        Creates or reuses a connection pool for the configured database path, ensures the cache schema exists (entries table with LRU index and unique constraint, and a single-row stats table), and initializes the stats row.
+        """
+        self._pool = get_connection_pool(self.db_path, pool_size=5)
+        
+        with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -126,11 +147,15 @@ class SemanticCache:
             )
             cur.execute("INSERT OR IGNORE INTO llm_cache_stats(id, hits, misses) VALUES (1, 0, 0)")
             conn.commit()
-        finally:
-            conn.close()
 
     @staticmethod
     def _utcnow_iso() -> str:
+        """
+        Return the current UTC datetime in ISO 8601 format with seconds precision and a trailing "Z".
+        
+        Returns:
+            str: UTC datetime string formatted like "YYYY-MM-DDTHH:MM:SSZ".
+        """
         return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
     @staticmethod
@@ -223,8 +248,7 @@ class SemanticCache:
         prompt_hash = self._hash_text(prompt)
         now = self._utcnow_iso()
 
-        conn = sqlite3.connect(self.db_path)
-        try:
+        with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -286,8 +310,6 @@ class SemanticCache:
             self._record_miss(conn)
             conn.commit()
             return None
-        finally:
-            conn.close()
 
     def put_commands(
         self,
@@ -297,14 +319,18 @@ class SemanticCache:
         system_prompt: str,
         commands: list[str],
     ) -> None:
-        """Store commands in cache for future retrieval.
-
-        Args:
-            prompt: User's natural language request
-            provider: LLM provider name
-            model: Model name
-            system_prompt: System prompt used for generation
-            commands: List of shell commands to cache
+        """
+        Cache the list of commands generated for a specific prompt and system prompt.
+        
+        Parameters:
+            prompt (str): The user's natural language request.
+            provider (str): LLM provider identifier.
+            model (str): Model identifier.
+            system_prompt (str): System prompt used when generating the commands; its hash is used to scope the cache entry.
+            commands (list[str]): List of commands to store.
+        
+        Notes:
+            If an entry for (provider, model, system_prompt, prompt) already exists its `hit_count` is preserved; the entry's timestamps are set to the current time. After inserting the entry, the cache may evict old entries to respect the configured maximum size.
         """
         system_hash = self._system_hash(system_prompt)
         prompt_hash = self._hash_text(prompt)
@@ -312,8 +338,7 @@ class SemanticCache:
         vec = self._embed(prompt)
         embedding_blob = self._pack_embedding(vec)
 
-        conn = sqlite3.connect(self.db_path)
-        try:
+        with self._pool.get_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO llm_cache_entries(
@@ -342,10 +367,16 @@ class SemanticCache:
             )
             self._evict_if_needed(conn)
             conn.commit()
-        finally:
-            conn.close()
 
     def _evict_if_needed(self, conn: sqlite3.Connection) -> None:
+        """
+        Ensure the cache contains at most self.max_entries by removing the least-recently accessed rows.
+        
+        If the number of entries in llm_cache_entries exceeds self.max_entries, deletes the oldest rows ordered by last_accessed until the count equals self.max_entries. This operation modifies the provided SQLite connection's database.
+        
+        Parameters:
+            conn (sqlite3.Connection): An open SQLite connection used to execute the eviction statements.
+        """
         cur = conn.cursor()
         cur.execute("SELECT COUNT(1) FROM llm_cache_entries")
         count = int(cur.fetchone()[0])
@@ -366,18 +397,16 @@ class SemanticCache:
         )
 
     def stats(self) -> CacheStats:
-        """Get current cache statistics.
-
-        Returns:
-            CacheStats object with hits, misses, and computed metrics
         """
-        conn = sqlite3.connect(self.db_path)
-        try:
+        Return current cache statistics.
+        
+        Returns:
+            CacheStats: Hit and miss counts with derived metrics (total lookups and hit rate).
+        """
+        with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT hits, misses FROM llm_cache_stats WHERE id = 1")
             row = cur.fetchone()
             if row is None:
                 return CacheStats(hits=0, misses=0)
             return CacheStats(hits=int(row[0]), misses=int(row[1]))
-        finally:
-            conn.close()

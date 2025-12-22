@@ -8,6 +8,7 @@ Usage:
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -19,25 +20,53 @@ class StackManager:
 
     def __init__(self) -> None:
         # stacks.json is in the same directory as this file (cortex/)
+        """
+        Initialize a StackManager by locating the stacks.json file and preparing the in-memory cache and its lock.
+        
+        Sets the path to the module-local stacks.json, initializes the cached stacks storage to None, and creates a threading lock to protect access to the cache.
+        """
         self.stacks_file = Path(__file__).parent / "stacks.json"
         self._stacks = None
+        self._stacks_lock = threading.Lock()  # Protect _stacks cache
 
     def load_stacks(self) -> dict[str, Any]:
-        """Load stacks from JSON file"""
+        """
+        Load and cache stacks configuration from the module's stacks.json file in a thread-safe manner.
+        
+        Loads and parses the JSON file at self.stacks_file and caches the resulting dictionary on the instance. Subsequent calls return the cached value. The loading path is synchronized to be safe for concurrent callers.
+        
+        Returns:
+            dict[str, Any]: Parsed stacks configuration (typically contains a "stacks" key with the list of stacks).
+        
+        Raises:
+            FileNotFoundError: If the stacks file does not exist at self.stacks_file.
+            ValueError: If the stacks file contains invalid JSON.
+        """
+        # Fast path: check without lock
         if self._stacks is not None:
             return self._stacks
 
-        try:
-            with open(self.stacks_file) as f:
-                self._stacks = json.load(f)
-            return self._stacks
-        except FileNotFoundError as e:
-            raise FileNotFoundError(f"Stacks config not found at {self.stacks_file}") from e
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in {self.stacks_file}") from e
+        # Slow path: acquire lock and recheck
+        with self._stacks_lock:
+            if self._stacks is not None:
+                return self._stacks
+
+            try:
+                with open(self.stacks_file) as f:
+                    self._stacks = json.load(f)
+                return self._stacks
+            except FileNotFoundError as e:
+                raise FileNotFoundError(f"Stacks config not found at {self.stacks_file}") from e
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in {self.stacks_file}") from e
 
     def list_stacks(self) -> list[dict[str, Any]]:
-        """Get all available stacks"""
+        """
+        Return the list of available stack definitions.
+        
+        Returns:
+            list[dict[str, Any]]: A list of stack dictionaries from the loaded configuration; empty list if no stacks are defined.
+        """
         stacks = self.load_stacks()
         return stacks.get("stacks", [])
 

@@ -22,6 +22,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+import threading  # For thread-safe singleton pattern
+
+
 class TransactionType(Enum):
     """Types of package transactions."""
 
@@ -643,7 +646,15 @@ class UndoManager:
         return result
 
     def undo_last(self, dry_run: bool = False) -> dict[str, Any]:
-        """Undo the most recent successful transaction."""
+        """
+        Trigger an undo operation for the most recent completed transaction.
+        
+        Parameters:
+        	dry_run (bool): If True, do not execute rollback commands; return the actions that would be taken.
+        
+        Returns:
+        	result (dict[str, Any]): Operation result. `success` is True for a successful (or simulated) undo; if False, an `error` key explains the failure. 
+        """
         recent = self.history.get_recent(limit=1, status_filter=TransactionStatus.COMPLETED)
 
         if not recent:
@@ -652,24 +663,44 @@ class UndoManager:
         return self.undo(recent[0].id, dry_run=dry_run)
 
 
-# CLI-friendly functions
+# Global instances for easy access (thread-safe singletons)
 _history_instance = None
+_history_lock = threading.Lock()
 _undo_manager_instance = None
+_undo_manager_lock = threading.Lock()
 
 
-def get_history() -> TransactionHistory:
-    """Get the global transaction history instance."""
+def get_history() -> "TransactionHistory":
+    """
+    Return the module-wide TransactionHistory singleton, creating it if necessary in a thread-safe manner.
+    
+    Returns:
+        TransactionHistory: The global TransactionHistory singleton instance.
+    """
     global _history_instance
+    # Fast path: avoid lock if already initialized
     if _history_instance is None:
-        _history_instance = TransactionHistory()
+        with _history_lock:
+            # Double-checked locking pattern
+            if _history_instance is None:
+                _history_instance = TransactionHistory()
     return _history_instance
 
 
-def get_undo_manager() -> UndoManager:
-    """Get the global undo manager instance."""
+def get_undo_manager() -> "UndoManager":
+    """
+    Retrieve the module-wide singleton UndoManager, creating it lazily in a thread-safe manner.
+    
+    Returns:
+        undo_manager (UndoManager): The shared UndoManager instance used for rollback operations.
+    """
     global _undo_manager_instance
+    # Fast path: avoid lock if already initialized
     if _undo_manager_instance is None:
-        _undo_manager_instance = UndoManager(get_history())
+        with _undo_manager_lock:
+            # Double-checked locking pattern
+            if _undo_manager_instance is None:
+                _undo_manager_instance = UndoManager(get_history())
     return _undo_manager_instance
 
 

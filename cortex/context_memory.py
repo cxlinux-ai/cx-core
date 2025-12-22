@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
+
 
 @dataclass
 class MemoryEntry:
@@ -83,125 +85,131 @@ class ContextMemory:
         """Initialize the context memory system"""
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._pool: SQLiteConnectionPool | None = None
         self._init_database()
 
     def _init_database(self):
-        """Initialize SQLite database schema"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Memory entries table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memory_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                category TEXT NOT NULL,
-                context TEXT,
-                action TEXT NOT NULL,
-                result TEXT,
-                success BOOLEAN DEFAULT 1,
-                confidence REAL DEFAULT 1.0,
-                frequency INTEGER DEFAULT 1,
-                metadata TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
         """
-        )
-
-        # Patterns table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS patterns (
-                pattern_id TEXT PRIMARY KEY,
-                pattern_type TEXT NOT NULL,
-                description TEXT,
-                frequency INTEGER DEFAULT 1,
-                last_seen TEXT,
-                confidence REAL DEFAULT 0.0,
-                actions TEXT,
-                context TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
+        Initialize the thread-safe SQLite connection pool and ensure the database schema exists.
+        
+        Sets up a pooled SQLite connection for the instance and creates required tables (memory_entries, patterns, suggestions, preferences) along with indexes used for query performance.
         """
-        )
+        # Initialize connection pool (thread-safe singleton)
+        self._pool = get_connection_pool(str(self.db_path), pool_size=5)
+        
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Suggestions table
-        cursor.execute(
+            # Memory entries table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    context TEXT,
+                    action TEXT NOT NULL,
+                    result TEXT,
+                    success BOOLEAN DEFAULT 1,
+                    confidence REAL DEFAULT 1.0,
+                    frequency INTEGER DEFAULT 1,
+                    metadata TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
             """
-            CREATE TABLE IF NOT EXISTS suggestions (
-                suggestion_id TEXT PRIMARY KEY,
-                suggestion_type TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                confidence REAL DEFAULT 0.0,
-                based_on TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                dismissed BOOLEAN DEFAULT 0
             )
-        """
-        )
 
-        # User preferences table
-        cursor.execute(
+            # Patterns table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS patterns (
+                    pattern_id TEXT PRIMARY KEY,
+                    pattern_type TEXT NOT NULL,
+                    description TEXT,
+                    frequency INTEGER DEFAULT 1,
+                    last_seen TEXT,
+                    confidence REAL DEFAULT 0.0,
+                    actions TEXT,
+                    context TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
             """
-            CREATE TABLE IF NOT EXISTS preferences (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                category TEXT,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
 
-        # Create indexes for performance
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entries(category)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_memory_timestamp ON memory_entries(timestamp)"
-        )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(pattern_type)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_suggestions_type ON suggestions(suggestion_type)"
-        )
+            # Suggestions table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS suggestions (
+                    suggestion_id TEXT PRIMARY KEY,
+                    suggestion_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    confidence REAL DEFAULT 0.0,
+                    based_on TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    dismissed BOOLEAN DEFAULT 0
+                )
+            """
+            )
 
-        conn.commit()
-        conn.close()
+            # User preferences table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS preferences (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    category TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+
+            # Create indexes for performance
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entries(category)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memory_timestamp ON memory_entries(timestamp)"
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(pattern_type)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_suggestions_type ON suggestions(suggestion_type)"
+            )
+
+            conn.commit()
 
     def record_interaction(self, entry: MemoryEntry) -> int:
         """
-        Record a user interaction in memory
-
-        Args:
-            entry: MemoryEntry object containing interaction details
-
+        Store a MemoryEntry in persistent storage and trigger pattern analysis.
+        
+        Parameters:
+            entry (MemoryEntry): Interaction record to persist.
+        
         Returns:
-            ID of the inserted memory entry
+            int: Row ID of the inserted memory entry.
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            INSERT INTO memory_entries
-            (timestamp, category, context, action, result, success, confidence, frequency, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                entry.timestamp,
-                entry.category,
-                entry.context,
-                entry.action,
-                entry.result,
-                entry.success,
-                entry.confidence,
-                entry.frequency,
-                json.dumps(entry.metadata),
-            ),
-        )
+            cursor.execute(
+                """
+                INSERT INTO memory_entries
+                (timestamp, category, context, action, result, success, confidence, frequency, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    entry.timestamp,
+                    entry.category,
+                    entry.context,
+                    entry.action,
+                    entry.result,
+                    entry.success,
+                    entry.confidence,
+                    entry.frequency,
+                    json.dumps(entry.metadata),
+                ),
+            )
 
-        entry_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+            entry_id = cursor.lastrowid
+            conn.commit()
 
         # Trigger pattern analysis
         self._analyze_patterns(entry)
@@ -210,43 +218,48 @@ class ContextMemory:
 
     def get_similar_interactions(self, context: str, limit: int = 10) -> list[MemoryEntry]:
         """
-        Find similar past interactions based on context
-
-        Args:
-            context: Context string to match against
-            limit: Maximum number of results
-
+        Find past interactions whose context or action text matches keywords extracted from the given context, returning the most recent unique matches.
+        
+        Parameters:
+            context (str): Text used to extract keywords for matching against stored interaction contexts and actions.
+            limit (int): Maximum number of returned entries.
+        
         Returns:
-            List of similar MemoryEntry objects
+            list[MemoryEntry]: Up to `limit` MemoryEntry objects that match the context or action (ordered by timestamp descending, duplicates removed).
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Simple keyword-based similarity for now
-        keywords = self._extract_keywords(context)
+            # Simple keyword-based similarity for now
+            keywords = self._extract_keywords(context)
 
-        results = []
-        for keyword in keywords:
-            cursor.execute(
-                """
-                SELECT * FROM memory_entries
-                WHERE context LIKE ? OR action LIKE ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """,
-                (f"%{keyword}%", f"%{keyword}%", limit),
-            )
+            results = []
+            for keyword in keywords:
+                cursor.execute(
+                    """
+                    SELECT * FROM memory_entries
+                    WHERE context LIKE ? OR action LIKE ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """,
+                    (f"%{keyword}%", f"%{keyword}%", limit),
+                )
 
-            for row in cursor.fetchall():
-                entry = self._row_to_memory_entry(row)
-                if entry not in results:
-                    results.append(entry)
+                for row in cursor.fetchall():
+                    entry = self._row_to_memory_entry(row)
+                    if entry not in results:
+                        results.append(entry)
 
-        conn.close()
         return results[:limit]
 
     def _row_to_memory_entry(self, row: tuple) -> MemoryEntry:
-        """Convert database row to MemoryEntry object"""
+        """
+        Convert a database row tuple into a MemoryEntry dataclass.
+        
+        Expected row layout: (id, timestamp, category, context, action, result, success, confidence, frequency, metadata_json).
+        @param row (tuple): Database row with columns in the order listed above; `metadata_json` may be NULL or a JSON string.
+        @returns MemoryEntry: A MemoryEntry populated from the row; `success` is converted to `bool` and `metadata` is parsed from JSON (empty dict if missing).
+        """
         return MemoryEntry(
             id=row[0],
             timestamp=row[1],
@@ -283,59 +296,66 @@ class ContextMemory:
 
     def _analyze_patterns(self, entry: MemoryEntry):
         """
-        Analyze entry for patterns and update pattern database
-
-        This runs after each new entry to detect recurring patterns
+        Detect recurring actions related to a memory entry and create or update corresponding pattern records.
+        
+        Scans recent memory entries in the same category (past 30 days) for actions that occur at least three times. For each recurring action found, inserts a new pattern or updates the existing pattern's frequency, last-seen timestamp, and confidence (confidence increases with observed frequency, capped at 1.0).
+        
+        Parameters:
+            entry (MemoryEntry): The newly recorded memory entry used as the basis for analyzing patterns.
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Look for similar actions in recent history
-        cursor.execute(
-            """
-            SELECT action, COUNT(*) as count
-            FROM memory_entries
-            WHERE category = ?
-            AND timestamp > datetime('now', '-30 days')
-            GROUP BY action
-            HAVING count >= 3
-        """,
-            (entry.category,),
-        )
-
-        for row in cursor.fetchall():
-            action, frequency = row
-            pattern_id = self._generate_pattern_id(entry.category, action)
-
-            # Update or create pattern
+            # Look for similar actions in recent history
             cursor.execute(
                 """
-                INSERT INTO patterns (pattern_id, pattern_type, description, frequency, last_seen, confidence, actions, context)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(pattern_id) DO UPDATE SET
-                    frequency = ?,
-                    last_seen = ?,
-                    confidence = MIN(1.0, confidence + 0.1)
+                SELECT action, COUNT(*) as count
+                FROM memory_entries
+                WHERE category = ?
+                AND timestamp > datetime('now', '-30 days')
+                GROUP BY action
+                HAVING count >= 3
             """,
-                (
-                    pattern_id,
-                    entry.category,
-                    f"Recurring pattern: {action}",
-                    frequency,
-                    entry.timestamp,
-                    min(1.0, frequency / 10.0),  # Confidence increases with frequency
-                    json.dumps([action]),
-                    json.dumps({"category": entry.category}),
-                    frequency,
-                    entry.timestamp,
-                ),
+                (entry.category,),
             )
 
-        conn.commit()
-        conn.close()
+            for row in cursor.fetchall():
+                action, frequency = row
+                pattern_id = self._generate_pattern_id(entry.category, action)
+
+                # Update or create pattern
+                cursor.execute(
+                    """
+                    INSERT INTO patterns (pattern_id, pattern_type, description, frequency, last_seen, confidence, actions, context)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(pattern_id) DO UPDATE SET
+                        frequency = ?,
+                        last_seen = ?,
+                        confidence = MIN(1.0, confidence + 0.1)
+                """,
+                    (
+                        pattern_id,
+                        entry.category,
+                        f"Recurring pattern: {action}",
+                        frequency,
+                        entry.timestamp,
+                        min(1.0, frequency / 10.0),  # Confidence increases with frequency
+                        json.dumps([action]),
+                        json.dumps({"category": entry.category}),
+                        frequency,
+                        entry.timestamp,
+                    ),
+                )
+
+            conn.commit()
 
     def _generate_pattern_id(self, category: str, action: str) -> str:
-        """Generate unique pattern ID"""
+        """
+        Generate a stable 16-character hexadecimal identifier for a pattern based on category and action.
+        
+        Returns:
+            16-character hexadecimal string derived deterministically from the given category and action.
+        """
         content = f"{category}:{action}".encode()
         return hashlib.sha256(content).hexdigest()[:16]
 
@@ -343,58 +363,59 @@ class ContextMemory:
         self, pattern_type: str | None = None, min_confidence: float = 0.5
     ) -> list[Pattern]:
         """
-        Retrieve learned patterns
-
-        Args:
-            pattern_type: Filter by pattern type
-            min_confidence: Minimum confidence threshold
-
+        Retrieve stored patterns that match an optional type and meet a minimum confidence threshold.
+        
+        Parameters:
+            pattern_type (str | None): If provided, only patterns with this type are returned.
+            min_confidence (float): Minimum confidence (0.0–1.0) required for returned patterns.
+        
         Returns:
-            List of Pattern objects
+            list[Pattern]: Patterns ordered by confidence descending then frequency descending.
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        query = """
-            SELECT * FROM patterns
-            WHERE confidence >= ?
-        """
-        params = [min_confidence]
+            query = """
+                SELECT * FROM patterns
+                WHERE confidence >= ?
+            """
+            params = [min_confidence]
 
-        if pattern_type:
-            query += " AND pattern_type = ?"
-            params.append(pattern_type)
+            if pattern_type:
+                query += " AND pattern_type = ?"
+                params.append(pattern_type)
 
-        query += " ORDER BY confidence DESC, frequency DESC"
+            query += " ORDER BY confidence DESC, frequency DESC"
 
-        cursor.execute(query, params)
+            cursor.execute(query, params)
 
-        patterns = []
-        for row in cursor.fetchall():
-            pattern = Pattern(
-                pattern_id=row[0],
-                pattern_type=row[1],
-                description=row[2],
-                frequency=row[3],
-                last_seen=row[4],
-                confidence=row[5],
-                actions=json.loads(row[6]),
-                context=json.loads(row[7]),
-            )
-            patterns.append(pattern)
+            patterns = []
+            for row in cursor.fetchall():
+                pattern = Pattern(
+                    pattern_id=row[0],
+                    pattern_type=row[1],
+                    description=row[2],
+                    frequency=row[3],
+                    last_seen=row[4],
+                    confidence=row[5],
+                    actions=json.loads(row[6]),
+                    context=json.loads(row[7]),
+                )
+                patterns.append(pattern)
 
-        conn.close()
         return patterns
 
     def generate_suggestions(self, context: str = None) -> list[Suggestion]:
         """
-        Generate intelligent suggestions based on memory and patterns
-
-        Args:
-            context: Optional context to focus suggestions
-
+        Generate context-aware suggestions from recent memory and learned patterns.
+        
+        Builds optimization, alternative, and proactive suggestions using high-confidence patterns and memory entries from the last 7 days. If `context` is provided, suggestions are focused on that context. Each generated Suggestion is persisted to the suggestions table before being returned.
+        
+        Parameters:
+            context (str | None): Optional text used to focus or filter generated suggestions.
+        
         Returns:
-            List of Suggestion objects
+            list[Suggestion]: The list of generated Suggestion objects.
         """
         suggestions = []
 
@@ -402,19 +423,19 @@ class ContextMemory:
         patterns = self.get_patterns(min_confidence=0.7)
 
         # Get recent memory entries
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
+            cursor.execute(
+                """
+                SELECT * FROM memory_entries
+                WHERE timestamp > datetime('now', '-7 days')
+                ORDER BY timestamp DESC
+                LIMIT 50
             """
-            SELECT * FROM memory_entries
-            WHERE timestamp > datetime('now', '-7 days')
-            ORDER BY timestamp DESC
-            LIMIT 50
-        """
-        )
+            )
 
-        recent_entries = [self._row_to_memory_entry(row) for row in cursor.fetchall()]
+            recent_entries = [self._row_to_memory_entry(row) for row in cursor.fetchall()]
 
         # Analyze for optimization opportunities
         suggestions.extend(self._suggest_optimizations(recent_entries, patterns))
@@ -424,8 +445,6 @@ class ContextMemory:
 
         # Suggest proactive actions based on patterns
         suggestions.extend(self._suggest_proactive_actions(patterns))
-
-        conn.close()
 
         # Store suggestions
         for suggestion in suggestions:
@@ -507,233 +526,285 @@ class ContextMemory:
         return hashlib.sha256(content).hexdigest()[:16]
 
     def _store_suggestion(self, suggestion: Suggestion):
-        """Store suggestion in database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """
+        Insert a Suggestion into the suggestions table, ignoring duplicates.
+        
+        The suggestion's `based_on` list is JSON-encoded before storage. If a row with the same `suggestion_id` already exists, the insert is ignored. The change is committed to the database.
+         
+        Parameters:
+            suggestion (Suggestion): Suggestion object to persist; its fields (suggestion_id, suggestion_type, title, description, confidence, based_on, created_at) are stored.
+        """
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO suggestions
-            (suggestion_id, suggestion_type, title, description, confidence, based_on, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                suggestion.suggestion_id,
-                suggestion.suggestion_type,
-                suggestion.title,
-                suggestion.description,
-                suggestion.confidence,
-                json.dumps(suggestion.based_on),
-                suggestion.created_at,
-            ),
-        )
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO suggestions
+                (suggestion_id, suggestion_type, title, description, confidence, based_on, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    suggestion.suggestion_id,
+                    suggestion.suggestion_type,
+                    suggestion.title,
+                    suggestion.description,
+                    suggestion.confidence,
+                    json.dumps(suggestion.based_on),
+                    suggestion.created_at,
+                ),
+            )
 
-        conn.commit()
-        conn.close()
+            conn.commit()
 
     def get_active_suggestions(self, limit: int = 10) -> list[Suggestion]:
-        """Get active (non-dismissed) suggestions"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """
+        Return a list of active (not dismissed) suggestions ordered by confidence and recency.
+        
+        Parameters:
+            limit (int): Maximum number of suggestions to return.
+        
+        Returns:
+            list[Suggestion]: Active suggestions ordered by descending confidence then descending creation time, limited to `limit`.
+        """
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            SELECT * FROM suggestions
-            WHERE dismissed = 0
-            ORDER BY confidence DESC, created_at DESC
-            LIMIT ?
-        """,
-            (limit,),
-        )
-
-        suggestions = []
-        for row in cursor.fetchall():
-            suggestion = Suggestion(
-                suggestion_id=row[0],
-                suggestion_type=row[1],
-                title=row[2],
-                description=row[3],
-                confidence=row[4],
-                based_on=json.loads(row[5]),
-                created_at=row[6],
+            cursor.execute(
+                """
+                SELECT * FROM suggestions
+                WHERE dismissed = 0
+                ORDER BY confidence DESC, created_at DESC
+                LIMIT ?
+            """,
+                (limit,),
             )
-            suggestions.append(suggestion)
 
-        conn.close()
+            suggestions = []
+            for row in cursor.fetchall():
+                suggestion = Suggestion(
+                    suggestion_id=row[0],
+                    suggestion_type=row[1],
+                    title=row[2],
+                    description=row[3],
+                    confidence=row[4],
+                    based_on=json.loads(row[5]),
+                    created_at=row[6],
+                )
+                suggestions.append(suggestion)
+
         return suggestions
 
     def dismiss_suggestion(self, suggestion_id: str):
-        """Mark a suggestion as dismissed"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """
+        Mark a suggestion as dismissed so it is excluded from active suggestions.
+        
+        Parameters:
+            suggestion_id (str): Unique identifier of the suggestion to dismiss.
+        """
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            UPDATE suggestions
-            SET dismissed = 1
-            WHERE suggestion_id = ?
-        """,
-            (suggestion_id,),
-        )
+            cursor.execute(
+                """
+                UPDATE suggestions
+                SET dismissed = 1
+                WHERE suggestion_id = ?
+            """,
+                (suggestion_id,),
+            )
 
-        conn.commit()
-        conn.close()
+            conn.commit()
 
     def set_preference(self, key: str, value: Any, category: str = "general"):
-        """Store a user preference"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """
+        Store or update a user preference in the persistent preferences table.
+        
+        Parameters:
+            key (str): Preference key identifier.
+            value (Any): Preference value; will be JSON-encoded before storage.
+            category (str): Preference category or namespace; defaults to "general".
+        
+        Detailed behavior:
+            - Inserts a new preference row or updates the existing row with the same key.
+            - Updates the `updated_at` timestamp to the current time in ISO 8601 format.
+        """
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            INSERT INTO preferences (key, value, category, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-                value = ?,
-                updated_at = ?
-        """,
-            (
-                key,
-                json.dumps(value),
-                category,
-                datetime.now().isoformat(),
-                json.dumps(value),
-                datetime.now().isoformat(),
-            ),
-        )
+            cursor.execute(
+                """
+                INSERT INTO preferences (key, value, category, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = ?,
+                    updated_at = ?
+            """,
+                (
+                    key,
+                    json.dumps(value),
+                    category,
+                    datetime.now().isoformat(),
+                    json.dumps(value),
+                    datetime.now().isoformat(),
+                ),
+            )
 
-        conn.commit()
-        conn.close()
+            conn.commit()
 
     def get_preference(self, key: str, default: Any = None) -> Any:
-        """Retrieve a user preference"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """
+        Get a stored preference value by key.
+        
+        Parameters:
+            key (str): Preference key to look up.
+            default: Value to return when the preference is not found.
+        
+        Returns:
+            The decoded preference value from storage if present, otherwise `default`.
+        """
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            SELECT value FROM preferences WHERE key = ?
-        """,
-            (key,),
-        )
+            cursor.execute(
+                """
+                SELECT value FROM preferences WHERE key = ?
+            """,
+                (key,),
+            )
 
-        row = cursor.fetchone()
-        conn.close()
+            row = cursor.fetchone()
 
         if row:
             return json.loads(row[0])
         return default
 
     def get_statistics(self) -> dict[str, Any]:
-        """Get memory system statistics"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        stats = {}
-
-        # Total entries
-        cursor.execute("SELECT COUNT(*) FROM memory_entries")
-        stats["total_entries"] = cursor.fetchone()[0]
-
-        # Entries by category
-        cursor.execute(
-            """
-            SELECT category, COUNT(*)
-            FROM memory_entries
-            GROUP BY category
         """
-        )
-        stats["by_category"] = dict(cursor.fetchall())
-
-        # Success rate
-        cursor.execute(
-            """
-            SELECT
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate
-            FROM memory_entries
+        Return a summary of usage and system statistics for the context memory.
+        
+        Returns:
+            stats (dict[str, Any]): A dictionary with the following keys:
+                - total_entries (int): Total number of recorded memory entries.
+                - by_category (dict[str, int]): Mapping of category names to their entry counts.
+                - success_rate (float): Percentage of entries marked successful, rounded to two decimals.
+                - total_patterns (int): Total number of learned patterns.
+                - active_suggestions (int): Count of suggestions that are not dismissed.
+                - recent_activity (int): Number of memory entries recorded in the last 7 days.
         """
-        )
-        stats["success_rate"] = round(cursor.fetchone()[0], 2) if stats["total_entries"] > 0 else 0
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Total patterns
-        cursor.execute("SELECT COUNT(*) FROM patterns")
-        stats["total_patterns"] = cursor.fetchone()[0]
+            stats = {}
 
-        # Active suggestions
-        cursor.execute("SELECT COUNT(*) FROM suggestions WHERE dismissed = 0")
-        stats["active_suggestions"] = cursor.fetchone()[0]
+            # Total entries
+            cursor.execute("SELECT COUNT(*) FROM memory_entries")
+            stats["total_entries"] = cursor.fetchone()[0]
 
-        # Recent activity
-        cursor.execute(
+            # Entries by category
+            cursor.execute(
+                """
+                SELECT category, COUNT(*)
+                FROM memory_entries
+                GROUP BY category
             """
-            SELECT COUNT(*) FROM memory_entries
-            WHERE timestamp > datetime('now', '-7 days')
-        """
-        )
-        stats["recent_activity"] = cursor.fetchone()[0]
+            )
+            stats["by_category"] = dict(cursor.fetchall())
 
-        conn.close()
+            # Success rate
+            cursor.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate
+                FROM memory_entries
+            """
+            )
+            stats["success_rate"] = round(cursor.fetchone()[0], 2) if stats["total_entries"] > 0 else 0
+
+            # Total patterns
+            cursor.execute("SELECT COUNT(*) FROM patterns")
+            stats["total_patterns"] = cursor.fetchone()[0]
+
+            # Active suggestions
+            cursor.execute("SELECT COUNT(*) FROM suggestions WHERE dismissed = 0")
+            stats["active_suggestions"] = cursor.fetchone()[0]
+
+            # Recent activity
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM memory_entries
+                WHERE timestamp > datetime('now', '-7 days')
+            """
+            )
+            stats["recent_activity"] = cursor.fetchone()[0]
+
         return stats
 
     def export_memory(self, output_path: str, include_dismissed: bool = False):
-        """Export all memory data to JSON"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """
+        Export the stored memory, patterns, suggestions, and preferences to a JSON file.
+        
+        Parameters:
+            output_path (str): Filesystem path where the exported JSON will be written.
+            include_dismissed (bool): If True, include suggestions that have been dismissed; otherwise omit dismissed suggestions.
+        
+        Returns:
+            str: The path to the written JSON file (same as `output_path`).
+        """
+        with self._pool.get_connection() as conn:
+            cursor = conn.cursor()
 
-        data = {
-            "exported_at": datetime.now().isoformat(),
-            "entries": [],
-            "patterns": [],
-            "suggestions": [],
-            "preferences": [],
-        }
-
-        # Export entries
-        cursor.execute("SELECT * FROM memory_entries")
-        for row in cursor.fetchall():
-            entry = self._row_to_memory_entry(row)
-            data["entries"].append(asdict(entry))
-
-        # Export patterns
-        cursor.execute("SELECT * FROM patterns")
-        for row in cursor.fetchall():
-            pattern = {
-                "pattern_id": row[0],
-                "pattern_type": row[1],
-                "description": row[2],
-                "frequency": row[3],
-                "last_seen": row[4],
-                "confidence": row[5],
-                "actions": json.loads(row[6]),
-                "context": json.loads(row[7]),
+            data = {
+                "exported_at": datetime.now().isoformat(),
+                "entries": [],
+                "patterns": [],
+                "suggestions": [],
+                "preferences": [],
             }
-            data["patterns"].append(pattern)
 
-        # Export suggestions
-        query = "SELECT * FROM suggestions"
-        if not include_dismissed:
-            query += " WHERE dismissed = 0"
-        cursor.execute(query)
+            # Export entries
+            cursor.execute("SELECT * FROM memory_entries")
+            for row in cursor.fetchall():
+                entry = self._row_to_memory_entry(row)
+                data["entries"].append(asdict(entry))
 
-        for row in cursor.fetchall():
-            suggestion = {
-                "suggestion_id": row[0],
-                "suggestion_type": row[1],
-                "title": row[2],
-                "description": row[3],
-                "confidence": row[4],
-                "based_on": json.loads(row[5]),
-                "created_at": row[6],
-            }
-            data["suggestions"].append(suggestion)
+            # Export patterns
+            cursor.execute("SELECT * FROM patterns")
+            for row in cursor.fetchall():
+                pattern = {
+                    "pattern_id": row[0],
+                    "pattern_type": row[1],
+                    "description": row[2],
+                    "frequency": row[3],
+                    "last_seen": row[4],
+                    "confidence": row[5],
+                    "actions": json.loads(row[6]),
+                    "context": json.loads(row[7]),
+                }
+                data["patterns"].append(pattern)
 
-        # Export preferences
-        cursor.execute("SELECT key, value, category FROM preferences")
-        for row in cursor.fetchall():
-            pref = {"key": row[0], "value": json.loads(row[1]), "category": row[2]}
-            data["preferences"].append(pref)
+            # Export suggestions
+            query = "SELECT * FROM suggestions"
+            if not include_dismissed:
+                query += " WHERE dismissed = 0"
+            cursor.execute(query)
 
-        conn.close()
+            for row in cursor.fetchall():
+                suggestion = {
+                    "suggestion_id": row[0],
+                    "suggestion_type": row[1],
+                    "title": row[2],
+                    "description": row[3],
+                    "confidence": row[4],
+                    "based_on": json.loads(row[5]),
+                    "created_at": row[6],
+                }
+                data["suggestions"].append(suggestion)
+
+            # Export preferences
+            cursor.execute("SELECT key, value, category FROM preferences")
+            for row in cursor.fetchall():
+                pref = {"key": row[0], "value": json.loads(row[1]), "category": row[2]}
+                data["preferences"].append(pref)
 
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2)

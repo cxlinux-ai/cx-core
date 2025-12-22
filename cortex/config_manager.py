@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -43,17 +44,24 @@ class ConfigManager:
 
     def __init__(self, sandbox_executor=None):
         """
-        Initialize ConfigManager.
-
-        Args:
-            sandbox_executor: Optional SandboxExecutor instance for safe command execution
-
+        Create a ConfigManager and prepare its runtime environment.
+        
+        Parameters:
+            sandbox_executor (optional): Executor used to run system commands inside a sandbox; if None, commands run directly.
+        
+        Notes:
+            - Initializes paths `~/.cortex` and `~/.cortex/preferences.yaml`.
+            - Creates the `~/.cortex` directory with mode 0700 if it does not exist.
+            - Enforces ownership and 0700 permissions on the directory.
+            - Creates an instance-level lock to serialize preferences file I/O.
+        
         Raises:
-            PermissionError: If directory ownership or permissions cannot be secured
+            PermissionError: If ownership or permissions for the cortex directory cannot be secured.
         """
         self.sandbox_executor = sandbox_executor
         self.cortex_dir = Path.home() / ".cortex"
         self.preferences_file = self.cortex_dir / "preferences.yaml"
+        self._file_lock = threading.Lock()  # Protect file I/O operations
 
         # Ensure .cortex directory exists with secure permissions
         self.cortex_dir.mkdir(mode=0o700, exist_ok=True)
@@ -273,15 +281,18 @@ class ConfigManager:
 
     def _load_preferences(self) -> dict[str, Any]:
         """
-        Load user preferences from ~/.cortex/preferences.yaml.
-
+        Load preferences from the user's preferences YAML file and return them as a dictionary.
+        
+        Reads the configured preferences file while holding the instance file lock. If the file does not exist, is empty, malformed, or cannot be read, this returns an empty dict.
+        
         Returns:
-            Dictionary of preferences
+            dict: Preferences mapping loaded from YAML, or an empty dict if no valid preferences could be loaded.
         """
         if self.preferences_file.exists():
             try:
-                with open(self.preferences_file) as f:
-                    return yaml.safe_load(f) or {}
+                with self._file_lock:
+                    with open(self.preferences_file) as f:
+                        return yaml.safe_load(f) or {}
             except Exception:
                 pass
 
@@ -289,14 +300,20 @@ class ConfigManager:
 
     def _save_preferences(self, preferences: dict[str, Any]) -> None:
         """
-        Save user preferences to ~/.cortex/preferences.yaml.
-
-        Args:
-            preferences: Dictionary of preferences to save
+        Save the provided preferences dictionary to the user's preferences file (~/.cortex/preferences.yaml).
+        
+        Writes the preferences as YAML while acquiring the instance file lock to serialize concurrent access.
+        
+        Parameters:
+            preferences (dict[str, Any]): Preferences to persist.
+        
+        Raises:
+            RuntimeError: If writing the preferences file fails.
         """
         try:
-            with open(self.preferences_file, "w") as f:
-                yaml.safe_dump(preferences, f, default_flow_style=False)
+            with self._file_lock:
+                with open(self.preferences_file, "w") as f:
+                    yaml.safe_dump(preferences, f, default_flow_style=False)
         except Exception as e:
             raise RuntimeError(f"Failed to save preferences: {e}")
 

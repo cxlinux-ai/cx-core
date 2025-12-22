@@ -9,6 +9,7 @@ import builtins
 import contextlib
 import json
 import sqlite3
+from cortex.utils.db_pool import get_connection_pool
 from dataclasses import asdict, dataclass
 from enum import Enum
 from multiprocessing import shared_memory
@@ -45,8 +46,14 @@ class CacheEntry:
 
 class CacheDatabase:
     def __init__(self):
+        """
+        Initialize the CacheDatabase by preparing the on-disk database and connection pool.
+        
+        Creates the database directory if missing, opens a pooled connection to the SQLite file, and ensures the schema for the following tables exists: `pools`, `entries`, and `stats`.
+        """
         CORTEX_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(CORTEX_DB) as conn:
+        self._pool = get_connection_pool(str(CORTEX_DB), pool_size=5)
+        with self._pool.get_connection() as conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS pools (name TEXT PRIMARY KEY, config TEXT, shm_name TEXT);
@@ -57,7 +64,17 @@ class CacheDatabase:
             )
 
     def save_pool(self, cfg: CacheConfig, shm: str):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        """
+        Persist a cache pool's configuration and its shared-memory segment name in the database.
+        
+        Stores the given CacheConfig (as JSON) and the associated shared-memory name into the pools table,
+        replacing any existing entry for that pool, and ensures a corresponding row exists in the stats table.
+        
+        Parameters:
+            cfg (CacheConfig): Configuration for the cache pool to persist.
+            shm (str): Name of the shared-memory segment associated with the pool.
+        """
+        with self._pool.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO pools VALUES (?,?,?)",
                 (cfg.name, json.dumps(asdict(cfg)), shm),
@@ -65,14 +82,31 @@ class CacheDatabase:
             conn.execute("INSERT OR IGNORE INTO stats (pool) VALUES (?)", (cfg.name,))
 
     def get_pool(self, name: str):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        """
+        Retrieve the stored cache pool configuration and its shared-memory segment name for a given pool.
+        
+        Parameters:
+            name (str): The pool name to look up.
+        
+        Returns:
+            tuple: (CacheConfig, str) reconstructed CacheConfig and the shared-memory name, or None if the pool is not found.
+        """
+        with self._pool.get_connection() as conn:
             row = conn.execute(
                 "SELECT config, shm_name FROM pools WHERE name=?", (name,)
             ).fetchone()
             return (CacheConfig(**json.loads(row[0])), row[1]) if row else None
 
     def list_pools(self):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        """
+        Return all cache pool configurations persisted in the database.
+        
+        Queries the pools table and reconstructs each pool's configuration from the stored JSON.
+        
+        Returns:
+            list[CacheConfig]: A list of CacheConfig objects rebuilt from the stored JSON config for each pool.
+        """
+        with self._pool.get_connection() as conn:
             return [
                 CacheConfig(**json.loads(r[0]))
                 for r in conn.execute("SELECT config FROM pools").fetchall()
@@ -116,10 +150,19 @@ class KVCacheManager:
         return True
 
     def destroy_pool(self, name: str) -> bool:
+        """
+        Destroy a named cache pool, removing its in-memory segment and deleting its metadata.
+        
+        Parameters:
+            name (str): The name of the pool to destroy.
+        
+        Returns:
+            bool: `True` if the pool destruction and metadata deletion were performed.
+        """
         if name in self.pools:
             self.pools[name].destroy()
             del self.pools[name]
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self.db._pool.get_connection() as conn:
             conn.execute("DELETE FROM pools WHERE name=?", (name,))
         print(f"✅ Destroyed pool '{name}'")
         return True
