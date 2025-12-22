@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 
-from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
+from cortex.utils.db_pool import SQLiteConnectionPool, get_connection_pool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ class InstallationHistory:
         """Initialize SQLite database"""
         try:
             self._pool = get_connection_pool(self.db_path, pool_size=5)
-            
+
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
 

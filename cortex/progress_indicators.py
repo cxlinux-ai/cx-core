@@ -139,7 +139,7 @@ class FallbackProgress:
                 char = self._spinner_chars[self._spinner_idx % len(self._spinner_chars)]
                 message = self._current_message
                 self._spinner_idx += 1
-            
+
             sys.stdout.write(f"\r{char} {message}")
             sys.stdout.flush()
             time.sleep(0.1)
@@ -155,7 +155,7 @@ class FallbackProgress:
             self._running = False
             thread = self._thread
             message = final_message or self._current_message
-        
+
         if thread:
             thread.join(timeout=0.5)
         sys.stdout.write(f"\r✓ {message}\n")
@@ -167,7 +167,7 @@ class FallbackProgress:
             self._running = False
             thread = self._thread
             msg = message or self._current_message
-        
+
         if thread:
             thread.join(timeout=0.5)
         sys.stdout.write(f"\r✗ {msg}\n")

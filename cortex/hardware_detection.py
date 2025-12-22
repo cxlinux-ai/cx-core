@@ -253,7 +253,7 @@ class HardwareDetector:
         """Load cached hardware info if valid (thread-safe)."""
         if not self.use_cache:
             return None
-        
+
         with self._cache_lock:
             try:
                 if not self.CACHE_FILE.exists():
@@ -305,7 +305,7 @@ class HardwareDetector:
         """Save hardware info to cache (thread-safe)."""
         if not self.use_cache:
             return
-            
+
         with self._cache_lock:
             try:
                 self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
