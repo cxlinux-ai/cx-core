@@ -13,6 +13,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -149,7 +150,7 @@ class SnapshotManager:
     def _detect_pip_packages(self) -> list[dict[str, str]]:
         """Detect installed PIP packages"""
         return self._run_package_detection(
-            ["pip", "list", "--format=json"],
+            [sys.executable, "-m", "pip", "list", "--format=json"],
             self._parse_pip_output,
             "PIP"
         )
