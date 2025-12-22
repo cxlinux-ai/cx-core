@@ -759,7 +759,10 @@ async def query_multiple_packages(
             {
                 "messages": [
                     {"role": "system", "content": default_system},
-                    {"role": "user", "content": f"What are the installation requirements for {pkg}?"},
+                    {
+                        "role": "user",
+                        "content": f"What are the installation requirements for {pkg}?",
+                    },
                 ],
                 "task_type": TaskType.DEPENDENCY_RESOLUTION,
             }
@@ -798,8 +801,7 @@ async def diagnose_errors_parallel(
             print(f"{error}: {diagnosis.content}")
     """
     system_prompt = (
-        "You are a Linux system debugging expert. "
-        "Analyze error messages and provide solutions."
+        "You are a Linux system debugging expert. " "Analyze error messages and provide solutions."
     )
     if context:
         system_prompt += f"\n\nSystem context: {context}"
@@ -857,7 +859,10 @@ async def check_hardware_configs_parallel(
             {
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Check configuration requirements for {component}"},
+                    {
+                        "role": "user",
+                        "content": f"Check configuration requirements for {component}",
+                    },
                 ],
                 "task_type": TaskType.CONFIGURATION,
             }

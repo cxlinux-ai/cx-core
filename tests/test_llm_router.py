@@ -707,9 +707,7 @@ class TestParallelProcessing(unittest.TestCase):
 
         async def run_test():
             components = ["nvidia_gpu", "intel_cpu"]
-            configs = await check_hardware_configs_parallel(
-                router, components, max_concurrent=2
-            )
+            configs = await check_hardware_configs_parallel(router, components, max_concurrent=2)
             self.assertEqual(len(configs), 2)
             self.assertIn("nvidia_gpu", configs)
             self.assertIn("intel_cpu", configs)

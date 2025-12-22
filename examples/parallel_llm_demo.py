@@ -35,9 +35,7 @@ async def demo_multi_package_queries():
     print(f"\nQuerying {len(packages)} packages in parallel...")
     start_time = time.time()
 
-    responses = await query_multiple_packages(
-        router, packages, max_concurrent=5
-    )
+    responses = await query_multiple_packages(router, packages, max_concurrent=5)
 
     elapsed = time.time() - start_time
 
@@ -211,7 +209,9 @@ async def demo_sequential_vs_parallel():
 
     speedup = elapsed_seq / elapsed_par if elapsed_par > 0 else 1.0
     print(f"\n⚡ Speedup: {speedup:.2f}x")
-    print(f"   Time saved: {elapsed_seq - elapsed_par:.2f}s ({((elapsed_seq - elapsed_par)/elapsed_seq*100):.1f}%)")
+    print(
+        f"   Time saved: {elapsed_seq - elapsed_par:.2f}s ({((elapsed_seq - elapsed_par)/elapsed_seq*100):.1f}%)"
+    )
 
 
 async def main():
@@ -251,4 +251,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

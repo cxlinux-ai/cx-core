@@ -109,6 +109,7 @@ async def test_batch_processing():
     except Exception as e:
         print(f"❌ Batch processing failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -169,9 +170,7 @@ async def test_helper_functions():
     try:
         print("\n4a. Testing query_multiple_packages...")
         packages = ["nginx", "postgresql"]
-        responses = await query_multiple_packages(
-            router, packages, max_concurrent=2
-        )
+        responses = await query_multiple_packages(router, packages, max_concurrent=2)
         print(f"   ✅ Queried {len(responses)} packages")
         results.append(True)
     except Exception as e:
@@ -182,9 +181,7 @@ async def test_helper_functions():
     try:
         print("\n4b. Testing diagnose_errors_parallel...")
         errors = ["Test error 1", "Test error 2"]
-        diagnoses = await diagnose_errors_parallel(
-            router, errors, max_concurrent=2
-        )
+        diagnoses = await diagnose_errors_parallel(router, errors, max_concurrent=2)
         print(f"   ✅ Diagnosed {len(diagnoses)} errors")
         results.append(True)
     except Exception as e:
@@ -195,9 +192,7 @@ async def test_helper_functions():
     try:
         print("\n4c. Testing check_hardware_configs_parallel...")
         components = ["nvidia_gpu", "intel_cpu"]
-        configs = await check_hardware_configs_parallel(
-            router, components, max_concurrent=2
-        )
+        configs = await check_hardware_configs_parallel(router, components, max_concurrent=2)
         print(f"   ✅ Checked {len(configs)} components")
         results.append(True)
     except Exception as e:
@@ -233,8 +228,9 @@ async def test_performance_comparison():
         print("Simulating sequential execution...")
         start_seq = time.time()
         for req in requests:
-            await router.acomplete(**{k: v for k, v in req.items() if k != "task_type"}, 
-                                 task_type=req["task_type"])
+            await router.acomplete(
+                **{k: v for k, v in req.items() if k != "task_type"}, task_type=req["task_type"]
+            )
         elapsed_seq = time.time() - start_seq
 
         # Parallel execution
@@ -316,4 +312,3 @@ async def main():
 if __name__ == "__main__":
     success = asyncio.run(main())
     sys.exit(0 if success else 1)
-
