@@ -31,6 +31,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 class CortexCLI:
+    def changelog(self, package: str) -> int:
+        from cortex.changelog.fetchers import fetch_changelog
+        from cortex.changelog.parser import parse_changelog
+        from cortex.changelog.formatter import format_changelog
+
+        entries = fetch_changelog(package)
+
+        if not entries:
+            self._print_error(f"No changelog found for package: {package}")
+            return 1
+
+        for entry in entries:
+            parsed = parse_changelog(entry)
+            print(format_changelog(parsed))
+            print()
+
+        return 0
+
     def __init__(self, verbose: bool = False):
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
@@ -771,6 +789,8 @@ def show_rich_help():
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("stack <name>", "Install the stack")
     table.add_row("doctor", "System health check")
+    table.add_row("changelog <pkg>", "View package changelogs")
+
 
     console.print(table)
     console.print()
@@ -836,6 +856,14 @@ def main():
         "--parallel",
         action="store_true",
         help="Enable parallel execution for multi-step installs",
+    )
+    changelog_parser = subparsers.add_parser(
+        "changelog",
+        help="View package changelogs"
+    )
+    changelog_parser.add_argument(
+        "package",
+        help="Package name (e.g. docker)"
     )
 
     # History command
@@ -909,6 +937,10 @@ def main():
             return cli.wizard()
         elif args.command == "status":
             return cli.status()
+        elif args.command == "changelog":
+            return cli.changelog(args.package)
+
+
         elif args.command == "install":
             return cli.install(
                 args.software,
