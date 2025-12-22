@@ -288,20 +288,20 @@ class InstallationHistory:
                     """
                     INSERT INTO installations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-                (
-                    install_id,
-                    timestamp,
-                    operation_type.value,
-                    json.dumps(packages),
-                    InstallationStatus.IN_PROGRESS.value,
-                    json.dumps([asdict(s) for s in before_snapshot]),
-                    None,  # after_snapshot - will be updated
-                    json.dumps(commands),
-                    None,  # error_message
-                    1,  # rollback_available
-                    None,  # duration
-                ),
-            )
+                    (
+                        install_id,
+                        timestamp,
+                        operation_type.value,
+                        json.dumps(packages),
+                        InstallationStatus.IN_PROGRESS.value,
+                        json.dumps([asdict(s) for s in before_snapshot]),
+                        None,  # after_snapshot - will be updated
+                        json.dumps(commands),
+                        None,  # error_message
+                        1,  # rollback_available
+                        None,  # duration
+                    ),
+                )
 
             conn.commit()
 

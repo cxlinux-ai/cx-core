@@ -132,6 +132,7 @@ class SQLiteConnectionPool:
             except queue.Full:
                 # Should never happen, but log if it does
                 import logging
+
                 logging.error(f"Connection pool overflow for {self.db_path}")
 
     def close_all(self):

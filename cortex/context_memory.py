@@ -161,7 +161,9 @@ class ContextMemory:
             )
 
             # Create indexes for performance
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entries(category)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entries(category)"
+            )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_timestamp ON memory_entries(timestamp)"
             )
@@ -647,7 +649,9 @@ class ContextMemory:
                 FROM memory_entries
             """
             )
-            stats["success_rate"] = round(cursor.fetchone()[0], 2) if stats["total_entries"] > 0 else 0
+            stats["success_rate"] = (
+                round(cursor.fetchone()[0], 2) if stats["total_entries"] > 0 else 0
+            )
 
             # Total patterns
             cursor.execute("SELECT COUNT(*) FROM patterns")

@@ -37,7 +37,9 @@ def test_singleton_thread_safety_transaction_history():
 
     # All threads should get the SAME instance
     unique_instances = len(set(results))
-    assert unique_instances == 1, f"Multiple singleton instances created! Found {unique_instances} different instances"
+    assert (
+        unique_instances == 1
+    ), f"Multiple singleton instances created! Found {unique_instances} different instances"
 
 
 def test_singleton_thread_safety_hardware_detection():
@@ -57,7 +59,9 @@ def test_singleton_thread_safety_hardware_detection():
 
     # All threads should get the SAME instance
     unique_instances = len(set(results))
-    assert unique_instances == 1, f"Multiple detector instances created! Found {unique_instances} different instances"
+    assert (
+        unique_instances == 1
+    ), f"Multiple detector instances created! Found {unique_instances} different instances"
 
 
 def test_singleton_thread_safety_degradation_manager():
@@ -77,7 +81,9 @@ def test_singleton_thread_safety_degradation_manager():
 
     # All threads should get the SAME instance
     unique_instances = len(set(results))
-    assert unique_instances == 1, f"Multiple manager instances created! Found {unique_instances} different instances"
+    assert (
+        unique_instances == 1
+    ), f"Multiple manager instances created! Found {unique_instances} different instances"
 
 
 def test_connection_pool_concurrent_reads():
@@ -135,7 +141,9 @@ def test_connection_pool_concurrent_writes():
         # Initialize database
         pool = get_connection_pool(db_path, pool_size=5)
         with pool.get_connection() as conn:
-            conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, value TEXT)")
+            conn.execute(
+                "CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, value TEXT)"
+            )
             conn.commit()
 
         errors = []
@@ -147,7 +155,7 @@ def test_connection_pool_concurrent_writes():
                         cursor = conn.cursor()
                         cursor.execute(
                             "INSERT INTO test (thread_id, value) VALUES (?, ?)",
-                            (thread_id, f"thread_{thread_id}_value_{i}")
+                            (thread_id, f"thread_{thread_id}_value_{i}"),
                         )
                         conn.commit()
             except Exception as e:
@@ -206,7 +214,9 @@ def test_hardware_detection_parallel():
 
     # All results should be identical (same hardware)
     unique_results = len(set(results))
-    assert unique_results == 1, f"Inconsistent hardware detection! Got {unique_results} different results: {set(results)}"
+    assert (
+        unique_results == 1
+    ), f"Inconsistent hardware detection! Got {unique_results} different results: {set(results)}"
 
 
 def test_connection_pool_timeout():
@@ -278,7 +288,9 @@ def test_stress_concurrent_operations():
 
         # Initialize
         with pool.get_connection() as conn:
-            conn.execute("CREATE TABLE stress (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, timestamp REAL)")
+            conn.execute(
+                "CREATE TABLE stress (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, timestamp REAL)"
+            )
             conn.commit()
 
         errors = []
@@ -296,7 +308,7 @@ def test_stress_concurrent_operations():
                             cursor = conn.cursor()
                             cursor.execute(
                                 "INSERT INTO stress (data, timestamp) VALUES (?, ?)",
-                                (f"thread_{thread_id}", time.time())
+                                (f"thread_{thread_id}", time.time()),
                             )
                             conn.commit()
             except Exception as e:
