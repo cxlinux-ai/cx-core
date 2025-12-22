@@ -185,7 +185,8 @@ async def main():
     print("\n\n[Demo 2] Multiple Package Installation")
     print("-" * 60)
     tracker2 = ProgressTracker(
-        "Installing Development Tools", enable_notifications=False  # Disable notifications for demo
+        "Installing Development Tools",
+        enable_notifications=False,  # Disable notifications for demo
     )
     await run_with_progress(tracker2, demo_multi_package_installation)
 

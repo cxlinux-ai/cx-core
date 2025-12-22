@@ -315,7 +315,7 @@ class SystemDoctor:
             self._print_check(
                 "WARN",
                 "No API keys configured (required for cloud models)",
-                "Configure API key: export ANTHROPIC_API_KEY=sk-... " "or run 'cortex wizard'",
+                "Configure API key: export ANTHROPIC_API_KEY=sk-... or run 'cortex wizard'",
             )
 
     def _check_disk_space(self) -> None:

@@ -94,7 +94,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart={cmd}
-Environment=CUDA_VISIBLE_DEVICES={','.join(map(str, config.gpu_ids))}
+Environment=CUDA_VISIBLE_DEVICES={",".join(map(str, config.gpu_ids))}
 CPUQuota={int(config.cpu_limit * 100)}%
 MemoryMax={config.memory_limit}
 Restart={config.restart_policy}

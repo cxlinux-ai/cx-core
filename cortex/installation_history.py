@@ -690,7 +690,7 @@ if __name__ == "__main__":
                 date = r.timestamp[:19].replace("T", " ")
                 packages = ", ".join(r.packages[:2])
                 if len(r.packages) > 2:
-                    packages += f" +{len(r.packages)-2}"
+                    packages += f" +{len(r.packages) - 2}"
 
                 print(
                     f"{r.id:<18} {date:<20} {r.operation_type.value:<12} {packages:<30} {r.status.value:<15}"

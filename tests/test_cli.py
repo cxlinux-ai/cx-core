@@ -9,7 +9,6 @@ from cortex.cli import CortexCLI, main
 
 
 class TestCortexCLI(unittest.TestCase):
-
     def setUp(self):
         self.cli = CortexCLI()
 

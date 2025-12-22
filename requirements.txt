@@ -12,7 +12,7 @@ PyYAML>=6.0.0
 python-dotenv>=1.0.0
 
 # Encryption for environment variable secrets
-cryptography>=41.0.0
+cryptography>=42.0.0
 
 # Terminal UI
 rich>=13.0.0

@@ -686,7 +686,7 @@ if __name__ == "__main__":
     print("\n⚡ Quick Detection:")
     start = time.time()
     quick = detector.detect_quick()
-    print(f"  Time: {(time.time() - start)*1000:.0f}ms")
+    print(f"  Time: {(time.time() - start) * 1000:.0f}ms")
     print(f"  CPU Cores: {quick['cpu_cores']}")
     print(f"  RAM: {quick['ram_gb']} GB")
     print(f"  NVIDIA GPU: {quick['has_nvidia']}")
@@ -696,7 +696,7 @@ if __name__ == "__main__":
     print("\n🔍 Full Detection:")
     start = time.time()
     info = detector.detect()
-    print(f"  Time: {(time.time() - start)*1000:.0f}ms")
+    print(f"  Time: {(time.time() - start) * 1000:.0f}ms")
 
     print("\n📋 System:")
     print(f"  Hostname: {info.hostname}")

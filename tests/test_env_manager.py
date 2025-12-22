@@ -17,24 +17,23 @@ import os
 import stat
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 from cortex.env_manager import (
+    BUILTIN_TEMPLATES,
+    EncryptionManager,
     EnvironmentManager,
     EnvironmentStorage,
-    EnvironmentVariable,
-    EnvironmentValidator,
-    EncryptionManager,
     EnvironmentTemplate,
+    EnvironmentValidator,
+    EnvironmentVariable,
     TemplateVariable,
     ValidationResult,
     VariableType,
-    BUILTIN_TEMPLATES,
     get_env_manager,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -243,9 +242,7 @@ class TestEnvironmentValidator:
         assert is_valid is True
 
         # Invalid pattern match
-        is_valid, error = EnvironmentValidator.validate(
-            "abc", "string", custom_pattern=r"^[A-Z]+$"
-        )
+        is_valid, error = EnvironmentValidator.validate("abc", "string", custom_pattern=r"^[A-Z]+$")
         assert is_valid is False
         assert "does not match pattern" in error
 
@@ -548,11 +545,11 @@ NODE_ENV=production
 
     def test_import_env_with_quotes(self, env_manager):
         """Test importing values with quotes."""
-        content = '''
+        content = """
 DOUBLE_QUOTED="hello world"
 SINGLE_QUOTED='another value'
 NO_QUOTES=simple
-'''
+"""
         count, errors = env_manager.import_env("myapp", content)
 
         assert count == 3
@@ -566,9 +563,7 @@ NO_QUOTES=simple
 PUBLIC_VAR=public_value
 SECRET_VAR=secret_value
 """
-        count, errors = env_manager.import_env(
-            "myapp", content, encrypt_keys=["SECRET_VAR"]
-        )
+        count, errors = env_manager.import_env("myapp", content, encrypt_keys=["SECRET_VAR"])
 
         assert count == 2
 
@@ -916,8 +911,8 @@ class TestEdgeCases:
         retrieved = env_manager.get_variable("myapp", "LONG")
         assert retrieved == long_value
 
-    def test_concurrent_writes_same_app(self, env_manager):
-        """Test that multiple writes to same app don't lose data."""
+    def test_rapid_sequential_writes_same_app(self, env_manager):
+        """Test that multiple rapid sequential writes to same app don't lose data."""
         # Write multiple variables rapidly
         for i in range(10):
             env_manager.set_variable("myapp", f"VAR_{i}", f"value_{i}")

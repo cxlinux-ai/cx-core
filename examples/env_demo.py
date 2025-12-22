@@ -30,10 +30,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cortex.env_manager import (
+    EncryptionManager,
     EnvironmentManager,
     EnvironmentStorage,
-    EncryptionManager,
-    get_env_manager,
 )
 
 console = Console()

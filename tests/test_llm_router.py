@@ -92,7 +92,9 @@ class TestFallbackBehavior(unittest.TestCase):
     def test_fallback_to_kimi_when_claude_unavailable(self):
         """Should fallback to Kimi K2 if Claude unavailable."""
         router = LLMRouter(
-            claude_api_key=None, kimi_api_key="test-kimi-key", enable_fallback=True  # No Claude
+            claude_api_key=None,
+            kimi_api_key="test-kimi-key",
+            enable_fallback=True,  # No Claude
         )
 
         # User chat normally goes to Claude, should fallback to Kimi
@@ -103,7 +105,9 @@ class TestFallbackBehavior(unittest.TestCase):
     def test_fallback_to_claude_when_kimi_unavailable(self):
         """Should fallback to Claude if Kimi K2 unavailable."""
         router = LLMRouter(
-            claude_api_key="test-claude-key", kimi_api_key=None, enable_fallback=True  # No Kimi
+            claude_api_key="test-claude-key",
+            kimi_api_key=None,
+            enable_fallback=True,  # No Kimi
         )
 
         # System ops normally go to Kimi, should fallback to Claude

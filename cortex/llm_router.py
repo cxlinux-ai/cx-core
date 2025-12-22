@@ -801,7 +801,11 @@ async def diagnose_errors_parallel(
             print(f"{error}: {diagnosis.content}")
     """
     system_prompt = (
+<<<<<<< HEAD
         "You are a Linux system debugging expert. " "Analyze error messages and provide solutions."
+=======
+        "You are a Linux system debugging expert. Analyze error messages and provide solutions."
+>>>>>>> 2d6f42c (fix: resolve ruff lint errors and PEP8 issues)
     )
     if context:
         system_prompt += f"\n\nSystem context: {context}"

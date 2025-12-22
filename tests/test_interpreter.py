@@ -10,7 +10,6 @@ from cortex.llm.interpreter import APIProvider, CommandInterpreter
 
 
 class TestCommandInterpreter(unittest.TestCase):
-
     def setUp(self):
         self.api_key = "test-api-key"
 

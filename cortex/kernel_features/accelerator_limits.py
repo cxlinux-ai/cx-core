@@ -98,7 +98,7 @@ class AcceleratorLimitsManager:
         for p in profiles:
             gpus = ",".join(map(str, p.gpu_ids)) or "-"
             print(
-                f"{p.name:<20} {p.preset:<12} {p.cpu_quota/100:.0f}{'':<5} {p.memory_max/1e9:.0f}G{'':<5} {gpus:<10}"
+                f"{p.name:<20} {p.preset:<12} {p.cpu_quota / 100:.0f}{'':<5} {p.memory_max / 1e9:.0f}G{'':<5} {gpus:<10}"
             )
 
 

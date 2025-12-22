@@ -291,7 +291,7 @@ class ProgressIndicator:
             for i, item in enumerate(items):
                 pct = (i + 1) / total * 100
                 bar = "█" * int(pct / 5) + "░" * (20 - int(pct / 5))
-                sys.stdout.write(f"\r{description}: [{bar}] {i+1}/{total}")
+                sys.stdout.write(f"\r{description}: [{bar}] {i + 1}/{total}")
                 sys.stdout.flush()
                 yield item
             print()  # Newline after completion

@@ -131,7 +131,7 @@ class KVCacheManager:
         for item in pools:
             if item:
                 cfg = item[0] if isinstance(item, tuple) else item
-                print(f"{cfg.name:<20} {cfg.size_bytes/1e9:.1f}G{'':<6} {cfg.policy:<10}")
+                print(f"{cfg.name:<20} {cfg.size_bytes / 1e9:.1f}G{'':<6} {cfg.policy:<10}")
 
 
 def main():

@@ -465,7 +465,7 @@ class CortexCLI:
 
                 coordinator = InstallationCoordinator(
                     commands=commands,
-                    descriptions=[f"Step {i+1}" for i in range(len(commands))],
+                    descriptions=[f"Step {i + 1}" for i in range(len(commands))],
                     timeout=300,
                     stop_on_error=True,
                     progress_callback=progress_callback,
@@ -594,7 +594,7 @@ class CortexCLI:
                     date = r.timestamp[:19].replace("T", " ")
                     packages = ", ".join(r.packages[:2])
                     if len(r.packages) > 2:
-                        packages += f" +{len(r.packages)-2}"
+                        packages += f" +{len(r.packages) - 2}"
 
                     print(
                         f"{r.id:<18} {date:<20} {r.operation_type.value:<12} {packages:<30} {r.status.value:<15}"
@@ -757,7 +757,9 @@ class CortexCLI:
         action = getattr(args, "env_action", None)
 
         if not action:
-            self._print_error("Please specify a subcommand (set/get/list/delete/export/import/clear/template)")
+            self._print_error(
+                "Please specify a subcommand (set/get/list/delete/export/import/clear/template)"
+            )
             return 1
 
         try:
@@ -859,9 +861,9 @@ class CortexCLI:
             if var.encrypted:
                 if show_encrypted:
                     try:
-                        value = env_mgr.encryption.decrypt(var.value)
+                        value = env_mgr.get_variable(app, var.key, decrypt=True)
                         console.print(f"  {var.key}: {value} [dim](decrypted)[/dim]")
-                    except Exception:
+                    except ValueError:
                         console.print(f"  {var.key}: [red][decryption failed][/red]")
                 else:
                     console.print(f"  {var.key}: [yellow][encrypted][/yellow]")
@@ -904,7 +906,7 @@ class CortexCLI:
                 with open(output_file, "w", encoding="utf-8") as f:
                     f.write(content)
                 cx_print(f"✓ Exported to {output_file}", "success")
-            except IOError as e:
+            except OSError as e:
                 self._print_error(f"Failed to write file: {e}")
                 return 1
         else:
@@ -923,7 +925,7 @@ class CortexCLI:
 
         try:
             if input_file:
-                with open(input_file, "r", encoding="utf-8") as f:
+                with open(input_file, encoding="utf-8") as f:
                     content = f.read()
             elif not sys.stdin.isatty():
                 content = sys.stdin.read()
@@ -954,7 +956,7 @@ class CortexCLI:
         except FileNotFoundError:
             self._print_error(f"File not found: {input_file}")
             return 1
-        except IOError as e:
+        except OSError as e:
             self._print_error(f"Failed to read file: {e}")
             return 1
 
@@ -988,7 +990,9 @@ class CortexCLI:
         elif template_action == "apply":
             return self._env_template_apply(env_mgr, args)
         else:
-            self._print_error("Please specify: template list, template show <name>, or template apply <name> <app>")
+            self._print_error(
+                "Please specify: template list, template show <name>, or template apply <name> <app>"
+            )
             return 1
 
     def _env_template_list(self, env_mgr: EnvironmentManager) -> int:
@@ -1256,16 +1260,15 @@ def main():
     env_set_parser.add_argument("app", help="Application name")
     env_set_parser.add_argument("key", help="Variable name")
     env_set_parser.add_argument("value", help="Variable value")
+    env_set_parser.add_argument("--encrypt", "-e", action="store_true", help="Encrypt the value")
     env_set_parser.add_argument(
-        "--encrypt", "-e", action="store_true", help="Encrypt the value"
+        "--type",
+        "-t",
+        choices=["string", "url", "port", "boolean", "integer", "path"],
+        default="string",
+        help="Variable type for validation",
     )
-    env_set_parser.add_argument(
-        "--type", "-t", choices=["string", "url", "port", "boolean", "integer", "path"],
-        default="string", help="Variable type for validation"
-    )
-    env_set_parser.add_argument(
-        "--description", "-d", help="Description of the variable"
-    )
+    env_set_parser.add_argument("--description", "-d", help="Description of the variable")
 
     # env get <app> <KEY> [--decrypt]
     env_get_parser = env_subs.add_parser("get", help="Get an environment variable")
@@ -1291,27 +1294,22 @@ def main():
     env_export_parser = env_subs.add_parser("export", help="Export variables to .env format")
     env_export_parser.add_argument("app", help="Application name")
     env_export_parser.add_argument(
-        "--include-encrypted", action="store_true",
-        help="Include decrypted values of encrypted variables"
+        "--include-encrypted",
+        action="store_true",
+        help="Include decrypted values of encrypted variables",
     )
-    env_export_parser.add_argument(
-        "--output", "-o", help="Output file (default: stdout)"
-    )
+    env_export_parser.add_argument("--output", "-o", help="Output file (default: stdout)")
 
     # env import <app> [file] [--encrypt-keys KEYS]
     env_import_parser = env_subs.add_parser("import", help="Import variables from .env format")
     env_import_parser.add_argument("app", help="Application name")
     env_import_parser.add_argument("file", nargs="?", help="Input file (default: stdin)")
-    env_import_parser.add_argument(
-        "--encrypt-keys", help="Comma-separated list of keys to encrypt"
-    )
+    env_import_parser.add_argument("--encrypt-keys", help="Comma-separated list of keys to encrypt")
 
     # env clear <app> [--force]
     env_clear_parser = env_subs.add_parser("clear", help="Clear all variables for an app")
     env_clear_parser.add_argument("app", help="Application name")
-    env_clear_parser.add_argument(
-        "--force", "-f", action="store_true", help="Skip confirmation"
-    )
+    env_clear_parser.add_argument("--force", "-f", action="store_true", help="Skip confirmation")
 
     # env apps - list all apps with environments
     env_subs.add_parser("apps", help="List all apps with stored environments")
@@ -1322,7 +1320,9 @@ def main():
 
     # env template subcommands
     env_template_parser = env_subs.add_parser("template", help="Manage environment templates")
-    env_template_subs = env_template_parser.add_subparsers(dest="template_action", help="Template actions")
+    env_template_subs = env_template_parser.add_subparsers(
+        dest="template_action", help="Template actions"
+    )
 
     # env template list
     env_template_subs.add_parser("list", help="List available templates")

@@ -354,7 +354,7 @@ class TransactionHistory:
             if any(crit in pkg for crit in critical_packages):
                 transaction.is_rollback_safe = False
                 transaction.rollback_warning = (
-                    f"Rolling back {pkg} may affect system stability. " "Proceed with caution."
+                    f"Rolling back {pkg} may affect system stability. Proceed with caution."
                 )
                 break
 
