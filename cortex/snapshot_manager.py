@@ -16,7 +16,7 @@ import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -83,16 +83,16 @@ class SnapshotManager:
     def _run_package_detection(
         self,
         cmd: list[str],
-        parser_func,
+        parser_func: Callable[[str], list[dict[str, str]]],
         manager_name: str
     ) -> list[dict[str, str]]:
         """Generic package detection with command execution and parsing.
-        
+
         Args:
             cmd: Command to execute as list
             parser_func: Function to parse stdout into package list
             manager_name: Name of package manager for logging
-            
+
         Returns:
             List of package dictionaries with 'name' and 'version' keys
         """
@@ -135,7 +135,7 @@ class SnapshotManager:
         npm_data = json.loads(stdout)
         if "dependencies" in npm_data:
             for name, info in npm_data["dependencies"].items():
-                packages.append({"name": name, "version": info.get("version", "unknown")})
+                packages.append({"name": name, "version": info.get("version", "")})
         return packages
 
     def _detect_apt_packages(self) -> list[dict[str, str]]:
@@ -172,27 +172,29 @@ class SnapshotManager:
                     if "=" in line:
                         key, value = line.strip().split("=", 1)
                         info[key.lower()] = value.strip('"')
-            
+
             # Kernel version
             result = subprocess.run(
                 ["uname", "-r"],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=5,
             )
             if result.returncode == 0:
                 info["kernel"] = result.stdout.strip()
-                
+
             # Architecture
             result = subprocess.run(
                 ["uname", "-m"],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=5,
             )
             if result.returncode == 0:
                 info["arch"] = result.stdout.strip()
-                
+
         except Exception as e:
             logger.warning(f"System info detection failed: {e}")
         return info
@@ -321,11 +323,11 @@ class SnapshotManager:
 
     def _execute_package_command(self, cmd_list: list[str], dry_run: bool) -> None:
         """Execute a package management command with timeout protection.
-        
+
         Args:
             cmd_list: Command and arguments as a list
             dry_run: If True, skip execution
-            
+
         Raises:
             subprocess.CalledProcessError: If command fails
             subprocess.TimeoutExpired: If command times out
@@ -348,7 +350,7 @@ class SnapshotManager:
         commands: list[str]
     ) -> None:
         """Restore packages for a specific package manager.
-        
+
         Args:
             manager: Package manager name ('apt', 'pip', 'npm')
             snapshot_packages: Packages in snapshot {name: version}
@@ -371,9 +373,9 @@ class SnapshotManager:
             "npm": ["npm", "install", "-g"]
         }
         version_formats = {
-            "apt": lambda name, ver: name,  # APT installs latest by default
-            "pip": lambda name, ver: f"{name}=={ver}",
-            "npm": lambda name, ver: f"{name}@{ver}"
+            "apt": lambda name, ver: f"{name}={ver}" if ver else name,
+            "pip": lambda name, ver: f"{name}=={ver}" if ver else name,
+            "npm": lambda name, ver: f"{name}@{ver}" if ver else name
         }
 
         if to_remove:
@@ -466,13 +468,13 @@ class SnapshotManager:
             if len(snapshots) > self.RETENTION_LIMIT:
                 # Sort by timestamp (oldest first)
                 snapshots.sort(key=lambda s: s.timestamp)
-                
+
                 # Delete oldest snapshots
                 to_delete = len(snapshots) - self.RETENTION_LIMIT
                 for i in range(to_delete):
                     snapshot_id = snapshots[i].id
                     self.delete_snapshot(snapshot_id)
                     logger.info(f"Retention policy: deleted old snapshot {snapshot_id}")
-                    
+
         except Exception as e:
             logger.warning(f"Failed to apply retention policy: {e}")
