@@ -5,6 +5,7 @@ Handles corporate proxies, VPNs, and network configurations automatically.
 Detects system proxy settings and configures tools (apt, pip, httpx) accordingly.
 """
 
+import getpass
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 from rich.console import Console
@@ -34,13 +36,14 @@ class NetworkConfig:
     - Connectivity testing
     """
 
-    def __init__(self, force_proxy: str | None = None, offline_mode: bool = False):
+    def __init__(self, force_proxy: str | None = None, offline_mode: bool = False, auto_detect: bool = True):
         """
         Initialize network configuration.
 
         Args:
             force_proxy: Optional proxy URL to force use (overrides detection)
             offline_mode: If True, skip connectivity checks and enable cache
+            auto_detect: If True, run detection immediately (default). Set to False for lazy loading.
         """
         self.force_proxy = force_proxy
         self.offline_mode = offline_mode
@@ -49,15 +52,23 @@ class NetworkConfig:
         self.is_online = False
         self.connection_quality = "unknown"
         self.cache_dir = Path.home() / ".cortex" / "cache"
-        
+        self._detected = False
+
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        if not offline_mode:
-            self._detect_all()
+        if auto_detect and not offline_mode:
+            self.detect()
 
-    def _detect_all(self) -> None:
-        """Run all detection methods."""
+    def detect(self) -> None:
+        """
+        Run all detection methods.
+
+        Can be called manually for lazy loading or after initialization.
+        """
+        if self._detected:
+            return  # Already detected, skip
+
         if self.force_proxy:
             self.proxy = self._parse_proxy_url(self.force_proxy)
         else:
@@ -67,6 +78,8 @@ class NetworkConfig:
         self.is_online = self.check_connectivity()
         if self.is_online:
             self.connection_quality = self.detect_network_quality()
+
+        self._detected = True
 
     # === Proxy Detection ===
 
@@ -147,7 +160,8 @@ class NetworkConfig:
             )
 
             if host and port:
-                proxy_url = f"http://{host}:{port}"
+                # Proxy URLs use http:// protocol (traffic through proxy can be HTTPS)
+                proxy_url = f"http://{host}:{port}"  # noqa: S105 NOSONAR
                 return {"http": proxy_url, "https": proxy_url}
         except (FileNotFoundError, subprocess.CalledProcessError) as e:
             logger.debug(f"GNOME proxy settings not available: {e}")
@@ -207,7 +221,7 @@ class NetworkConfig:
             result = subprocess.check_output(
                 ["ip", "link", "show"], stderr=subprocess.DEVNULL
             ).decode()
-            vpn_keywords = ["tun", "tap", "ppp", "wg", "ipsec"]
+            vpn_keywords = ["tun", "tap", "ppp", "wg", "ipsec", "proton", "nordlynx", "mullvad"]
             if any(kw in result for kw in vpn_keywords):
                 console.print("[dim] VPN connection detected[/dim]")
                 return True
@@ -238,12 +252,15 @@ class NetworkConfig:
             True if internet is reachable
         """
         # Quick DNS check first
+        original_timeout = socket.getdefaulttimeout()
         try:
             socket.setdefaulttimeout(timeout)
             socket.gethostbyname("google.com")
             return True
         except (TimeoutError, socket.gaierror):
             pass
+        finally:
+            socket.setdefaulttimeout(original_timeout)
 
         # Try multiple endpoints
         test_urls = ["https://1.1.1.1", "https://8.8.8.8", "https://api.github.com"]
@@ -252,7 +269,7 @@ class NetworkConfig:
             try:
                 requests.head(url, timeout=timeout, proxies=self.proxy)
                 return True
-            except (requests.RequestException, requests.Timeout):
+            except requests.RequestException:
                 continue
 
         console.print("[yellow] No internet connectivity detected[/yellow]")
@@ -290,10 +307,12 @@ class NetworkConfig:
         if not self.proxy or not self.proxy.get("http"):
             return False
 
-        proxy_url = self.proxy["http"]
+        http_proxy = self.proxy["http"]
+        https_proxy = self.proxy.get("https", http_proxy)  # Use HTTPS proxy or fallback to HTTP
+
         apt_conf = f"""# Cortex auto-generated proxy configuration
-Acquire::http::Proxy "{proxy_url}";
-Acquire::https::Proxy "{proxy_url}";
+Acquire::http::Proxy "{http_proxy}";
+Acquire::https::Proxy "{https_proxy}";
 """
 
         conf_path = Path("/etc/apt/apt.conf.d/90cortex-proxy")
@@ -306,7 +325,7 @@ Acquire::https::Proxy "{proxy_url}";
                 stdout=subprocess.DEVNULL,
                 check=True,
             )
-            console.print(f"[green] Configured apt for proxy: {proxy_url}[/green]")
+            console.print(f"[green] Configured apt for proxy: HTTP={http_proxy}, HTTPS={https_proxy}[/green]")
             return True
         except (subprocess.CalledProcessError, PermissionError) as e:
             console.print(f"[yellow] Could not configure apt proxy: {e}[/yellow]")
@@ -317,11 +336,13 @@ Acquire::https::Proxy "{proxy_url}";
         if not self.proxy or not self.proxy.get("http"):
             return
 
-        proxy_url = self.proxy["http"]
-        os.environ["HTTP_PROXY"] = proxy_url
-        os.environ["HTTPS_PROXY"] = proxy_url
+        http_proxy = self.proxy["http"]
+        https_proxy = self.proxy.get("https", http_proxy)  # Use HTTPS proxy or fallback to HTTP
 
-        console.print(f"[green] Configured pip for proxy: {proxy_url}[/green]")
+        os.environ["HTTP_PROXY"] = http_proxy
+        os.environ["HTTPS_PROXY"] = https_proxy
+
+        console.print(f"[green] Configured pip for proxy: HTTP={http_proxy}, HTTPS={https_proxy}[/green]")
 
     def get_httpx_proxy_config(self) -> dict | None:
         """
@@ -342,7 +363,7 @@ Acquire::https::Proxy "{proxy_url}";
         if self.proxy.get("socks"):
             # SOCKS proxy applies to all protocols
             config["all://"] = self.proxy["socks"]
-        
+
         return config if config else None
 
     # === Package Caching for Offline Mode ===
@@ -355,7 +376,7 @@ Acquire::https::Proxy "{proxy_url}";
             packages: List of package names/IDs
         """
         cache_file = self.cache_dir / "available_packages.json"
-        
+
         try:
             with open(cache_file, "w") as f:
                 json.dump({
@@ -363,7 +384,7 @@ Acquire::https::Proxy "{proxy_url}";
                     "cached_at": time.time(),
                 }, f)
             logger.debug(f"Cached {len(packages)} packages to {cache_file}")
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.warning(f"Could not cache package list: {e}")
 
     def get_cached_packages(self, max_age_hours: int = 24) -> list[str] | None:
@@ -377,7 +398,7 @@ Acquire::https::Proxy "{proxy_url}";
             List of cached packages or None if cache is too old/missing
         """
         cache_file = self.cache_dir / "available_packages.json"
-        
+
         if not cache_file.exists():
             logger.debug("No cached package list found")
             return None
@@ -385,18 +406,18 @@ Acquire::https::Proxy "{proxy_url}";
         try:
             with open(cache_file) as f:
                 data = json.load(f)
-            
+
             cached_at = data.get("cached_at", 0)
             age_hours = (time.time() - cached_at) / 3600
-            
+
             if age_hours > max_age_hours:
                 logger.debug(f"Cached package list is {age_hours:.1f}h old (max {max_age_hours}h)")
                 return None
-            
+
             packages = data.get("packages", [])
             logger.debug(f"Loaded {len(packages)} packages from cache ({age_hours:.1f}h old)")
             return packages
-            
+
         except (json.JSONDecodeError, OSError, KeyError) as e:
             logger.warning(f"Could not read cached packages: {e}")
             return None
@@ -537,8 +558,6 @@ def prompt_proxy_credentials() -> tuple[str, str]:
     Returns:
         Tuple of (username, password)
     """
-    import getpass
-
     console.print("\n[yellow] Proxy authentication required[/yellow]")
     username = input("Username: ")
     password = getpass.getpass("Password: ")
@@ -547,7 +566,7 @@ def prompt_proxy_credentials() -> tuple[str, str]:
 
 def add_proxy_auth(proxy_url: str, username: str, password: str) -> str:
     """
-    Add authentication to a proxy URL.
+    Add authentication to a proxy URL with proper URL encoding.
 
     **Security Warning**: This embeds credentials directly in the URL.
     Credentials may be visible in logs, error messages, or process listings.
@@ -555,18 +574,21 @@ def add_proxy_auth(proxy_url: str, username: str, password: str) -> str:
 
     Args:
         proxy_url: Base proxy URL
-        username: Username
-        password: Password
+        username: Username (will be URL-encoded)
+        password: Password (will be URL-encoded)
 
     Returns:
-        Proxy URL with embedded credentials
+        Proxy URL with embedded, URL-encoded credentials
     """
-    # Parse URL and add credentials
-    # http://proxy:8080 -> http://user:pass@proxy:8080
+    # URL-encode credentials to handle special characters (@, :, /, %, etc.)
+    encoded_username = quote(username, safe='')
+    encoded_password = quote(password, safe='')
+
     logger.warning("Embedding credentials in proxy URL - ensure logs are secured")
-    
+
     if "://" in proxy_url:
         protocol, rest = proxy_url.split("://", 1)
-        return f"{protocol}://{username}:{password}@{rest}"
+        return f"{protocol}://{encoded_username}:{encoded_password}@{rest}"
     else:
-        return f"http://{username}:{password}@{proxy_url}"
+        # Default to http:// for proxy URLs (standard for corporate proxies)
+        return f"http://{encoded_username}:{encoded_password}@{proxy_url}"  # noqa: S105 NOSONAR
