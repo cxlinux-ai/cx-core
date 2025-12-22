@@ -4,17 +4,9 @@ import subprocess
 import sys
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from installation_history import InstallationHistory, InstallationStatus, InstallationType
-from LLM.interpreter import CommandInterpreter
-
-from cortex.coordinator import InstallationCoordinator, StepStatus
-from cortex.update_manifest import UpdateChannel
-from cortex.updater import ChecksumMismatch, InstallError, UpdateError, UpdateService
-from typing import Any
 
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, StepStatus
@@ -23,15 +15,19 @@ from cortex.installation_history import InstallationHistory, InstallationStatus,
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.notification_manager import NotificationManager
 from cortex.stack_manager import StackManager
+from cortex.update_manifest import UpdateChannel
+from cortex.updater import ChecksumMismatch, InstallError, UpdateError, UpdateService
 from cortex.user_preferences import (
     PreferencesManager,
     format_preference_value,
     print_all_preferences,
 )
+from cortex.utils.stdin import combine_stdin_with_prompt, read_stdin
+from cortex.validators import validate_api_key, validate_install_request
 
 # Suppress noisy log messages in normal operation
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
+# logging.getLogger("httpx").setLevel(logging.WARNING)
+# logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -78,8 +74,6 @@ class CortexCLI:
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
-    def install(self, software: str, execute: bool = False, dry_run: bool = False):
-        self._notify_update_if_available()
     # --- New Notification Method ---
     def notify(self, args):
         """Handle notification commands"""
@@ -844,13 +838,48 @@ class CortexCLI:
                     print("Usage: cortex edit-pref export <filepath>")
                     print("Example: cortex edit-pref export ~/cortex-prefs.json")
                     return 1
-                    self._print_success("Valid")
+
+                from pathlib import Path
+
+                manager.export_json(Path(key))
+                self._print_success(f"Preferences exported to {key}")
+                return 0
+
+            elif action == "import":
+                # Import preferences from file
+                if not key:  # Using key as filepath
+                    self._print_error("Filepath is required for import action")
+                    print("Usage: cortex edit-pref import <filepath>")
+                    print("Example: cortex edit-pref import ~/cortex-prefs.json")
+                    return 1
+
+                from pathlib import Path
+
+                filepath = Path(key)
+                if not filepath.exists():
+                    self._print_error(f"File not found: {filepath}")
+                    return 1
+
+                manager.import_json(filepath)
+                self._print_success(f"Preferences imported from {key}")
                 return 0
 
             else:
                 self._print_error(f"Unknown action: {action}")
+                print("\nAvailable actions:")
+                print("  set/add/update <key> <value>  - Set a preference value")
+                print("  delete/remove <key>           - Reset a preference to default")
+                print("  list/show/display             - Display all preferences")
+                print("  reset-all                     - Reset all preferences to defaults")
+                print("  validate                      - Validate configuration")
+                print("  export <filepath>             - Export preferences to JSON")
+                print("  import <filepath>             - Import preferences from JSON")
                 return 1
 
+        except AttributeError as e:
+            self._print_error(f"Invalid preference key: {key}")
+            print("Use 'cortex check-pref' to see available keys")
+            return 1
         except Exception as e:
             self._print_error(f"Failed to edit preferences: {str(e)}")
             return 1
@@ -897,63 +926,6 @@ class CortexCLI:
         # (Simplified for brevity - keeps existing logic)
         cx_print("Please export your API key in your shell profile.", "info")
         return 0
-
-
-                from pathlib import Path
-
-                manager.export_json(Path(key))
-                return 0
-
-            elif action == "import":
-                # Import preferences from file
-                if not key:  # Using key as filepath
-                    self._print_error("Filepath is required for import action")
-                    print("Usage: cortex edit-pref import <filepath>")
-                    print("Example: cortex edit-pref import ~/cortex-prefs.json")
-                    return 1
-
-                from pathlib import Path
-
-                filepath = Path(key)
-                if not filepath.exists():
-                    self._print_error(f"File not found: {filepath}")
-                    return 1
-    table.add_row("demo", "See Cortex in action")
-    table.add_row("wizard", "Configure API key")
-    table.add_row("status", "System status")
-    table.add_row("install <pkg>", "Install software")
-    table.add_row("history", "View history")
-    table.add_row("rollback <id>", "Undo installation")
-    table.add_row("notify", "Manage desktop notifications")  # Added this line
-    table.add_row("cache stats", "Show LLM cache statistics")
-    table.add_row("stack <name>", "Install the stack")
-    table.add_row("doctor", "System health check")
-
-                manager.import_json(filepath)
-                return 0
-
-            else:
-                self._print_error(f"Unknown action: {action}")
-                print("\nAvailable actions:")
-                print("  set/add/update <key> <value>  - Set a preference value")
-                print("  delete/remove <key>           - Reset a preference to default")
-                print("  list/show/display             - Display all preferences")
-                print("  reset-all                     - Reset all preferences to defaults")
-                print("  validate                      - Validate configuration")
-                print("  export <filepath>             - Export preferences to JSON")
-                print("  import <filepath>             - Import preferences from JSON")
-                return 1
-
-        except AttributeError as e:
-            self._print_error(f"Invalid preference key: {key}")
-            print("Use 'cortex check-pref' to see available keys")
-            return 1
-        except Exception as e:
-            self._print_error(f"Failed to edit preferences: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
-            return 1
 
 
 def main():

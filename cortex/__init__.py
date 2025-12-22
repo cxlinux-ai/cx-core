@@ -1,4 +1,5 @@
 from importlib import metadata
+
 from .cli import main
 from .env_loader import load_env
 from .packages import PackageManager, PackageManagerType

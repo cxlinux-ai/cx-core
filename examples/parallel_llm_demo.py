@@ -12,6 +12,7 @@ Expected speedup: 2-3x compared to sequential calls
 
 import asyncio
 import time
+
 from cortex.llm_router import (
     LLMRouter,
     TaskType,
