@@ -1,7 +1,7 @@
 # Python 3.14 Free-Threading (No-GIL) Thread-Safety Audit
 
-**Date**: December 22, 2025  
-**Target**: Python 3.14 (October 2025) with PEP 703 no-GIL free-threading  
+**Date of last update**: December 22, 2025 (Python 3.14 scheduled for October 2025)  
+**Target**: Python 3.14 with PEP 703 no-GIL free-threading (status: may still be pre-release or not widely deployed; verify against the Python 3.14 build available in your environment)  
 **Expected Performance Gain**: 2-3x with true parallel execution  
 **Status**: 🔴 **CRITICAL** - Significant thread-safety issues identified
 
