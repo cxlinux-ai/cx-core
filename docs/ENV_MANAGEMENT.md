@@ -34,7 +34,7 @@ cortex env list myapp
 
 Environment variables are stored in JSON files under:
 
-```text
+```
 ~/.cortex/environments/<app>.json
 ```
 
