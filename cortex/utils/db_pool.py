@@ -156,8 +156,18 @@ class SQLiteConnectionPool:
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Close all connections when exiting context."""
-        self.close_all()
+        """
+        Close all connections when exiting context.
+
+        For pools managed as global singletons via get_connection_pool(),
+        avoid closing connections here to prevent affecting other users
+        of the same shared pool.
+        """
+        # If this pool is a global singleton, do not close it on context exit.
+        # This ensures that using a globally shared pool in a `with` block
+        # does not disrupt other parts of the application.
+        if self not in _pools.values():
+            self.close_all()
         return False
 
 
