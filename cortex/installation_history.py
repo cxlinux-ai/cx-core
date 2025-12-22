@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 
+from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,7 @@ class InstallationHistory:
     def __init__(self, db_path: str = "/var/lib/cortex/history.db"):
         self.db_path = db_path
         self._ensure_db_directory()
+        self._pool: SQLiteConnectionPool | None = None
         self._init_database()
 
     def _ensure_db_directory(self):
@@ -91,38 +94,39 @@ class InstallationHistory:
     def _init_database(self):
         """Initialize SQLite database"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            self._pool = get_connection_pool(self.db_path, pool_size=5)
+            
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
 
-            # Create installations table
-            cursor.execute(
+                # Create installations table
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS installations (
+                        id TEXT PRIMARY KEY,
+                        timestamp TEXT NOT NULL,
+                        operation_type TEXT NOT NULL,
+                        packages TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        before_snapshot TEXT,
+                        after_snapshot TEXT,
+                        commands_executed TEXT,
+                        error_message TEXT,
+                        rollback_available INTEGER,
+                        duration_seconds REAL
+                    )
                 """
-                CREATE TABLE IF NOT EXISTS installations (
-                    id TEXT PRIMARY KEY,
-                    timestamp TEXT NOT NULL,
-                    operation_type TEXT NOT NULL,
-                    packages TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    before_snapshot TEXT,
-                    after_snapshot TEXT,
-                    commands_executed TEXT,
-                    error_message TEXT,
-                    rollback_available INTEGER,
-                    duration_seconds REAL
                 )
-            """
-            )
 
-            # Create index on timestamp
-            cursor.execute(
+                # Create index on timestamp
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_timestamp
+                    ON installations(timestamp)
                 """
-                CREATE INDEX IF NOT EXISTS idx_timestamp
-                ON installations(timestamp)
-            """
-            )
+                )
 
-            conn.commit()
-            conn.close()
+                conn.commit()
 
             logger.info(f"Database initialized at {self.db_path}")
         except Exception as e:
@@ -277,12 +281,12 @@ class InstallationHistory:
         timestamp = start_time.isoformat()
 
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute(
-                """
-                INSERT INTO installations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cursor.execute(
+                    """
+                    INSERT INTO installations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     install_id,
@@ -300,7 +304,6 @@ class InstallationHistory:
             )
 
             conn.commit()
-            conn.close()
 
             logger.info(f"Installation {install_id} recorded")
             return install_id
@@ -313,21 +316,20 @@ class InstallationHistory:
     ):
         """Update installation record after completion"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
 
-            # Get packages from record
-            cursor.execute(
-                "SELECT packages, timestamp FROM installations WHERE id = ?", (install_id,)
-            )
-            result = cursor.fetchone()
+                # Get packages from record
+                cursor.execute(
+                    "SELECT packages, timestamp FROM installations WHERE id = ?", (install_id,)
+                )
+                result = cursor.fetchone()
 
-            if not result:
-                logger.error(f"Installation {install_id} not found")
-                conn.close()
-                return
+                if not result:
+                    logger.error(f"Installation {install_id} not found")
+                    return
 
-            packages = json.loads(result[0])
+                packages = json.loads(result[0])
             start_time = datetime.datetime.fromisoformat(result[1])
             duration = (datetime.datetime.now() - start_time).total_seconds()
 
@@ -354,7 +356,6 @@ class InstallationHistory:
             )
 
             conn.commit()
-            conn.close()
 
             logger.info(f"Installation {install_id} updated: {status.value}")
         except Exception as e:
@@ -366,56 +367,55 @@ class InstallationHistory:
     ) -> list[InstallationRecord]:
         """Get installation history"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
 
-            if status_filter:
-                cursor.execute(
-                    """
-                    SELECT * FROM installations
-                    WHERE status = ?
-                    ORDER BY timestamp DESC
-                    LIMIT ?
+                if status_filter:
+                    cursor.execute(
+                        """
+                        SELECT * FROM installations
+                        WHERE status = ?
+                        ORDER BY timestamp DESC
+                        LIMIT ?
                 """,
-                    (status_filter.value, limit),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT * FROM installations
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """,
-                    (limit,),
-                )
-
-            records = []
-            for row in cursor.fetchall():
-                try:
-                    record = InstallationRecord(
-                        id=row[0],
-                        timestamp=row[1],
-                        operation_type=InstallationType(row[2]),
-                        packages=json.loads(row[3]) if row[3] else [],
-                        status=InstallationStatus(row[4]),
-                        before_snapshot=[
-                            PackageSnapshot(**s) for s in (json.loads(row[5]) if row[5] else [])
-                        ],
-                        after_snapshot=[
-                            PackageSnapshot(**s) for s in (json.loads(row[6]) if row[6] else [])
-                        ],
-                        commands_executed=json.loads(row[7]) if row[7] else [],
-                        error_message=row[8],
-                        rollback_available=bool(row[9]) if row[9] is not None else True,
-                        duration_seconds=row[10],
+                        (status_filter.value, limit),
                     )
-                    records.append(record)
-                except Exception as e:
-                    logger.warning(f"Failed to parse record {row[0]}: {e}")
-                    continue
+                else:
+                    cursor.execute(
+                        """
+                        SELECT * FROM installations
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                """,
+                        (limit,),
+                    )
 
-            conn.close()
-            return records
+                records = []
+                for row in cursor.fetchall():
+                    try:
+                        record = InstallationRecord(
+                            id=row[0],
+                            timestamp=row[1],
+                            operation_type=InstallationType(row[2]),
+                            packages=json.loads(row[3]) if row[3] else [],
+                            status=InstallationStatus(row[4]),
+                            before_snapshot=[
+                                PackageSnapshot(**s) for s in (json.loads(row[5]) if row[5] else [])
+                            ],
+                            after_snapshot=[
+                                PackageSnapshot(**s) for s in (json.loads(row[6]) if row[6] else [])
+                            ],
+                            commands_executed=json.loads(row[7]) if row[7] else [],
+                            error_message=row[8],
+                            rollback_available=bool(row[9]) if row[9] is not None else True,
+                            duration_seconds=row[10],
+                        )
+                        records.append(record)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse record {row[0]}: {e}")
+                        continue
+
+                return records
         except Exception as e:
             logger.error(f"Failed to get history: {e}")
             return []
@@ -423,16 +423,15 @@ class InstallationHistory:
     def get_installation(self, install_id: str) -> InstallationRecord | None:
         """Get specific installation by ID"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute("SELECT * FROM installations WHERE id = ?", (install_id,))
+                cursor.execute("SELECT * FROM installations WHERE id = ?", (install_id,))
 
-            row = cursor.fetchone()
-            conn.close()
+                row = cursor.fetchone()
 
-            if not row:
-                return None
+                if not row:
+                    return None
 
             return InstallationRecord(
                 id=row[0],
@@ -546,14 +545,13 @@ class InstallationHistory:
 
             # Mark original as rolled back
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE installations SET status = ? WHERE id = ?",
-                    (InstallationStatus.ROLLED_BACK.value, install_id),
-                )
-                conn.commit()
-                conn.close()
+                with self._pool.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE installations SET status = ? WHERE id = ?",
+                        (InstallationStatus.ROLLED_BACK.value, install_id),
+                    )
+                    conn.commit()
             except Exception as e:
                 logger.error(f"Failed to update rollback status: {e}")
 
@@ -615,16 +613,15 @@ class InstallationHistory:
         cutoff_str = cutoff.isoformat()
 
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute("DELETE FROM installations WHERE timestamp < ?", (cutoff_str,))
+                cursor.execute("DELETE FROM installations WHERE timestamp < ?", (cutoff_str,))
 
-            deleted = cursor.rowcount
-            conn.commit()
-            conn.close()
+                deleted = cursor.rowcount
+                conn.commit()
 
-            logger.info(f"Deleted {deleted} old records")
+                logger.info(f"Deleted {deleted} old records")
             return deleted
         except Exception as e:
             logger.error(f"Failed to cleanup records: {e}")

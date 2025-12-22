@@ -16,6 +16,7 @@ import platform
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -192,6 +193,7 @@ class HardwareDetector:
     def __init__(self, use_cache: bool = True):
         self.use_cache = use_cache
         self._info: SystemInfo | None = None
+        self._cache_lock = threading.RLock()  # Reentrant lock for cache file access
 
     def _uname(self):
         """Return uname-like info with nodename/release/machine attributes."""
@@ -248,61 +250,69 @@ class HardwareDetector:
         }
 
     def _load_cache(self) -> SystemInfo | None:
-        """Load cached hardware info if valid."""
-        try:
-            if not self.CACHE_FILE.exists():
-                return None
-
-            # Check age
-            import time
-
-            if time.time() - self.CACHE_FILE.stat().st_mtime > self.CACHE_MAX_AGE_SECONDS:
-                return None
-
-            with open(self.CACHE_FILE) as f:
-                data = json.load(f)
-
-            # Reconstruct SystemInfo
-            info = SystemInfo()
-            info.hostname = data.get("hostname", "")
-            info.kernel_version = data.get("kernel_version", "")
-            info.distro = data.get("distro", "")
-            info.distro_version = data.get("distro_version", "")
-
-            # CPU
-            cpu_data = data.get("cpu", {})
-            info.cpu = CPUInfo(
-                vendor=CPUVendor(cpu_data.get("vendor", "unknown")),
-                model=cpu_data.get("model", "Unknown"),
-                cores=cpu_data.get("cores", 0),
-                threads=cpu_data.get("threads", 0),
-            )
-
-            # Memory
-            mem_data = data.get("memory", {})
-            info.memory = MemoryInfo(
-                total_mb=mem_data.get("total_mb", 0),
-                available_mb=mem_data.get("available_mb", 0),
-            )
-
-            # Capabilities
-            info.has_nvidia_gpu = data.get("has_nvidia_gpu", False)
-            info.cuda_available = data.get("cuda_available", False)
-
-            return info
-
-        except Exception as e:
-            logger.debug(f"Cache load failed: {e}")
+        """Load cached hardware info if valid (thread-safe)."""
+        if not self.use_cache:
             return None
+        
+        with self._cache_lock:
+            try:
+                if not self.CACHE_FILE.exists():
+                    return None
 
-    def _save_cache(self, info: SystemInfo):
-        """Save hardware info to cache."""
-        try:
-            self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.CACHE_FILE, "w") as f:
-                json.dump(info.to_dict(), f, indent=2)
-        except Exception as e:
-            logger.debug(f"Cache save failed: {e}")
+                # Check age
+                import time
+
+                if time.time() - self.CACHE_FILE.stat().st_mtime > self.CACHE_MAX_AGE_SECONDS:
+                    return None
+
+                with open(self.CACHE_FILE) as f:
+                    data = json.load(f)
+
+                # Reconstruct SystemInfo
+                info = SystemInfo()
+                info.hostname = data.get("hostname", "")
+                info.kernel_version = data.get("kernel_version", "")
+                info.distro = data.get("distro", "")
+                info.distro_version = data.get("distro_version", "")
+
+                # CPU
+                cpu_data = data.get("cpu", {})
+                info.cpu = CPUInfo(
+                    vendor=CPUVendor(cpu_data.get("vendor", "unknown")),
+                    model=cpu_data.get("model", "Unknown"),
+                    cores=cpu_data.get("cores", 0),
+                    threads=cpu_data.get("threads", 0),
+                )
+
+                # Memory
+                mem_data = data.get("memory", {})
+                info.memory = MemoryInfo(
+                    total_mb=mem_data.get("total_mb", 0),
+                    available_mb=mem_data.get("available_mb", 0),
+                )
+
+                # Capabilities
+                info.has_nvidia_gpu = data.get("has_nvidia_gpu", False)
+                info.cuda_available = data.get("cuda_available", False)
+
+                return info
+
+            except Exception as e:
+                logger.debug(f"Cache load failed: {e}")
+                return None
+
+    def _save_cache(self, info: SystemInfo) -> None:
+        """Save hardware info to cache (thread-safe)."""
+        if not self.use_cache:
+            return
+            
+        with self._cache_lock:
+            try:
+                self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.CACHE_FILE, "w") as f:
+                    json.dump(info.to_dict(), f, indent=2)
+            except Exception as e:
+                logger.debug(f"Cache save failed: {e}")
 
     def _detect_system(self, info: SystemInfo):
         """Detect basic system information."""

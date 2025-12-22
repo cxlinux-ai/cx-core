@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 
+from cortex.utils.db_pool import get_connection_pool
+
 CORTEX_DB = Path.home() / ".cortex/limits.db"
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 
@@ -53,23 +55,24 @@ class ResourceLimits:
 class LimitsDatabase:
     def __init__(self):
         CORTEX_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(CORTEX_DB) as conn:
+        self._pool = get_connection_pool(str(CORTEX_DB), pool_size=5)
+        with self._pool.get_connection() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS profiles (name TEXT PRIMARY KEY, config TEXT)")
 
     def save(self, limits: ResourceLimits):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self._pool.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO profiles VALUES (?,?)",
                 (limits.name, json.dumps(asdict(limits))),
             )
 
     def get(self, name: str) -> ResourceLimits | None:
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self._pool.get_connection() as conn:
             row = conn.execute("SELECT config FROM profiles WHERE name=?", (name,)).fetchone()
             return ResourceLimits(**json.loads(row[0])) if row else None
 
     def list_all(self):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self._pool.get_connection() as conn:
             return [
                 ResourceLimits(**json.loads(r[0]))
                 for r in conn.execute("SELECT config FROM profiles")

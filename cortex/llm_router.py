@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -161,7 +162,8 @@ class LLMRouter:
         # Rate limiting for parallel calls
         self._rate_limit_semaphore: asyncio.Semaphore | None = None
 
-        # Cost tracking
+        # Cost tracking (protected by lock for thread-safety)
+        self._stats_lock = threading.Lock()
         self.total_cost_usd = 0.0
         self.request_count = 0
         self.provider_stats = {
@@ -389,35 +391,37 @@ class LLMRouter:
         return input_cost + output_cost
 
     def _update_stats(self, response: LLMResponse):
-        """Update usage statistics."""
-        self.total_cost_usd += response.cost_usd
-        self.request_count += 1
+        """Update usage statistics (thread-safe)."""
+        with self._stats_lock:
+            self.total_cost_usd += response.cost_usd
+            self.request_count += 1
 
-        stats = self.provider_stats[response.provider]
-        stats["requests"] += 1
-        stats["tokens"] += response.tokens_used
-        stats["cost"] += response.cost_usd
+            stats = self.provider_stats[response.provider]
+            stats["requests"] += 1
+            stats["tokens"] += response.tokens_used
+            stats["cost"] += response.cost_usd
 
     def get_stats(self) -> dict[str, Any]:
         """
-        Get usage statistics.
+        Get usage statistics (thread-safe).
 
         Returns:
             Dictionary with request counts, tokens, costs per provider
         """
-        return {
-            "total_requests": self.request_count,
-            "total_cost_usd": round(self.total_cost_usd, 4),
-            "providers": {
-                "claude": {
-                    "requests": self.provider_stats[LLMProvider.CLAUDE]["requests"],
-                    "tokens": self.provider_stats[LLMProvider.CLAUDE]["tokens"],
-                    "cost_usd": round(self.provider_stats[LLMProvider.CLAUDE]["cost"], 4),
-                },
-                "kimi_k2": {
-                    "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
-                    "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
-                    "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
+        with self._stats_lock:
+            return {
+                "total_requests": self.request_count,
+                "total_cost_usd": round(self.total_cost_usd, 4),
+                "providers": {
+                    "claude": {
+                        "requests": self.provider_stats[LLMProvider.CLAUDE]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.CLAUDE]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.CLAUDE]["cost"], 4),
+                    },
+                    "kimi_k2": {
+                        "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
                 },
             },
         }

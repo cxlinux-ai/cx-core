@@ -22,6 +22,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+import threading  # For thread-safe singleton pattern
+
+
 class TransactionType(Enum):
     """Types of package transactions."""
 
@@ -652,24 +655,34 @@ class UndoManager:
         return self.undo(recent[0].id, dry_run=dry_run)
 
 
-# CLI-friendly functions
+# Global instances for easy access (thread-safe singletons)
 _history_instance = None
+_history_lock = threading.Lock()
 _undo_manager_instance = None
+_undo_manager_lock = threading.Lock()
 
 
-def get_history() -> TransactionHistory:
-    """Get the global transaction history instance."""
+def get_history() -> "TransactionHistory":
+    """Get the global transaction history instance (thread-safe)."""
     global _history_instance
+    # Fast path: avoid lock if already initialized
     if _history_instance is None:
-        _history_instance = TransactionHistory()
+        with _history_lock:
+            # Double-checked locking pattern
+            if _history_instance is None:
+                _history_instance = TransactionHistory()
     return _history_instance
 
 
-def get_undo_manager() -> UndoManager:
-    """Get the global undo manager instance."""
+def get_undo_manager() -> "UndoManager":
+    """Get the global undo manager instance (thread-safe)."""
     global _undo_manager_instance
+    # Fast path: avoid lock if already initialized
     if _undo_manager_instance is None:
-        _undo_manager_instance = UndoManager(get_history())
+        with _undo_manager_lock:
+            # Double-checked locking pattern
+            if _undo_manager_instance is None:
+                _undo_manager_instance = UndoManager(get_history())
     return _undo_manager_instance
 
 

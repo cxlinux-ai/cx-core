@@ -120,41 +120,57 @@ class FallbackProgress:
         self._spinner_idx = 0
         self._running = False
         self._thread = None
+        self._lock = threading.Lock()  # Protect shared state
 
     def start(self, message: str):
         """Start showing progress."""
-        self._current_message = message
-        self._running = True
-        self._thread = threading.Thread(target=self._animate, daemon=True)
-        self._thread.start()
+        with self._lock:
+            self._current_message = message
+            self._running = True
+            self._thread = threading.Thread(target=self._animate, daemon=True)
+            self._thread.start()
 
     def _animate(self):
         """Animate the spinner."""
-        while self._running:
-            char = self._spinner_chars[self._spinner_idx % len(self._spinner_chars)]
-            sys.stdout.write(f"\r{char} {self._current_message}")
+        while True:
+            with self._lock:
+                if not self._running:
+                    break
+                char = self._spinner_chars[self._spinner_idx % len(self._spinner_chars)]
+                message = self._current_message
+                self._spinner_idx += 1
+            
+            sys.stdout.write(f"\r{char} {message}")
             sys.stdout.flush()
-            self._spinner_idx += 1
             time.sleep(0.1)
 
     def update(self, message: str):
         """Update the progress message."""
-        self._current_message = message
+        with self._lock:
+            self._current_message = message
 
     def stop(self, final_message: str = ""):
         """Stop the progress indicator."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=0.5)
-        sys.stdout.write(f"\r✓ {final_message or self._current_message}\n")
+        with self._lock:
+            self._running = False
+            thread = self._thread
+            message = final_message or self._current_message
+        
+        if thread:
+            thread.join(timeout=0.5)
+        sys.stdout.write(f"\r✓ {message}\n")
         sys.stdout.flush()
 
     def fail(self, message: str = ""):
         """Show failure."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=0.5)
-        sys.stdout.write(f"\r✗ {message or self._current_message}\n")
+        with self._lock:
+            self._running = False
+            thread = self._thread
+            msg = message or self._current_message
+        
+        if thread:
+            thread.join(timeout=0.5)
+        sys.stdout.write(f"\r✗ {msg}\n")
         sys.stdout.flush()
 
 
@@ -643,13 +659,16 @@ class MultiStepTracker:
 
 # Global instance for convenience
 _global_progress = None
+_global_progress_lock = threading.Lock()
 
 
 def get_progress_indicator() -> ProgressIndicator:
     """Get or create the global progress indicator."""
     global _global_progress
-    if _global_progress is None:
-        _global_progress = ProgressIndicator()
+    if _global_progress is None:  # Fast path
+        with _global_progress_lock:
+            if _global_progress is None:  # Double-check
+                _global_progress = ProgressIndicator()
     return _global_progress
 
 

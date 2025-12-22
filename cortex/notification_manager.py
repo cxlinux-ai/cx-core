@@ -2,6 +2,7 @@ import datetime
 import json
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from rich.console import Console
@@ -33,6 +34,7 @@ class NotificationManager:
 
         self._load_config()
         self.history = self._load_history()
+        self._history_lock = threading.Lock()  # Protect history list and file I/O
 
     def _load_config(self):
         """Loads configuration from JSON. Creates default if missing."""
@@ -51,7 +53,8 @@ class NotificationManager:
             json.dump(self.config, f, indent=4)
 
     def _load_history(self) -> list[dict]:
-        """Loads notification history."""
+        """Loads notification history (thread-safe)."""
+        # Note: Called only during __init__, but protected for consistency
         if self.history_file.exists():
             try:
                 with open(self.history_file) as f:
@@ -61,7 +64,8 @@ class NotificationManager:
         return []
 
     def _save_history(self):
-        """Saves the last 100 notifications to history."""
+        """Saves the last 100 notifications to history (thread-safe)."""
+        # Caller must hold self._history_lock
         with open(self.history_file, "w") as f:
             json.dump(self.history[-100:], f, indent=4)
 
@@ -136,7 +140,7 @@ class NotificationManager:
             self._log_history(title, message, level, status="simulated", actions=actions)
 
     def _log_history(self, title, message, level, status, actions=None):
-        """Appends entry to history log."""
+        """Appends entry to history log (thread-safe)."""
         entry = {
             "timestamp": datetime.datetime.now().isoformat(),
             "title": title,
@@ -145,8 +149,9 @@ class NotificationManager:
             "status": status,
             "actions": actions if actions else [],
         }
-        self.history.append(entry)
-        self._save_history()
+        with self._history_lock:
+            self.history.append(entry)
+            self._save_history()
 
 
 if __name__ == "__main__":
