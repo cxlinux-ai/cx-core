@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
+from cortex.utils.db_pool import SQLiteConnectionPool, get_connection_pool
 
 
 @dataclass(frozen=True)
@@ -88,7 +88,7 @@ class SemanticCache:
     def _init_database(self) -> None:
         # Initialize connection pool (thread-safe singleton)
         self._pool = get_connection_pool(self.db_path, pool_size=5)
-        
+
         with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(

@@ -9,11 +9,12 @@ import builtins
 import contextlib
 import json
 import sqlite3
-from cortex.utils.db_pool import get_connection_pool
 from dataclasses import asdict, dataclass
 from enum import Enum
 from multiprocessing import shared_memory
 from pathlib import Path
+
+from cortex.utils.db_pool import get_connection_pool
 
 CORTEX_DB = Path.home() / ".cortex/kv_cache.db"
 SHM_PREFIX = "cortex_kv_"

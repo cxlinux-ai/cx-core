@@ -93,7 +93,7 @@ class DependencyResolver:
                     parts = line.split()
                     if len(parts) >= 2:
                         new_packages.add(parts[1])
-            
+
             with self._packages_lock:
                 self.installed_packages = new_packages
                 logger.info(f"Found {len(self.installed_packages)} installed packages")

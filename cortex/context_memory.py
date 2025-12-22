@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from cortex.utils.db_pool import get_connection_pool, SQLiteConnectionPool
+from cortex.utils.db_pool import SQLiteConnectionPool, get_connection_pool
 
 
 @dataclass
@@ -92,7 +92,7 @@ class ContextMemory:
         """Initialize SQLite database schema"""
         # Initialize connection pool (thread-safe singleton)
         self._pool = get_connection_pool(str(self.db_path), pool_size=5)
-        
+
         with self._pool.get_connection() as conn:
             cursor = conn.cursor()
 
