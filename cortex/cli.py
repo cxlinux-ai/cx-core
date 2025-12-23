@@ -45,11 +45,14 @@ class CortexCLI:
             console.print(f"[dim][DEBUG] {message}[/dim]")
 
     def _get_api_key(self) -> str | None:
-        # Check if using Ollama (no API key needed)
+        # Check if using Ollama or Fake provider (no API key needed)
         provider = self._get_provider()
         if provider == "ollama":
             self._debug("Using Ollama (no API key required)")
             return "ollama-local"  # Placeholder for Ollama
+        if provider == "fake":
+            self._debug("Using Fake provider for testing")
+            return "fake-key"  # Placeholder for Fake provider
 
         is_valid, detected_provider, error = validate_api_key()
         if not is_valid:
@@ -63,7 +66,7 @@ class CortexCLI:
     def _get_provider(self) -> str:
         # Check environment variable for explicit provider choice
         explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
-        if explicit_provider in ["ollama", "openai", "claude"]:
+        if explicit_provider in ["ollama", "openai", "claude", "fake"]:
             return explicit_provider
 
         # Auto-detect based on available API keys

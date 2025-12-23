@@ -100,6 +100,8 @@ def run_in_docker(
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",  # Replace undecodable characters instead of failing
         timeout=timeout,
     )
 

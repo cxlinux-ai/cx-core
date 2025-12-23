@@ -12,6 +12,7 @@ class DependencyStatus(NamedTuple):
     installed: bool
     import_name: str
 
+
 REQUIRED_DEPENDENCIES = [
     ("pyyaml", "yaml"),
     ("rich", "rich"),
@@ -21,6 +22,7 @@ REQUIRED_DEPENDENCIES = [
     ("requests", "requests"),
 ]
 
+
 def check_dependency(package_name: str, import_name: str) -> DependencyStatus:
     try:
         __import__(import_name)
@@ -28,8 +30,10 @@ def check_dependency(package_name: str, import_name: str) -> DependencyStatus:
     except ImportError:
         return DependencyStatus(package_name, False, import_name)
 
+
 def get_missing_dependencies() -> list[str]:
     return [pkg for pkg, imp in REQUIRED_DEPENDENCIES if not check_dependency(pkg, imp).installed]
+
 
 def format_installation_instructions(missing: list[str]) -> str:
     packages = " ".join(missing)
@@ -55,11 +59,13 @@ To fix this, run ONE of the following:
 After installing, run 'cortex' again.
 """
 
+
 def verify_dependencies_or_exit() -> None:
     missing = get_missing_dependencies()
     if missing:
         print(format_installation_instructions(missing), file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     missing = get_missing_dependencies()

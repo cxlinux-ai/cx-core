@@ -78,14 +78,13 @@ jobs:
           ANTHROPIC_API_KEY: "test-key-for-ci"
           OPENAI_API_KEY: "test-key-for-ci"
         run: |
-          pytest tests/ test/ -v --tb=short \
+          pytest tests/ -v --tb=short \
             --cov=cortex \
             --cov-report=xml \
             --cov-report=term-missing \
             --cov-fail-under=0 \
             --timeout=60 \
-            --ignore=tests/integration \
-            --ignore=test/integration
+            --ignore=tests/integration
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'

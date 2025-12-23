@@ -1,3 +1,9 @@
+"""Extended CLI tests - originally from test/ folder.
+
+These tests provide additional coverage with type hints and more thorough
+mocking of internal methods.
+"""
+
 import os
 import sys
 import unittest
@@ -8,8 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from cortex.cli import CortexCLI, main
 
 
-class TestCortexCLI(unittest.TestCase):
-    """Unit tests covering the high-level CLI behaviours."""
+class TestCortexCLIExtended(unittest.TestCase):
+    """Extended unit tests covering CLI behaviours with thorough mocking."""
 
     def setUp(self) -> None:
         self.cli = CortexCLI()

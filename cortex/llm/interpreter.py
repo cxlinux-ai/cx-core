@@ -12,6 +12,7 @@ class APIProvider(Enum):
     CLAUDE = "claude"
     OPENAI = "openai"
     OLLAMA = "ollama"
+    FAKE = "fake"
 
 
 class CommandInterpreter:
@@ -62,6 +63,8 @@ class CommandInterpreter:
                 self.model = "claude-sonnet-4-20250514"
             elif self.provider == APIProvider.OLLAMA:
                 self.model = "llama3.2"  # Default Ollama model
+            elif self.provider == APIProvider.FAKE:
+                self.model = "fake"  # Fake provider doesn't use a real model
 
         self._initialize_client()
 
@@ -84,6 +87,9 @@ class CommandInterpreter:
             # Ollama uses local HTTP API, no special client needed
             self.ollama_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
             self.client = None  # Will use requests
+        elif self.provider == APIProvider.FAKE:
+            # Fake provider uses predefined commands from environment
+            self.client = None  # No client needed for fake provider
 
     def _get_system_prompt(self) -> str:
         return """You are a Linux system command expert. Convert natural language requests into safe, validated bash commands.
@@ -167,6 +173,21 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
         except Exception as e:
             raise RuntimeError(f"Ollama API call failed: {str(e)}")
 
+    def _call_fake(self, user_input: str) -> list[str]:
+        """Return predefined fake commands from environment for testing."""
+        fake_commands_env = os.environ.get("CORTEX_FAKE_COMMANDS")
+        if not fake_commands_env:
+            raise RuntimeError("CORTEX_FAKE_COMMANDS environment variable not set")
+
+        try:
+            data = json.loads(fake_commands_env)
+            commands = data.get("commands", [])
+            if not isinstance(commands, list):
+                raise ValueError("Commands must be a list in CORTEX_FAKE_COMMANDS")
+            return [cmd for cmd in commands if cmd and isinstance(cmd, str)]
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse CORTEX_FAKE_COMMANDS: {str(e)}")
+
     def _parse_commands(self, content: str) -> list[str]:
         try:
             if content.startswith("```json"):
@@ -243,6 +264,8 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
             commands = self._call_claude(user_input)
         elif self.provider == APIProvider.OLLAMA:
             commands = self._call_ollama(user_input)
+        elif self.provider == APIProvider.FAKE:
+            commands = self._call_fake(user_input)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
