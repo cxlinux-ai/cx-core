@@ -455,12 +455,22 @@ class CortexCLI:
                             print(f"   View details: cortex history show {install_id}")
                         return 1
 
-                    except Exception as e:
+                    except (ValueError, OSError) as e:
                         if install_id:
                             history.update_installation(
                                 install_id, InstallationStatus.FAILED, str(e)
                             )
                         self._print_error(f"Parallel execution failed: {str(e)}")
+                        return 1
+                    except Exception as e:
+                        if install_id:
+                            history.update_installation(
+                                install_id, InstallationStatus.FAILED, str(e)
+                            )
+                        self._print_error(f"Unexpected parallel execution error: {str(e)}")
+                        if self.verbose:
+                            import traceback
+                            traceback.print_exc()
                         return 1
 
                 coordinator = InstallationCoordinator(
@@ -518,10 +528,18 @@ class CortexCLI:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             self._print_error(f"API call failed: {str(e)}")
             return 1
+        except OSError as e:
+            if install_id:
+                history.update_installation(install_id, InstallationStatus.FAILED, str(e))
+            self._print_error(f"System error: {str(e)}")
+            return 1
         except Exception as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             self._print_error(f"Unexpected error: {str(e)}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def cache_stats(self) -> int:
@@ -538,8 +556,14 @@ class CortexCLI:
             cx_print(f"Hit rate: {hit_rate}", "info")
             cx_print(f"Saved calls (approx): {stats.hits}", "info")
             return 0
-        except Exception as e:
+        except (ImportError, OSError) as e:
             self._print_error(f"Unable to read cache stats: {e}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected error reading cache stats: {e}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def history(self, limit: int = 20, status: str | None = None, show_id: str | None = None):
@@ -601,8 +625,14 @@ class CortexCLI:
                     )
 
                 return 0
-        except Exception as e:
+        except (ValueError, OSError) as e:
             self._print_error(f"Failed to retrieve history: {str(e)}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected error retrieving history: {str(e)}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def rollback(self, install_id: str, dry_run: bool = False):
@@ -622,8 +652,14 @@ class CortexCLI:
             else:
                 self._print_error(message)
                 return 1
-        except Exception as e:
+        except (ValueError, OSError) as e:
             self._print_error(f"Rollback failed: {str(e)}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected rollback error: {str(e)}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def _get_prefs_manager(self):
@@ -651,8 +687,14 @@ class CortexCLI:
                 print_all_preferences(manager)
                 return 0
 
-        except Exception as e:
+        except (ValueError, OSError) as e:
             self._print_error(f"Failed to read preferences: {str(e)}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected error reading preferences: {str(e)}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def edit_pref(self, action: str, key: str | None = None, value: str | None = None):
@@ -700,8 +742,14 @@ class CortexCLI:
                 self._print_error(f"Unknown action: {action}")
                 return 1
 
-        except Exception as e:
+        except (ValueError, OSError) as e:
             self._print_error(f"Failed to edit preferences: {str(e)}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected error editing preferences: {str(e)}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def status(self):
@@ -749,8 +797,6 @@ class CortexCLI:
 
     def env(self, args: argparse.Namespace) -> int:
         """Handle environment variable management commands."""
-        import sys
-
         env_mgr = get_env_manager()
 
         # Handle subcommand routing
@@ -786,8 +832,14 @@ class CortexCLI:
             else:
                 self._print_error(f"Unknown env subcommand: {action}")
                 return 1
-        except Exception as e:
+        except (ValueError, OSError) as e:
             self._print_error(f"Environment operation failed: {e}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected error: {e}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             return 1
 
     def _env_set(self, env_mgr: EnvironmentManager, args: argparse.Namespace) -> int:
@@ -820,7 +872,8 @@ class CortexCLI:
             return 1
         except ImportError as e:
             self._print_error(str(e))
-            cx_print("Install with: pip install cryptography", "info")
+            if "cryptography" in str(e).lower():
+                cx_print("Install with: pip install cryptography", "info")
             return 1
 
     def _env_get(self, env_mgr: EnvironmentManager, args: argparse.Namespace) -> int:
@@ -951,7 +1004,8 @@ class CortexCLI:
             else:
                 cx_print("No variables imported", "info")
 
-            return 0 if not errors else 1
+            # Return success (0) even with partial errors - some vars imported successfully
+            return 0
 
         except FileNotFoundError:
             self._print_error(f"File not found: {input_file}")
@@ -1393,8 +1447,15 @@ def main():
     except KeyboardInterrupt:
         print("\n❌ Operation cancelled", file=sys.stderr)
         return 130
+    except (ValueError, ImportError, OSError) as e:
+        print(f"❌ Error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        # Print traceback if verbose mode was requested
+        if "--verbose" in sys.argv or "-v" in sys.argv:
+            import traceback
+            traceback.print_exc()
         return 1
 
 
