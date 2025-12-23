@@ -841,6 +841,7 @@ class CortexCLI:
                         self._print_error(f"Unexpected parallel execution error: {str(e)}")
                         if self.verbose:
                             import traceback
+
                             traceback.print_exc()
                         return 1
 
@@ -910,6 +911,7 @@ class CortexCLI:
             self._print_error(f"Unexpected error: {str(e)}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -934,6 +936,7 @@ class CortexCLI:
             self._print_error(f"Unexpected error reading cache stats: {e}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -1003,6 +1006,7 @@ class CortexCLI:
             self._print_error(f"Unexpected error retrieving history: {str(e)}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -1030,6 +1034,7 @@ class CortexCLI:
             self._print_error(f"Unexpected rollback error: {str(e)}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -1065,6 +1070,7 @@ class CortexCLI:
             self._print_error(f"Unexpected error reading preferences: {str(e)}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -1120,6 +1126,7 @@ class CortexCLI:
             self._print_error(f"Unexpected error editing preferences: {str(e)}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -1187,6 +1194,7 @@ class CortexCLI:
             self._print_error(f"Unexpected error: {e}")
             if self.verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
@@ -1844,6 +1852,7 @@ def main():
         # Print traceback if verbose mode was requested
         if "--verbose" in sys.argv or "-v" in sys.argv:
             import traceback
+
             traceback.print_exc()
         return 1
 
