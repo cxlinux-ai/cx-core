@@ -411,12 +411,20 @@ class FirstRunWizard:
             key = os.environ.get("OPENAI_API_KEY")
             if key:
                 key = key.strip()
+                if key.startswith("sk-") and test_openai_api_key(key):
+                    # Valid existing key, proceed
+                    pass
+                else:
+                    key = None
             while not key or not key.startswith("sk-"):
                 print("\nNo valid OpenAI API key found.")
                 key = self._prompt("Enter your OpenAI API key: ")
-                if key and key.startswith("sk-"):
+                if key and key.startswith("sk-") and test_openai_api_key(key):
                     self._save_env_var("OPENAI_API_KEY", key)
                     os.environ["OPENAI_API_KEY"] = key
+                else:
+                    print("Invalid API key. Please try again.")
+                    key = None
             random_example = random.choice(DRY_RUN_EXAMPLES)
             do_test = self._prompt(
                 f'Would you like to perform a real dry run (install "{random_example}") to test your OpenAI setup? [Y/n]: ',

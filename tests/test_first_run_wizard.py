@@ -6,7 +6,7 @@ Issue: #256
 
 import json
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -513,9 +513,15 @@ class TestIntegration:
 
     @patch("subprocess.run")
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test-12345678"})
-    def test_complete_wizard_flow(self, mock_run, wizard):
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=True)
+    @patch("cortex.cli.CommandInterpreter")
+    def test_complete_wizard_flow(self, mock_interpreter_class, mock_run, wizard):
         """Test complete wizard flow in non-interactive mode."""
         mock_run.return_value = MagicMock(returncode=0, stdout="")
+        
+        mock_interpreter = Mock()
+        mock_interpreter.parse.return_value = ["echo 'test command'"]
+        mock_interpreter_class.return_value = mock_interpreter
 
         result = wizard.run()
 
