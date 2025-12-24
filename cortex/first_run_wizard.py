@@ -313,17 +313,71 @@ class FirstRunWizard:
             except Exception:
                 pass  # Ignore corrupted config
 
-        # Detect available providers
-        available_providers = detect_available_providers()
+        # Detect available providers (only count valid ones)
+        available_providers = []
+        providers = detect_available_providers()
+        
+        # Validate providers - only count ones with working API keys
+        for provider in providers:
+            if provider == "ollama":
+                available_providers.append(provider)  # Ollama doesn't need validation
+            elif provider == "openai":
+                key = os.environ.get("OPENAI_API_KEY", "")
+                if key.startswith("sk-") and len(key) > 20:  # Basic validation
+                    available_providers.append(provider)
+            elif provider == "anthropic":
+                key = os.environ.get("ANTHROPIC_API_KEY", "")
+                if key.startswith("sk-ant-") and len(key) > 20:  # Basic validation
+                    available_providers.append(provider)
 
+        # Handle case when no providers are available
+        if not available_providers:
+            if not self.interactive:
+                # In non-interactive mode, use demo mode automatically
+                print("No API keys found. Using demo mode.")
+                self.config["api_provider"] = "openai"
+                self.config["api_key_configured"] = False
+                self.config["demo_mode"] = True
+                self.save_config()
+                self.mark_setup_complete()
+                return True
+            
+            # Interactive mode: auto-enable demo mode for easy testing
+            self._clear_screen()
+            self._print_banner()
+            
+            print("""
+Welcome to Cortex! 🚀
+
+No API keys detected. For full functionality, you'll need API keys from:
+  • OpenAI: https://platform.openai.com/api-keys  
+  • Anthropic: https://console.anthropic.com/
+  • Ollama: https://ollama.ai (free local AI)
+
+For now, let's set up demo mode so you can explore Cortex.
+""")
+            
+            response = self._prompt("Continue with demo mode? [Y/n]: ", default="y")
+            if response.strip().lower() in ("", "y", "yes"):
+                print("\n✓ Demo mode enabled!")
+                print("You can test basic commands. Run 'cortex wizard' again after adding API keys.")
+                self.config["api_provider"] = "openai"
+                self.config["api_key_configured"] = False
+                self.config["demo_mode"] = True
+                self.save_config()
+                self.mark_setup_complete()
+                return True
+            else:
+                print("\nTo set up API keys later, run: cortex wizard")
+                return False
+
+        # Continue with normal flow when providers are available
         # Non-interactive mode: auto-configure if possible
         if not self.interactive:
             if current_provider:
                 # Already configured, nothing to do
                 self.mark_setup_complete()
                 return True
-            if not available_providers:
-                return False
             # Auto-select provider
             if "anthropic" in available_providers:
                 provider = "anthropic"
@@ -341,74 +395,70 @@ class FirstRunWizard:
             self.mark_setup_complete()
             return True
 
-        # Interactive mode
+        # Interactive mode - always show provider selection
         self._clear_screen()
         self._print_banner()
 
-        if not available_providers:
-            print("\nNo API keys or local AI found.")
-            print("Please export your API key in your shell profile:")
-            print("  For OpenAI: export OPENAI_API_KEY=sk-...")
-            print("  For Anthropic: export ANTHROPIC_API_KEY=sk-ant-...")
-            print("  Or install Ollama: https://ollama.ai")
-            return False
-
-        if len(available_providers) == 1:
-            provider = available_providers[0]
+        # Always show provider selection menu
+        print("\nSelect your preferred LLM provider:")
+        
+        # Show current provider if one exists
+        if current_provider:
             provider_names = {
                 "anthropic": "Anthropic (Claude)",
-                "openai": "OpenAI",
+                "openai": "OpenAI", 
                 "ollama": "Ollama (local)",
             }
-            print(f"\nAuto-selected provider: {provider_names.get(provider, provider)}")
-        else:
-            # Show menu with available marked
-            print("\nSelect your preferred LLM provider:")
-            if current_provider:
-                provider_names = {
-                    "anthropic": "Anthropic (Claude)",
-                    "openai": "OpenAI",
-                    "ollama": "Ollama (local)",
-                }
-                print(f"Current provider: {provider_names.get(current_provider, current_provider)}")
-            if current_provider:
-                options = [
-                    ("1. Keep current provider (skip setup)", "skip"),
-                    ("2. Anthropic (Claude)", "anthropic"),
-                    ("3. OpenAI", "openai"),
-                    ("4. Ollama (local)", "ollama"),
-                ]
-            else:
-                options = [
-                    ("1. Anthropic (Claude)", "anthropic"),
-                    ("2. OpenAI", "openai"),
-                    ("3. Ollama (local)", "ollama"),
-                ]
-            for opt, prov in options:
-                status = " ✓" if prov in available_providers else ""
-                if prov == current_provider:
-                    status += " (current)"
-                print(f"{opt}{status}")
-            default_choice = "1"
-            choice_prompt = (
-                "Choose a provider [1-3]: " if not current_provider else "Choose a provider [1-4]: "
-            )
-            choice = self._prompt(
-                choice_prompt,
-                default=default_choice,
-            )
-            if current_provider:
-                provider_map = {"1": "skip", "2": "anthropic", "3": "openai", "4": "ollama"}
-            else:
-                provider_map = {"1": "anthropic", "2": "openai", "3": "ollama"}
-            provider = provider_map.get(choice)
-            if provider == "skip":
-                print("Setup skipped. Your current configuration is unchanged.")
-                self.mark_setup_complete()
-                return True
-            if not provider or provider not in available_providers:
-                print("Invalid choice or provider not available.")
-                return False
+            print(f"Current provider: {provider_names.get(current_provider, current_provider)}")
+        
+        # Build menu options - always include skip if there's a current provider
+        options = []
+        option_num = 1
+        
+        if current_provider:
+            options.append((f"{option_num}. Keep current provider (skip setup)", "skip"))
+            option_num += 1
+            
+        if "anthropic" in available_providers:
+            options.append((f"{option_num}. Anthropic (Claude)", "anthropic"))
+            option_num += 1
+        if "openai" in available_providers:
+            options.append((f"{option_num}. OpenAI", "openai"))
+            option_num += 1
+        if "ollama" in available_providers:
+            options.append((f"{option_num}. Ollama (local)", "ollama"))
+            option_num += 1
+        
+        if not options:
+            print("No AI providers available. Please set up API keys or install Ollama.")
+            return False
+            
+        # Display options
+        for opt, prov in options:
+            status = " ✓" if prov in available_providers else ""
+            if prov == current_provider and prov != "skip":
+                status += " (current)"
+            print(f"{opt}{status}")
+        
+        # Get user choice
+        choice_map = {}
+        for i, (_, prov) in enumerate(options):
+            choice_map[str(i + 1)] = prov
+            
+        valid_choices = list(choice_map.keys())
+        choice_prompt = f"Choose a provider [{','.join(valid_choices)}]: "
+        
+        choice = self._prompt(choice_prompt, default="1")
+        provider = choice_map.get(choice)
+        
+        if not provider:
+            print("Invalid choice.")
+            return False
+            
+        if provider == "skip":
+            print("Setup skipped. Your current configuration is unchanged.")
+            self.mark_setup_complete()
+            return True
 
         # Validate and prompt for key lazily
         if provider == "anthropic":
