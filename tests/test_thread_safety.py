@@ -12,7 +12,6 @@ License: Apache 2.0
 import concurrent.futures
 import os
 import secrets
-import sqlite3
 import tempfile
 import time
 from pathlib import Path
