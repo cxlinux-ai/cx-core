@@ -11,6 +11,7 @@ License: Apache 2.0
 
 import concurrent.futures
 import os
+import queue
 import secrets
 import tempfile
 import time
@@ -231,6 +232,10 @@ def test_connection_pool_timeout():
         # Hold all connections
         conn1 = pool._pool.get()
         conn2 = pool._pool.get()
+
+        # Attempt to get third connection should timeout
+        with pytest.raises(queue.Empty):
+            pool._pool.get(timeout=0.5)
 
         # Return connections
         pool._pool.put(conn1)

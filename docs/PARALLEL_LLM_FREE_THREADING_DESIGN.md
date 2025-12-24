@@ -677,12 +677,17 @@ class ThreadSafeSemanticCache(SemanticCache):
 """cortex/parallel_llm.py - Auto-select implementation."""
 
 import sys
+import sysconfig
 
 # Detect free-threading support
 PYTHON_VERSION = sys.version_info
 FREE_THREADING_AVAILABLE = (
-    PYTHON_VERSION >= (3, 14) and 
-    not sys._base_executable.endswith("python3.14")  # Check for 't' variant
+    PYTHON_VERSION >= (3, 13) and (
+        # Primary method: Check if GIL is disabled at build time
+        sysconfig.get_config_var("Py_GIL_DISABLED") == 1 or
+        # Alternative for newer Pythons: Check if GIL can be disabled at runtime
+        (hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled())
+    )
 )
 
 if FREE_THREADING_AVAILABLE:
