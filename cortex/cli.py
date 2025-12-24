@@ -373,9 +373,7 @@ class CortexCLI:
         start_time = datetime.now()
         for try_provider in providers_to_try:
             try:
-                try_api_key = self._get_api_key_for_provider(try_provider)
-                if not try_api_key:
-                    continue
+                try_api_key = self._get_api_key_for_provider(try_provider) or "dummy-key"
                 self._debug(f"Trying provider: {try_provider}")
                 interpreter = CommandInterpreter(
                     api_key=try_api_key, provider=try_provider, offline=self.offline
