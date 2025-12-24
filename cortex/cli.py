@@ -545,6 +545,31 @@ class CortexCLI:
             self._print_error(str(e))
             return 1
 
+    def ask(self, question: str) -> int:
+        """Answer a natural language question about the system."""
+        api_key = self._get_api_key()
+        if not api_key:
+            return 1
+
+        provider = self._get_provider()
+        self._debug(f"Using provider: {provider}")
+
+        try:
+            handler = AskHandler(
+                api_key=api_key,
+                provider=provider,
+                offline=self.offline,
+            )
+            answer = handler.ask(question)
+            console.print(answer)
+            return 0
+        except ValueError as e:
+            self._print_error(str(e))
+            return 1
+        except RuntimeError as e:
+            self._print_error(str(e))
+            return 1
+
     def install(
         self,
         software: str,
@@ -1525,7 +1550,6 @@ def show_rich_help():
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
     table.add_row("notify", "Manage desktop notifications")
-    table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("stack <name>", "Install the stack")
     table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
@@ -1602,6 +1626,10 @@ def main():
 
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
+
+    # Ask command
+    ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
+    ask_parser.add_argument("question", type=str, help="Natural language question")
 
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
