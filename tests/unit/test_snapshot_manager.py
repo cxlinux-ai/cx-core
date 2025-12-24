@@ -303,10 +303,18 @@ class TestSnapshotManager(unittest.TestCase):
         """Test snapshot ID generation format."""
         snapshot_id = self.manager._generate_snapshot_id()
 
-        # Should match YYYYMMDD_HHMMSS_ffffff format (with microseconds)
-        self.assertEqual(len(snapshot_id), 22)
-        self.assertEqual(snapshot_id[8], "_")
-        self.assertEqual(snapshot_id[15], "_")
+        # Should match YYYYMMDD_HHMMSS_<8-char-uuid> format
+        # Example: 20251224_170158_48167ea2
+        parts = snapshot_id.split("_")
+        self.assertEqual(len(parts), 3, "Should have 3 parts separated by underscores")
+        self.assertEqual(len(parts[0]), 8, "Date part should be 8 chars (YYYYMMDD)")
+        self.assertEqual(len(parts[1]), 6, "Time part should be 6 chars (HHMMSS)")
+        self.assertEqual(len(parts[2]), 8, "UUID part should be 8 chars")
+        
+        # Verify it's a valid format
+        self.assertTrue(parts[0].isdigit(), "Date part should be all digits")
+        self.assertTrue(parts[1].isdigit(), "Time part should be all digits")
+        self.assertTrue(all(c in '0123456789abcdef' for c in parts[2]), "UUID should be hex")
 
     def test_directory_security(self):
         """Test that snapshot directory has secure permissions."""

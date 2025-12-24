@@ -14,11 +14,15 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from filelock import FileLock, Timeout as FileLockTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,12 @@ class SnapshotManager:
         self.snapshots_dir = snapshots_dir or Path.home() / ".cortex" / "snapshots"
         self.snapshots_dir.mkdir(parents=True, exist_ok=True)
         
+        # Thread safety lock for concurrent operations
+        self._lock = threading.RLock()
+        
+        # File lock path for multi-process synchronization
+        self._file_lock_path = self.snapshots_dir / ".snapshots.lock"
+        
         # Load retention limit from preferences or use provided/default
         if retention_limit is not None:
             self.retention_limit = retention_limit
@@ -91,8 +101,10 @@ class SnapshotManager:
             logger.warning(f"Could not set directory permissions: {e}")
 
     def _generate_snapshot_id(self) -> str:
-        """Generate unique snapshot ID based on timestamp with microseconds"""
-        return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        """Generate unique snapshot ID with timestamp and UUID to prevent collisions"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_suffix = uuid.uuid4().hex[:8]
+        return f"{timestamp}_{unique_suffix}"
 
     def _get_snapshot_path(self, snapshot_id: str) -> Path:
         """Get path to snapshot directory"""
@@ -101,6 +113,35 @@ class SnapshotManager:
     def _get_metadata_path(self, snapshot_id: str) -> Path:
         """Get path to snapshot metadata file"""
         return self._get_snapshot_path(snapshot_id) / "metadata.json"
+    
+    def _safe_read_json(self, file_path: Path, max_retries: int = 3) -> dict | None:
+        """Safely read JSON file with retry on corruption.
+        
+        Args:
+            file_path: Path to JSON file
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            Parsed JSON data or None if file is corrupted/missing
+        """
+        for attempt in range(max_retries):
+            try:
+                if not file_path.exists():
+                    return None
+                with open(file_path) as f:
+                    return json.load(f)
+            except json.JSONDecodeError as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"JSON corruption detected in {file_path}, retry {attempt + 1}/{max_retries}")
+                    import time
+                    time.sleep(0.1)  # Brief delay before retry
+                else:
+                    logger.error(f"Failed to read JSON after {max_retries} attempts: {e}")
+                    return None
+            except Exception as e:
+                logger.error(f"Error reading {file_path}: {e}")
+                return None
+        return None
 
     def _run_package_detection(
         self, cmd: list[str], parser_func: Callable[[str], list[dict[str, str]]], manager_name: str
@@ -214,7 +255,7 @@ class SnapshotManager:
 
     def create_snapshot(self, description: str = "") -> tuple[bool, str | None, str]:
         """
-        Create a new system snapshot.
+        Create a new system snapshot (thread-safe and process-safe).
 
         Args:
             description: Human-readable snapshot description
@@ -222,14 +263,23 @@ class SnapshotManager:
         Returns:
             Tuple of (success, snapshot_id, message)
         """
+        snapshot_path = None
         try:
+            # Generate ID and create directory (quick, lock not needed for UUID-based IDs)
             snapshot_id = self._generate_snapshot_id()
             snapshot_path = self._get_snapshot_path(snapshot_id)
-            snapshot_path.mkdir(parents=True, exist_ok=True)
+            
+            # Check for collision (shouldn't happen with UUID, but be safe)
+            if snapshot_path.exists():
+                logger.warning(f"Snapshot ID collision detected: {snapshot_id}")
+                snapshot_id = self._generate_snapshot_id()
+                snapshot_path = self._get_snapshot_path(snapshot_id)
+            
+            snapshot_path.mkdir(parents=True, exist_ok=False)
             # Enforce strict permissions; initial mkdir permissions are subject to umask
             os.chmod(snapshot_path, 0o700)
 
-            # Detect installed packages
+            # Detect installed packages (SLOW - no lock needed, each process reads independently)
             logger.info("Detecting installed packages...")
             packages = {
                 "apt": self._detect_apt_packages(),
@@ -237,7 +287,7 @@ class SnapshotManager:
                 "npm": self._detect_npm_packages(),
             }
 
-            # Get system info
+            # Get system info (quick, no lock needed)
             system_info = self._get_system_info()
 
             # Create metadata
@@ -251,14 +301,29 @@ class SnapshotManager:
                 size_bytes=0,  # Could calculate actual size if needed
             )
 
-            # Save metadata with secure permissions (600)
-            metadata_path = self._get_metadata_path(snapshot_id)
-            fd = os.open(metadata_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w") as f:
-                json.dump(asdict(metadata), f, indent=2)
+            # CRITICAL SECTION: Lock only for JSON writes and retention policy
+            # This is fast (~100ms), so multiple processes can queue quickly
+            file_lock = FileLock(str(self._file_lock_path), timeout=10)
+            try:
+                with file_lock, self._lock:
+                    # Save metadata with secure permissions (600) using atomic write
+                    metadata_path = self._get_metadata_path(snapshot_id)
+                    temp_path = metadata_path.with_suffix(".tmp")
+                    
+                    # Write to temporary file first (atomic operation)
+                    fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "w") as f:
+                        json.dump(asdict(metadata), f, indent=2)
+                    
+                    # Atomic rename
+                    temp_path.rename(metadata_path)
 
-            # Apply retention policy
-            self._apply_retention_policy()
+                    # Apply retention policy (fast - just directory listing and deletes)
+                    self._apply_retention_policy()
+            except FileLockTimeout:
+                # Lock timeout only for the final write - shouldn't happen with 10s timeout
+                logger.error("Timeout waiting for file lock during snapshot finalization")
+                raise  # Re-raise to trigger cleanup
 
             logger.info(f"Snapshot created: {snapshot_id}")
             return (
@@ -267,29 +332,65 @@ class SnapshotManager:
                 f"Snapshot {snapshot_id} created successfully with {metadata.file_count} packages",
             )
 
+        except FileLockTimeout:
+            logger.error("Timeout waiting for file lock - another process is writing snapshot")
+            # Cleanup on failure
+            try:
+                if snapshot_path and snapshot_path.exists():
+                    shutil.rmtree(snapshot_path)
+            except Exception:
+                pass
+            return (False, None, "Timeout during snapshot finalization, please retry")
         except Exception as e:
             logger.error(f"Failed to create snapshot: {e}")
+            # Cleanup on failure
+            try:
+                if snapshot_path and snapshot_path.exists():
+                    shutil.rmtree(snapshot_path)
+            except Exception:
+                pass
             return (False, None, f"Failed to create snapshot: {e}")
 
-    def list_snapshots(self) -> list[SnapshotMetadata]:
+    def _list_snapshots_unsafe(self) -> list[SnapshotMetadata]:
         """
-        List all available snapshots.
-
+        List snapshots WITHOUT acquiring lock (for internal use within locked context).
+        
         Returns:
             List of SnapshotMetadata objects sorted by timestamp (newest first)
         """
         snapshots = []
         try:
             for snapshot_dir in sorted(self.snapshots_dir.iterdir(), reverse=True):
-                if snapshot_dir.is_dir():
+                if snapshot_dir.is_dir() and snapshot_dir.name != ".snapshots.lock":
                     metadata_path = snapshot_dir / "metadata.json"
-                    if metadata_path.exists():
-                        with open(metadata_path) as f:
-                            data = json.load(f)
+                    data = self._safe_read_json(metadata_path)
+                    if data:
+                        try:
                             snapshots.append(SnapshotMetadata(**data))
+                        except Exception as e:
+                            logger.warning(f"Invalid metadata in {snapshot_dir.name}: {e}")
         except Exception as e:
             logger.error(f"Failed to list snapshots: {e}")
         return snapshots
+
+    def list_snapshots(self) -> list[SnapshotMetadata]:
+        """
+        List all available snapshots (process-safe).
+
+        Returns:
+            List of SnapshotMetadata objects sorted by timestamp (newest first)
+        """
+        file_lock = FileLock(str(self._file_lock_path), timeout=10)
+        
+        try:
+            with file_lock:
+                return self._list_snapshots_unsafe()
+        except FileLockTimeout:
+            logger.warning("Timeout waiting for file lock while listing snapshots")
+            return []
+        except Exception as e:
+            logger.error(f"Failed to list snapshots: {e}")
+            return []
 
     def get_snapshot(self, snapshot_id: str) -> SnapshotMetadata | None:
         """
@@ -303,21 +404,20 @@ class SnapshotManager:
         """
         try:
             metadata_path = self._get_metadata_path(snapshot_id)
-            if metadata_path.exists():
-                with open(metadata_path) as f:
-                    data = json.load(f)
-                    return SnapshotMetadata(**data)
+            data = self._safe_read_json(metadata_path)
+            if data:
+                return SnapshotMetadata(**data)
         except Exception as e:
             logger.error(f"Failed to get snapshot {snapshot_id}: {e}")
         return None
 
-    def delete_snapshot(self, snapshot_id: str) -> tuple[bool, str]:
+    def _delete_snapshot_unsafe(self, snapshot_id: str) -> tuple[bool, str]:
         """
-        Delete a snapshot.
-
+        Delete snapshot WITHOUT acquiring lock (for internal use within locked context).
+        
         Args:
             snapshot_id: ID of the snapshot to delete
-
+            
         Returns:
             Tuple of (success, message)
         """
@@ -333,6 +433,26 @@ class SnapshotManager:
         except Exception as e:
             logger.error(f"Failed to delete snapshot {snapshot_id}: {e}")
             return (False, f"Failed to delete snapshot: {e}")
+
+    def delete_snapshot(self, snapshot_id: str) -> tuple[bool, str]:
+        """
+        Delete a snapshot (thread-safe and process-safe).
+
+        Args:
+            snapshot_id: ID of the snapshot to delete
+
+        Returns:
+            Tuple of (success, message)
+        """
+        file_lock = FileLock(str(self._file_lock_path), timeout=10)
+        
+        try:
+            with file_lock, self._lock:
+                return self._delete_snapshot_unsafe(snapshot_id)
+        
+        except FileLockTimeout:
+            logger.error("Timeout waiting for file lock during deletion")
+            return (False, "Snapshot deletion in progress by another process, please wait")
 
     def _execute_package_command(self, cmd_list: list[str], dry_run: bool) -> None:
         """Execute a package management command with timeout protection.
@@ -468,19 +588,23 @@ class SnapshotManager:
             return (False, f"Failed to restore snapshot: {e}", commands)
 
     def _apply_retention_policy(self) -> None:
-        """Remove oldest snapshots if count exceeds retention_limit"""
+        """Remove oldest snapshots if count exceeds retention_limit (called within lock)"""
         try:
-            snapshots = self.list_snapshots()
+            # Use unsafe version since we're already holding the lock
+            snapshots = self._list_snapshots_unsafe()
             if len(snapshots) > self.retention_limit:
                 # Sort by timestamp (oldest first)
                 snapshots.sort(key=lambda s: s.timestamp)
 
-                # Delete oldest snapshots
+                # Delete oldest snapshots using unsafe version (already holding lock)
                 to_delete = len(snapshots) - self.retention_limit
                 for i in range(to_delete):
                     snapshot_id = snapshots[i].id
-                    self.delete_snapshot(snapshot_id)
-                    logger.info(f"Retention policy: deleted old snapshot {snapshot_id}")
+                    success, message = self._delete_snapshot_unsafe(snapshot_id)
+                    if success:
+                        logger.info(f"Retention policy: deleted old snapshot {snapshot_id}")
+                    else:
+                        logger.warning(f"Retention policy: failed to delete {snapshot_id}: {message}")
 
         except Exception as e:
             logger.warning(f"Failed to apply retention policy: {e}")

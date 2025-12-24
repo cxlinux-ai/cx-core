@@ -14,8 +14,8 @@ python-dotenv>=1.0.0
 # Terminal UI
 rich>=13.0.0
 
-# Configuration
-pyyaml>=6.0.0
+# File locking for multi-process safety
+filelock>=3.20.0
 
 # Type hints for older Python versions
 typing-extensions>=4.0.0
