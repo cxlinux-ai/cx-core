@@ -2,10 +2,6 @@ try:
     from pathlib import Path
 
     from dotenv import load_dotenv
-
-    # Load from parent directory .env as well
-    load_dotenv(dotenv_path=Path.cwd().parent / ".env", override=True)
-    load_dotenv(dotenv_path=Path.cwd() / ".env", override=True)
 except ImportError:
     pass
 """
@@ -23,7 +19,7 @@ import random
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -419,6 +415,7 @@ class FirstRunWizard:
         # Save provider
         self.config["api_provider"] = provider
         self.save_config()
+        self.mark_setup_complete()
 
         # Success message
         print(f"\n[✔] Setup complete! Provider '{provider}' is ready for AI workloads.")
@@ -556,6 +553,53 @@ Cortex uses AI to understand your commands. You can use:
         else:
             print("\n⚠ Running without AI - you'll only have basic apt functionality")
             return StepResult(success=True, data={"api_provider": "none"})
+
+    def _detect_hardware(self) -> dict[str, Any]:
+        """Detect system hardware."""
+        from cortex.hardware_detection import detect_hardware
+
+        try:
+            info = detect_hardware()
+            return asdict(info)
+        except Exception as e:
+            logger.warning(f"Hardware detection failed: {e}")
+            return {"cpu": {"vendor": "unknown", "model": "unknown"}, "gpu": {"vendor": "unknown", "model": "unknown"}}
+
+    def _step_hardware_detection(self) -> StepResult:
+        """Detect and configure hardware settings."""
+        self._clear_screen()
+        self._print_header("Step 2: Hardware Detection")
+
+        print("\nDetecting your hardware for optimal performance...\n")
+
+        hardware_info = self._detect_hardware()
+
+        # Save hardware info
+        self.config["hardware"] = hardware_info
+
+        # Display results
+        cpu = hardware_info.get("cpu", {})
+        gpu_list = hardware_info.get("gpu", [])
+        memory = hardware_info.get("memory", {})
+
+        print("  • CPU:", cpu.get("model", "Unknown"))
+        if gpu_list:
+            gpu = gpu_list[0]  # Take first GPU
+            gpu_vendor = gpu.get("vendor", "unknown")
+            gpu_model = gpu.get("model", "Detected")
+            if gpu_vendor != "unknown":
+                print(f"  • GPU: {gpu_model} ({gpu_vendor})")
+            else:
+                print("  • GPU: Detected")
+        else:
+            print("  • GPU: Not detected")
+
+        if memory:
+            print(f"  • Memory: {memory.get('total_gb', 0)} GB")
+
+        print("\n✓ Hardware detection complete!")
+
+        return StepResult(success=True, data={"hardware": hardware_info})
 
     def _step_preferences(self) -> StepResult:
         """Configure user preferences."""

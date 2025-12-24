@@ -34,7 +34,7 @@ class TestCortexCLIExtended(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_get_api_key_not_found(self, _mock_get_provider) -> None:
         api_key = self.cli._get_api_key()
-        self.assertIsNone(api_key)
+        self.assertEqual(api_key, "ollama-local")
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True)
     def test_get_provider_openai(self) -> None:

@@ -29,13 +29,13 @@ def get_env_file_locations() -> list[Path]:
     """
     locations = []
 
-    # 1. Parent directory (for project root .env)
-    parent_env = Path.cwd().parent / ".env"
-    locations.append(parent_env)
-
-    # 2. Current working directory (highest priority)
+    # 1. Current working directory (highest priority)
     cwd_env = Path.cwd() / ".env"
     locations.append(cwd_env)
+
+    # 2. Parent directory (for project root .env)
+    parent_env = Path.cwd().parent / ".env"
+    locations.append(parent_env)
 
     # 3. Cortex package directory .env
     try:

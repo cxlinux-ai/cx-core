@@ -86,8 +86,8 @@ class CortexCLI:
         elif os.environ.get("OPENAI_API_KEY"):
             return "openai"
 
-        # Fallback to Ollama for offline mode
-        return "ollama"
+        # No API keys available - default to OpenAI (will fail without key)
+        return "openai"
 
     def _print_status(self, emoji: str, message: str):
         """Legacy status print - maps to cx_print for Rich output"""
