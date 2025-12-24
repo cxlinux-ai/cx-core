@@ -19,10 +19,6 @@ import os
 from pathlib import Path
 
 
-import os
-from pathlib import Path
-
-
 def get_env_file_locations() -> list[Path]:
     """
     Get list of .env file locations to check, in priority order.

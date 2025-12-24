@@ -1,5 +1,7 @@
 import os
+
 import requests
+
 
 def test_anthropic_api_key(api_key: str) -> bool:
     """Test Anthropic (Claude) API key by making a minimal request."""

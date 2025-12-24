@@ -1,5 +1,6 @@
 try:
     from pathlib import Path
+
     from dotenv import load_dotenv
     # Load from parent directory .env as well
     load_dotenv(dotenv_path=Path.cwd().parent / ".env", override=True)
@@ -21,7 +22,6 @@ import random
 import shutil
 import subprocess
 import sys
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -762,7 +762,7 @@ Cortex is ready to use! Here are some things to try:
  | |__| (_) | |  | ||  __/>  <
   \\____\\___/|_|   \\__\\___/_/\\_\\
 
-       
+
 """
         print(banner)
 
