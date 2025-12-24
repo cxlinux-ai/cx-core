@@ -1,0 +1,36 @@
+Fix multi-process race condition in snapshot manager
+
+## Problem
+Multiple concurrent `cortex snapshot create` processes caused JSON 
+file corruption with errors:
+- "Expecting property name enclosed in double quotes"  
+- "Expecting ',' delimiter"
+
+## Root Cause
+- threading.RLock only protects threads within a single process
+- Multiple processes writing/reading JSON files without coordination
+- No file-level locking mechanism
+
+## Solution
+1. **File-based locking**: Added filelock library for cross-process locks
+2. **Safe JSON reads**: Retry mechanism for transient corruption (3 attempts)
+3. **Protected operations**: All create/list/delete wrapped with FileLock
+4. **Graceful timeouts**: User-friendly messages on lock contention
+
+## Changes
+- Added `filelock>=3.20.0` dependency to requirements.txt
+- Added `_file_lock_path` and `_safe_read_json()` to SnapshotManager
+- Wrapped create/list/delete operations with FileLock contexts
+- Added FileLockTimeout exception handling
+
+## Testing
+- ✅ All 27 unit tests passing
+- ✅ Multi-process test script created (test_concurrent_simple.py)
+- ✅ No breaking changes to public API
+
+## Files Modified
+- cortex/snapshot_manager.py
+- requirements.txt
+- test_concurrent_simple.py (new)
+- test_multiprocess_race.py (new)
+- MULTIPROCESS_RACE_FIX.md (new)
