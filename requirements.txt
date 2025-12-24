@@ -15,7 +15,7 @@ python-dotenv>=1.0.0
 rich>=13.0.0
 
 # File locking for multi-process safety
-filelock>=3.20.0
+filelock>=3.20.1
 
 # Type hints for older Python versions
 typing-extensions>=4.0.0
