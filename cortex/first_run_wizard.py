@@ -638,19 +638,133 @@ class FirstRunWizard:
         return StepResult(success=True)
 
     def _step_api_setup(self) -> StepResult:
-        """API setup step - legacy method for tests."""
-        existing_claude = os.environ.get("ANTHROPIC_API_KEY", "")
-        existing_openai = os.environ.get("OPENAI_API_KEY", "")
+        """API key configuration step."""
+        self._clear_screen()
+        self._print_header("Step 1: API Configuration")
 
-        if existing_claude and existing_claude.startswith("sk-ant-"):
-            self.config["api_provider"] = "anthropic"
-            self.config["api_key_configured"] = True
-            return StepResult(success=True, data={"api_provider": "anthropic"})
-        if existing_openai and existing_openai.startswith("sk-"):
-            self.config["api_provider"] = "openai"
-            self.config["api_key_configured"] = True
-            return StepResult(success=True, data={"api_provider": "openai"})
-        return StepResult(success=True, data={"api_provider": "none"})
+        # Check for existing API keys
+        existing_claude = os.environ.get("ANTHROPIC_API_KEY")
+        existing_openai = os.environ.get("OPENAI_API_KEY")
+
+        # Build menu with indicators for existing keys
+        claude_status = " ✓ (key found)" if existing_claude else ""
+        openai_status = " ✓ (key found)" if existing_openai else ""
+
+        print(
+            f"""
+Cortex uses AI to understand your commands. You can use:
+
+  1. Claude API (Anthropic){claude_status} - Recommended
+  2. OpenAI API{openai_status}
+  3. Local LLM (Ollama) - Free, runs on your machine
+  4. Skip for now (limited functionality)
+"""
+        )
+
+        if not self.interactive:
+            # In non-interactive mode, auto-select if key exists
+            if existing_claude:
+                self.config["api_provider"] = "anthropic"
+                self.config["api_key_configured"] = True
+                return StepResult(success=True, data={"api_provider": "anthropic"})
+            if existing_openai:
+                self.config["api_provider"] = "openai"
+                self.config["api_key_configured"] = True
+                return StepResult(success=True, data={"api_provider": "openai"})
+            return StepResult(
+                success=True,
+                message="Non-interactive mode - skipping API setup",
+                data={"api_provider": "none"},
+            )
+
+        # Always let user choose
+        choice = self._prompt("Choose an option [1-4]: ", default="1")
+
+        if choice == "1":
+            if existing_claude:
+                print("\n✓ Using existing Claude API key!")
+                self.config["api_provider"] = "anthropic"
+                self.config["api_key_configured"] = True
+                return StepResult(success=True, data={"api_provider": "anthropic"})
+            return self._setup_claude_api()
+        elif choice == "2":
+            if existing_openai:
+                print("\n✓ Using existing OpenAI API key!")
+                self.config["api_provider"] = "openai"
+                self.config["api_key_configured"] = True
+                return StepResult(success=True, data={"api_provider": "openai"})
+            return self._setup_openai_api()
+        elif choice == "3":
+            return self._setup_ollama()
+        else:
+            print("\n⚠ Running without AI - you'll only have basic apt functionality")
+            return StepResult(success=True, data={"api_provider": "none"})
+
+    def _setup_claude_api(self) -> StepResult:
+        """Set up Claude API."""
+        print("\nTo get a Claude API key:")
+        print("  1. Go to https://console.anthropic.com")
+        print("  2. Sign up or log in")
+        print("  3. Create an API key\n")
+
+        api_key = self._prompt("Enter your Claude API key: ")
+
+        if not api_key or not api_key.startswith("sk-"):
+            print("\n⚠ Invalid API key format")
+            return StepResult(success=True, data={"api_provider": "none"})
+
+        # Save to shell profile
+        self._save_env_var("ANTHROPIC_API_KEY", api_key)
+
+        self.config["api_provider"] = "anthropic"
+        self.config["api_key_configured"] = True
+
+        print("\n✓ Claude API key saved!")
+        return StepResult(success=True, data={"api_provider": "anthropic"})
+
+    def _setup_openai_api(self) -> StepResult:
+        """Set up OpenAI API."""
+        print("\nTo get an OpenAI API key:")
+        print("  1. Go to https://platform.openai.com")
+        print("  2. Sign up or log in")
+        print("  3. Create an API key\n")
+
+        api_key = self._prompt("Enter your OpenAI API key: ")
+
+        if not api_key or not api_key.startswith("sk-"):
+            print("\n⚠ Invalid API key format")
+            return StepResult(success=True, data={"api_provider": "none"})
+
+        self._save_env_var("OPENAI_API_KEY", api_key)
+
+        self.config["api_provider"] = "openai"
+        self.config["api_key_configured"] = True
+
+        print("\n✓ OpenAI API key saved!")
+        return StepResult(success=True, data={"api_provider": "openai"})
+
+    def _setup_ollama(self) -> StepResult:
+        """Set up Ollama for local LLM."""
+        print("\nChecking for Ollama...")
+
+        # Check if Ollama is installed
+        ollama_path = shutil.which("ollama")
+
+        if not ollama_path:
+            print("\nOllama is not installed. Install it with:")
+            print("  curl -fsSL https://ollama.ai/install.sh | sh")
+
+            install = self._prompt("\nInstall Ollama now? [y/N]: ", default="n")
+
+            if install.lower() == "y":
+                try:
+                    subprocess.run(
+                        "curl -fsSL https://ollama.ai/install.sh | sh", shell=True, check=True
+                    )
+                    print("\n✓ Ollama installed!")
+                except subprocess.CalledProcessError:
+                    print("\n✗ Failed to install Ollama")
+                    return StepResult(success=True, data={"api_provider": "none"})
 
     def _step_hardware_detection(self) -> StepResult:
         """Hardware detection step - legacy method for tests."""

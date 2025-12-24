@@ -737,11 +737,9 @@ class CortexCLI:
         """Interactive setup wizard for API key configuration"""
         show_banner()
         console.print()
-        
         # Run the actual first-run wizard
         wizard = FirstRunWizard(interactive=True)
         success = wizard.run()
-        
         return 0 if success else 1
 
     def env(self, args: argparse.Namespace) -> int:
