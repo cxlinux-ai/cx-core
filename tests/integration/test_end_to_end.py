@@ -128,10 +128,12 @@ class TestEndToEndWorkflows(unittest.TestCase):
             combined_output.lower(),
             msg=f"Tests did not pass.\nStdout: {result.stdout}\nStderr: {result.stderr}",
         )
-        # Consider it successful if tests passed, even if there are warnings
-        has_test_failures = (
-            "failed" in combined_output.lower() and "0 failed" not in combined_output.lower()
-        )
+        # Look for actual pytest test failures (e.g., "FAILED tests/..." or "X failed")
+        # Ignore warnings that contain the word "failed" but aren't about test failures
+        import re
+
+        failed_tests = re.search(r"(\d+)\s+failed", combined_output.lower())
+        has_test_failures = failed_tests and int(failed_tests.group(1)) > 0
         self.assertFalse(has_test_failures, msg=f"Tests failed.\nOutput: {combined_output}")
 
 
