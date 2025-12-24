@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
 
 logging.basicConfig(level=logging.INFO)
@@ -106,36 +107,101 @@ def start_ollama_service() -> bool:
         return False
 
 
-def pull_default_model() -> bool:
+def prompt_model_selection() -> str:
     """
-    Pull a lightweight default model for Cortex.
+    Prompt user to select which Ollama model to download.
     
+    Returns:
+        Model name selected by user
+    """
+    print("\n" + "=" * 60)
+    print("📦 Select Ollama Model to Download")
+    print("=" * 60)
+    print("\nAvailable models (Quality vs Size trade-off):\n")
+    
+    models = [
+        ("codellama:7b", "3.8 GB", "Good for code, fast (DEFAULT)", True),
+        ("llama3:8b", "4.7 GB", "Balanced, general purpose"),
+        ("phi3:mini", "1.9 GB", "Lightweight, quick responses"),
+        ("deepseek-coder:6.7b", "3.8 GB", "Code-optimized"),
+        ("mistral:7b", "4.1 GB", "Fast and efficient"),
+    ]
+    
+    for i, (name, size, desc, *is_default) in enumerate(models, 1):
+        default_marker = " ⭐" if is_default else ""
+        print(f"  {i}. {name:<20} | {size:<8} | {desc}{default_marker}")
+    
+    print(f"\n  6. Skip (download later)")
+    print("\n" + "=" * 60)
+    
+    try:
+        choice = input("\nSelect option (1-6) [Press Enter for default]: ").strip()
+        
+        if not choice:
+            # Default to codellama:7b
+            return "codellama:7b"
+        
+        choice_num = int(choice)
+        
+        if choice_num == 6:
+            return "skip"
+        elif 1 <= choice_num <= 5:
+            return models[choice_num - 1][0]
+        else:
+            print("⚠️  Invalid choice, using default (codellama:7b)")
+            return "codellama:7b"
+            
+    except (ValueError, KeyboardInterrupt):
+        print("\n⚠️  Using default model (codellama:7b)")
+        return "codellama:7b"
+
+
+def pull_selected_model(model_name: str) -> bool:
+    """
+    Pull the selected model for Cortex.
+    
+    Args:
+        model_name: Name of the model to pull
+        
     Returns:
         True if model pulled successfully, False otherwise
     """
     if not is_ollama_installed():
         return False
+    
+    if model_name == "skip":
+        logger.info("⏭️  Skipping model download - you can pull one later with: ollama pull <model>")
+        return True
 
-    logger.info("📥 Pulling default model (phi3:mini) - this may take a few minutes...")
-    logger.info("   You can skip this and it will auto-download on first use")
+    logger.info(f"📥 Pulling {model_name} - this may take 5-10 minutes...")
+    logger.info("   Downloading model from Ollama registry...")
     
     try:
-        result = subprocess.run(
-            ["ollama", "pull", "phi3:mini"],
-            capture_output=True,
+        # Show real-time progress
+        process = subprocess.Popen(
+            ["ollama", "pull", model_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=600,  # 10 minutes for model download
         )
         
-        if result.returncode == 0:
-            logger.info("✅ Default model ready")
+        # Display progress in real-time
+        for line in process.stdout:
+            # Show progress lines
+            if line.strip():
+                print(f"   {line.strip()}")
+        
+        process.wait(timeout=600)  # 10 minutes timeout
+        
+        if process.returncode == 0:
+            logger.info(f"✅ {model_name} downloaded successfully")
             return True
         else:
-            logger.warning("⚠️  Model pull failed, will auto-download on first use")
+            logger.warning(f"⚠️  Model pull failed, you can try: ollama pull {model_name}")
             return False
 
     except subprocess.TimeoutExpired:
-        logger.warning("⚠️  Model download timed out, will auto-download on first use")
+        logger.warning("⚠️  Model download timed out - try again with: ollama pull {model_name}")
         return False
     except Exception as e:
         logger.warning(f"⚠️  Model pull failed: {e}")
@@ -170,11 +236,15 @@ def setup_ollama():
         logger.info("ℹ️  Ollama service will start automatically on first use")
         return
 
-    # Pull default model (optional, non-blocking)
-    logger.info("ℹ️  Pulling default model (optional)...")
-    pull_default_model()
+    # Interactive model selection (skip in non-interactive environments)
+    if sys.stdin.isatty():
+        selected_model = prompt_model_selection()
+        pull_selected_model(selected_model)
+    else:
+        logger.info("ℹ️  Non-interactive mode detected - skipping model download")
+        logger.info("   You can pull a model later with: ollama pull <model>")
     
-    logger.info("=" * 60)
+    logger.info("\n" + "=" * 60)
     logger.info("✅ Cortex Linux setup complete!")
     logger.info("=" * 60)
     logger.info("")

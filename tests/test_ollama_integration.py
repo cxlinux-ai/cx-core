@@ -41,17 +41,21 @@ class TestOllamaProvider(unittest.TestCase):
     @patch('cortex.providers.ollama_provider.requests.get')
     def test_is_running(self, mock_get):
         """Test Ollama service detection."""
-        provider = OllamaProvider()
-        
         # Test when running
         mock_response = Mock()
         mock_response.status_code = 200
         mock_get.return_value = mock_response
+        mock_get.side_effect = None  # Clear any side effects
+        
+        provider = OllamaProvider()
         self.assertTrue(provider.is_running())
         
-        # Test when not running
-        mock_get.side_effect = Exception("Connection refused")
-        self.assertFalse(provider.is_running())
+        # Test when not running - use RequestException
+        from requests.exceptions import ConnectionError
+        mock_get.side_effect = ConnectionError("Connection refused")
+        
+        provider2 = OllamaProvider()
+        self.assertFalse(provider2.is_running())
 
     @patch('cortex.providers.ollama_provider.requests.get')
     def test_get_available_models(self, mock_get):
@@ -171,6 +175,7 @@ class TestLLMRouter(unittest.TestCase):
         mock_ollama_class.return_value = mock_ollama
         
         router = LLMRouter()
+        router.ollama_client = mock_ollama  # Ensure router uses our mock
         
         messages = [{"role": "user", "content": "How to install nginx?"}]
         response = router.complete(
@@ -180,6 +185,8 @@ class TestLLMRouter(unittest.TestCase):
         )
         
         self.assertEqual(response.provider, LLMProvider.OLLAMA)
+        # Check that complete was called on the mock
+        mock_ollama.complete.assert_called_once()
         self.assertIn("nginx", response.content.lower())
 
 

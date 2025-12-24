@@ -364,7 +364,7 @@ def recommend_models(total_vram_gb: float, system_ram_gb: float, has_npu: bool) 
         recommendations.extend(["llama3.1-8b", "mistral-7b", "qwen2.5-14b", "codellama-13b"])
 
     if available_gb >= 8:
-        recommendations.extend(["llama3.2-3b", "phi-3-mini", "gemma-2b", "qwen2.5-7b-q4"])
+        recommendations.extend(["phi3:mini", "llama3:8b", "gemma:2b", "qwen2.5:7b"])
 
     if available_gb >= 4:
         recommendations.extend(["tinyllama-1.1b", "phi-2", "qwen2.5-1.5b"])

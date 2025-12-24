@@ -372,15 +372,15 @@ Cortex uses AI to understand your commands. You can use:
                     return StepResult(success=True, data={"api_provider": "none"})
 
         # Pull a small model
-        print("\nPulling llama3.2 model (this may take a few minutes)...")
+        print("\nPulling codellama:7b model (this may take a few minutes)...")
         try:
-            subprocess.run(["ollama", "pull", "llama3.2"], check=True)
+            subprocess.run(["ollama", "pull", "codellama:7b"], check=True)
             print("\n✓ Model ready!")
         except subprocess.CalledProcessError:
-            print("\n⚠ Could not pull model - you can do this later with: ollama pull llama3.2")
+            print("\n⚠ Could not pull model - you can do this later with: ollama pull codellama:7b")
 
         self.config["api_provider"] = "ollama"
-        self.config["ollama_model"] = "llama3.2"
+        self.config["ollama_model"] = "codellama:7b"
 
         return StepResult(success=True, data={"api_provider": "ollama"})
 

@@ -61,8 +61,9 @@ class TestCortexCLI(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_install_no_api_key(self):
+        # With Ollama integration, no API key is needed - should succeed
         result = self.cli.install("docker")
-        self.assertEqual(result, 1)
+        self.assertEqual(result, 0)
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-openai-key-123"}, clear=True)
     @patch("cortex.cli.CommandInterpreter")
