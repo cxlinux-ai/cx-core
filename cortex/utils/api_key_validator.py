@@ -3,17 +3,16 @@ import os
 import requests
 
 
-def test_anthropic_api_key(api_key: str) -> bool:
-    """Test Anthropic (Claude) API key by making a minimal request."""
+def validate_anthropic_api_key(api_key: str) -> bool:
+    """Validate Anthropic (Claude) API key by making a minimal request."""
     try:
         headers = {
             "x-api-key": api_key,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
-        # Minimal harmless request (model name may need to be updated)
         data = {
-            "model": "claude-3-opus-20240229",  # or another available model
+            "model": "claude-3-opus-20240229",
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "Hello"}],
         }
@@ -25,8 +24,8 @@ def test_anthropic_api_key(api_key: str) -> bool:
         return False
 
 
-def test_openai_api_key(api_key: str) -> bool:
-    """Test OpenAI API key by making a minimal request."""
+def validate_openai_api_key(api_key: str) -> bool:
+    """Validate OpenAI API key by making a minimal request."""
     try:
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         data = {
@@ -40,3 +39,8 @@ def test_openai_api_key(api_key: str) -> bool:
         return resp.status_code == 200
     except Exception:
         return False
+
+
+# Aliases for backward compatibility
+test_anthropic_api_key = validate_anthropic_api_key
+test_openai_api_key = validate_openai_api_key
