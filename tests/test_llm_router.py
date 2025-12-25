@@ -137,10 +137,12 @@ class TestFallbackBehavior(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_error_when_no_providers_available(self):
         """Should raise error if no providers configured."""
-        router = LLMRouter(claude_api_key=None, kimi_api_key=None, enable_fallback=True)
+        # Now raises error during initialization, not route_task
+        with self.assertRaises(RuntimeError) as context:
+            router = LLMRouter(claude_api_key=None, kimi_api_key=None, enable_fallback=True)
 
-        with self.assertRaises(RuntimeError):
-            router.route_task(TaskType.USER_CHAT)
+        # Verify helpful error message
+        self.assertIn("No LLM providers available", str(context.exception))
 
     @patch.dict(os.environ, {}, clear=True)
     def test_error_when_fallback_disabled(self):
@@ -768,8 +770,16 @@ class TestParallelProcessing(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    def test_rate_limit_semaphore(self):
+    @patch("cortex.llm_router.OllamaProvider")
+    def test_rate_limit_semaphore(self, mock_ollama):
         """Test rate limiting semaphore setup."""
+        # Mock Ollama to have models available
+        mock_instance = Mock()
+        mock_instance.is_installed.return_value = True
+        mock_instance.is_running.return_value = True
+        mock_instance.select_best_model.return_value = "llama3:8b"
+        mock_ollama.return_value = mock_instance
+
         router = LLMRouter()
         router.set_rate_limit(max_concurrent=5)
         self.assertIsNotNone(router._rate_limit_semaphore)

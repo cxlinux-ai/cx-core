@@ -16,12 +16,25 @@ git clone https://github.com/cortexlinux/cortex.git
 cd cortex
 python3 -m venv venv
 source venv/bin/activate
-pip install -e .
 
-# Configure API key
+# Install Cortex with interactive Ollama setup
+# Use python setup.py develop (NOT pip install -e .) for interactive prompts
+python setup.py develop
+
+# The setup will automatically:
+# - Prompt if you want to install Ollama (y/n)
+# - Install Ollama if you choose 'yes'
+# - Let you select an AI model to download
+# - Configure everything for first use
+
+# Note: pip install -e . works but hides interactive prompts
+# Use python setup.py develop for full interactive experience
+
+# Optional: Configure API key for cloud providers (if not using Ollama)
 echo 'ANTHROPIC_API_KEY=your-key-here' > .env
 
 # Verify installation
+cortex --help
 cortex install nginx --dry-run
 ```
 

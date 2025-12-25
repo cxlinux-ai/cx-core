@@ -148,23 +148,30 @@ class LLMRouter:
 
         # Initialize Ollama provider
         self.ollama_client = None
+        self.ollama_has_models = False
         try:
-            self.ollama_client = OllamaProvider()
-            if self.ollama_client.is_installed():
+            # Initialize without auto-pull during setup to avoid long delays
+            ollama_temp = OllamaProvider(auto_pull=False)
+            if ollama_temp.is_installed():
                 logger.info("✅ Ollama provider initialized (local, privacy-first)")
                 # Try to ensure service is running and model is available
-                if self.ollama_client.is_running() or self.ollama_client.start_service():
-                    model = self.ollama_client.ensure_model_available()
+                if ollama_temp.is_running() or ollama_temp.start_service():
+                    model = ollama_temp.select_best_model()
                     if model:
                         logger.info(f"✅ Using local model: {model}")
+                        self.ollama_client = ollama_temp
+                        self.ollama_has_models = True
                     else:
                         logger.warning("⚠️  Ollama running but no models available")
+                        logger.info(
+                            "💡 Run 'cortex-setup-ollama' or 'ollama pull <model>' to download a model"
+                        )
+                else:
+                    logger.warning("⚠️  Ollama installed but service not running")
             else:
                 logger.info("ℹ️  Ollama not installed - will use cloud providers")
-                self.ollama_client = None
         except Exception as e:
             logger.warning(f"⚠️  Ollama initialization failed: {e}")
-            self.ollama_client = None
 
         # Initialize clients (sync)
         self.claude_client = None
@@ -205,6 +212,22 @@ class LLMRouter:
             LLMProvider.KIMI_K2: {"requests": 0, "tokens": 0, "cost": 0.0},
         }
 
+        # Check if we have ANY usable LLM
+        if not self.ollama_has_models and not self.claude_client and not self.kimi_client:
+            error_msg = (
+                "\n❌ No LLM providers available!\n\n"
+                "Cortex needs at least one of the following:\n"
+                "  1. Local Ollama with a model installed:\n"
+                "     → Run: cortex-setup-ollama\n"
+                "     → Or: ollama pull codellama:7b\n\n"
+                "  2. Cloud API key configured:\n"
+                "     → Set ANTHROPIC_API_KEY in .env file\n"
+                "     → Or: export ANTHROPIC_API_KEY=your-key\n\n"
+                "For more help: https://github.com/cortexlinux/cortex\n"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
     def route_task(
         self, task_type: TaskType, force_provider: LLMProvider | None = None
     ) -> RoutingDecision:
@@ -230,8 +253,8 @@ class LLMRouter:
         provider = self.ROUTING_RULES.get(task_type, self.default_provider)
 
         # Check if preferred provider is available (with smart fallback)
-        if provider == LLMProvider.OLLAMA and not self.ollama_client:
-            # Ollama unavailable, fall back to cloud providers
+        if provider == LLMProvider.OLLAMA and not self.ollama_has_models:
+            # Ollama unavailable or no models, fall back to cloud providers
             if self.claude_client and self.enable_fallback:
                 logger.warning("Ollama unavailable, falling back to Claude")
                 provider = LLMProvider.CLAUDE
@@ -242,7 +265,7 @@ class LLMRouter:
                 raise RuntimeError("No LLM providers available")
 
         if provider == LLMProvider.CLAUDE and not self.claude_client:
-            if self.ollama_client and self.enable_fallback:
+            if self.ollama_has_models and self.enable_fallback:
                 logger.warning("Claude unavailable, falling back to Ollama")
                 provider = LLMProvider.OLLAMA
             elif self.kimi_client and self.enable_fallback:
@@ -252,7 +275,7 @@ class LLMRouter:
                 raise RuntimeError("Claude API not configured and no fallback available")
 
         if provider == LLMProvider.KIMI_K2 and not self.kimi_client:
-            if self.ollama_client and self.enable_fallback:
+            if self.ollama_has_models and self.enable_fallback:
                 logger.warning("Kimi K2 unavailable, falling back to Ollama")
                 provider = LLMProvider.OLLAMA
             elif self.claude_client and self.enable_fallback:
@@ -275,6 +298,7 @@ class LLMRouter:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         tools: list[dict] | None = None,
+        _attempted_providers: set[LLMProvider] | None = None,
     ) -> LLMResponse:
         """
         Generate completion using the most appropriate LLM.
@@ -286,15 +310,38 @@ class LLMRouter:
             temperature: Sampling temperature
             max_tokens: Maximum response length
             tools: Tool definitions for function calling
+            _attempted_providers: Internal - tracks providers tried (prevents infinite loop)
 
         Returns:
             LLMResponse with content and metadata
         """
         start_time = time.time()
 
+        # Track attempted providers to prevent infinite recursion
+        if _attempted_providers is None:
+            _attempted_providers = set()
+
         # Route to appropriate LLM
         routing = self.route_task(task_type, force_provider)
         logger.info(f"🧭 Routing: {routing.reasoning}")
+
+        # Check if we've already tried this provider (prevent infinite loop)
+        if routing.provider in _attempted_providers:
+            available_providers = []
+            if self.ollama_has_models:
+                available_providers.append("Ollama (local)")
+            if self.claude_client:
+                available_providers.append("Claude")
+            if self.kimi_client:
+                available_providers.append("Kimi K2")
+
+            raise RuntimeError(
+                f"All available LLM providers have been attempted and failed.\n"
+                f"Available providers: {', '.join(available_providers) if available_providers else 'None'}\n"
+                f"Please check your configuration and try again."
+            )
+
+        _attempted_providers.add(routing.provider)
 
         try:
             if routing.provider == LLMProvider.OLLAMA:
@@ -327,13 +374,13 @@ class LLMRouter:
                 elif routing.provider == LLMProvider.CLAUDE:
                     fallback_provider = (
                         LLMProvider.OLLAMA
-                        if self.ollama_client
+                        if self.ollama_has_models
                         else LLMProvider.KIMI_K2 if self.kimi_client else None
                     )
                 else:  # KIMI_K2
                     fallback_provider = (
                         LLMProvider.OLLAMA
-                        if self.ollama_client
+                        if self.ollama_has_models
                         else LLMProvider.CLAUDE if self.claude_client else None
                     )
 
@@ -347,6 +394,7 @@ class LLMRouter:
                         temperature=temperature,
                         max_tokens=max_tokens,
                         tools=tools,
+                        _attempted_providers=_attempted_providers,
                     )
                 else:
                     raise RuntimeError("No fallback provider available")

@@ -120,31 +120,33 @@ class TestLLMRouter(unittest.TestCase):
 
     @patch("cortex.llm_router.Anthropic")
     @patch("cortex.llm_router.OpenAI")
-    @patch("cortex.providers.ollama_provider.OllamaProvider")
+    @patch("cortex.llm_router.OllamaProvider")
     def test_router_initialization(self, mock_ollama_class, mock_openai, mock_anthropic):
         """Test router initializes with Ollama."""
         mock_ollama = Mock()
         mock_ollama.is_installed.return_value = True
         mock_ollama.is_running.return_value = True
-        mock_ollama.ensure_model_available.return_value = "llama3:8b"
+        mock_ollama.has_models.return_value = True
+        mock_ollama.select_best_model.return_value = "llama3:8b"
         mock_ollama_class.return_value = mock_ollama
 
         # Initialize router without API keys (relies on mocked Ollama)
         router = LLMRouter()
-        router.ollama_client = mock_ollama
 
         self.assertIsNotNone(router.ollama_client)
+        self.assertTrue(router.ollama_has_models)
         self.assertEqual(router.default_provider, LLMProvider.OLLAMA)
 
     @patch("cortex.llm_router.Anthropic")
     @patch("cortex.llm_router.OpenAI")
-    @patch("cortex.providers.ollama_provider.OllamaProvider")
+    @patch("cortex.llm_router.OllamaProvider")
     def test_routing_to_ollama(self, mock_ollama_class, mock_openai, mock_anthropic):
         """Test routing prefers Ollama."""
         mock_ollama = Mock()
         mock_ollama.is_installed.return_value = True
         mock_ollama.is_running.return_value = True
-        mock_ollama.ensure_model_available.return_value = "llama3:8b"
+        mock_ollama.has_models.return_value = True
+        mock_ollama.select_best_model.return_value = "llama3:8b"
         mock_ollama_class.return_value = mock_ollama
 
         router = LLMRouter()
@@ -179,14 +181,15 @@ class TestLLMRouter(unittest.TestCase):
 
     @patch("cortex.llm_router.Anthropic")
     @patch("cortex.llm_router.OpenAI")
-    @patch("cortex.providers.ollama_provider.OllamaProvider")
+    @patch("cortex.llm_router.OllamaProvider")
     @patch("cortex.providers.ollama_provider.requests.post")
     def test_complete_with_ollama(self, mock_post, mock_ollama_class, mock_openai, mock_anthropic):
         """Test completion using Ollama."""
         mock_ollama = Mock()
         mock_ollama.is_installed.return_value = True
         mock_ollama.is_running.return_value = True
-        mock_ollama.ensure_model_available.return_value = "llama3:8b"
+        mock_ollama.has_models.return_value = True
+        mock_ollama.select_best_model.return_value = "llama3:8b"
         mock_ollama.complete.return_value = {
             "response": "Install nginx using apt-get",
             "model": "llama3:8b",
@@ -194,7 +197,6 @@ class TestLLMRouter(unittest.TestCase):
         mock_ollama_class.return_value = mock_ollama
 
         router = LLMRouter()
-        router.ollama_client = mock_ollama  # Ensure router uses our mock
 
         messages = [{"role": "user", "content": "How to install nginx?"}]
         response = router.complete(
@@ -212,28 +214,66 @@ class TestLLMRouter(unittest.TestCase):
 class TestOllamaSetup(unittest.TestCase):
     """Test Ollama setup script."""
 
-    @patch("subprocess.run")
-    @patch("cortex.providers.ollama_provider.shutil.which")
-    def test_install_ollama(self, mock_which, mock_run):
-        """Test Ollama installation."""
+    @patch("scripts.setup_ollama.is_ollama_installed")
+    @patch("subprocess.Popen")
+    def test_install_ollama_success(self, mock_popen, mock_is_installed):
+        """Test successful Ollama installation."""
         from scripts.setup_ollama import install_ollama
 
-        # Not installed initially
-        mock_which.return_value = None
+        # Not installed initially, then installed after
+        mock_is_installed.side_effect = [False, True]
 
-        # Mock successful download
-        download_result = Mock()
-        download_result.returncode = 0
-        download_result.stdout = "#!/bin/sh\necho 'Installing Ollama'"
-
-        # Mock successful installation
-        install_result = Mock()
-        install_result.returncode = 0
-
-        mock_run.side_effect = [download_result, install_result]
+        # Mock successful installation process
+        mock_process = Mock()
+        mock_process.returncode = 0
+        mock_process.stdout = iter(
+            [
+                ">>> Installing ollama to /usr/local\n",
+                ">>> Downloading Linux amd64 bundle\n",
+                ">>> Creating ollama user...\n",
+                ">>> Enabling and starting ollama service...\n",
+            ]
+        )
+        mock_popen.return_value = mock_process
 
         result = install_ollama()
         self.assertTrue(result)
+
+        # Verify it used the curl | sh command
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args[0][0]
+        self.assertEqual(call_args[0], "sh")
+        self.assertEqual(call_args[1], "-c")
+        self.assertIn("curl -fsSL https://ollama.com/install.sh | sh", call_args[2])
+
+    @patch("scripts.setup_ollama.is_ollama_installed")
+    def test_install_ollama_already_installed(self, mock_is_installed):
+        """Test that installation is skipped when already installed."""
+        from scripts.setup_ollama import install_ollama
+
+        # Already installed
+        mock_is_installed.return_value = True
+
+        result = install_ollama()
+        self.assertTrue(result)
+
+    @patch("scripts.setup_ollama.is_ollama_installed")
+    @patch("subprocess.Popen")
+    def test_install_ollama_failure(self, mock_popen, mock_is_installed):
+        """Test Ollama installation failure."""
+        from scripts.setup_ollama import install_ollama
+
+        # Not installed before or after
+        mock_is_installed.return_value = False
+
+        # Mock failed installation
+        mock_process = Mock()
+        mock_process.returncode = 1
+        mock_process.stdout = iter([])
+        mock_popen.return_value = mock_process
+
+        result = install_ollama()
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":

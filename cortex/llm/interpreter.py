@@ -146,17 +146,28 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
         try:
             from cortex.providers.ollama_provider import OllamaProvider
 
-            # Initialize Ollama provider
-            ollama = OllamaProvider(base_url=self.ollama_url)
+            # Initialize Ollama provider without auto-pull to avoid long waits
+            ollama = OllamaProvider(base_url=self.ollama_url, auto_pull=False)
 
             # Ensure service and model are available
             if not ollama.is_running():
                 if not ollama.start_service():
-                    raise RuntimeError("Failed to start Ollama service")
+                    raise RuntimeError(
+                        "Failed to start Ollama service. "
+                        "Please run 'cortex-setup-ollama' or 'ollama serve'"
+                    )
 
-            model = ollama.ensure_model_available()
+            model = ollama.select_best_model()
             if not model:
-                raise RuntimeError("No Ollama models available. Run: ollama pull llama3:8b")
+                raise RuntimeError(
+                    "No Ollama models available.\n"
+                    "Please run one of the following:\n"
+                    "  • cortex-setup-ollama (recommended)\n"
+                    "  • ollama pull codellama:7b\n"
+                    "  • ollama pull llama3:8b\n"
+                    "\nOr set an API key:\n"
+                    "  • export ANTHROPIC_API_KEY=your-key"
+                )
 
             # Create messages with system prompt
             messages = [
