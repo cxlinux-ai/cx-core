@@ -1,7 +1,9 @@
 try:
     from pathlib import Path
-
     from dotenv import load_dotenv
+    # Load from parent directory .env as well
+    load_dotenv(dotenv_path=Path.cwd().parent / ".env", override=True)
+    load_dotenv(dotenv_path=Path.cwd() / ".env", override=True)
 except ImportError:
     pass
 """
@@ -19,7 +21,8 @@ import random
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass, field
+
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -39,23 +42,176 @@ DRY_RUN_EXAMPLES = [
     "text editor with plugins",
     "networking utilities",
     "game development engine",
-    "scientific computing tools",
+    "scientific computing tools"
 ]
 
 
+def get_env_file_path() -> Path:
+    """Get the path to the .env file."""
+    # Check multiple locations for .env file in priority order
+    possible_paths = [
+        Path.cwd() / ".env",  # Current working directory (project folder)
+        Path(__file__).parent.parent / ".env",  # cortex package parent
+        Path(__file__).parent.parent.parent / ".env",  # project root
+        Path.home() / ".cortex" / ".env",  # Home directory fallback
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            return path
+    
+    # Default to current directory .env
+    return Path.cwd() / ".env"
+
+
+def read_key_from_env_file(key_name: str) -> str | None:
+    """
+    Read an API key directly from the .env file.
+    Returns the key value or None if not found/blank.
+    """
+    env_path = get_env_file_path()
+    
+    if not env_path.exists():
+        return None
+    
+    try:
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip comments and empty lines
+                if not line or line.startswith('#'):
+                    continue
+                
+                # Parse KEY=VALUE format
+                if '=' in line:
+                    key, _, value = line.partition('=')
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # Remove quotes if present
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
+                    
+                    if key == key_name:
+                        # Return None if value is empty or blank
+                        value = value.strip()
+                        if value and len(value) > 0:
+                            return value
+                        return None
+    except Exception as e:
+        logger.warning(f"Error reading .env file: {e}")
+    
+    return None
+
+
+def save_key_to_env_file(key_name: str, key_value: str) -> bool:
+    """
+    Save an API key to the .env file.
+    Updates existing key or adds new one.
+    """
+    env_path = get_env_file_path()
+    
+    lines = []
+    key_found = False
+    
+    # Read existing content if file exists
+    if env_path.exists():
+        try:
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+        except Exception:
+            pass
+    
+    # Update or add the key
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#') and '=' in stripped:
+            existing_key = stripped.split('=')[0].strip()
+            if existing_key == key_name:
+                new_lines.append(f'{key_name}="{key_value}"\n')
+                key_found = True
+                continue
+        new_lines.append(line)
+    
+    # Add key if not found
+    if not key_found:
+        if new_lines and not new_lines[-1].endswith('\n'):
+            new_lines.append('\n')
+        new_lines.append(f'{key_name}="{key_value}"\n')
+    
+    # Write back to file
+    try:
+        with open(env_path, 'w') as f:
+            f.writelines(new_lines)
+        return True
+    except Exception:
+        return False
+
+
+def is_valid_api_key(key: str | None, key_type: str = "generic") -> bool:
+    """
+    Check if an API key is valid (non-blank and properly formatted).
+    """
+    if key is None:
+        return False
+    
+    key = key.strip()
+    if not key:
+        return False
+    
+    if key_type == "anthropic":
+        return key.startswith("sk-ant-")
+    elif key_type == "openai":
+        return key.startswith("sk-")
+    else:
+        return True
+
+
+def get_valid_api_key(env_var: str, key_type: str = "generic") -> str | None:
+    """
+    Get a valid API key from .env file first, then environment variable.
+    Treats blank keys as missing.
+    .env file is the source of truth - if blank there, key is considered missing.
+    """
+    # First check .env file (this is the source of truth)
+    key_from_file = read_key_from_env_file(env_var)
+    
+    # Debug: print what we found
+    env_path = get_env_file_path()
+    logger.debug(f"Checking {env_var} in {env_path}: '{key_from_file}'")
+    
+    # If key in .env file exists, validate it
+    if key_from_file is not None and len(key_from_file) > 0:
+        if is_valid_api_key(key_from_file, key_type):
+            # Update environment variable with the .env value
+            os.environ[env_var] = key_from_file
+            return key_from_file
+        else:
+            # Key exists but invalid format
+            return None
+    
+    # Key is blank or missing in .env file
+    # Clear any stale environment variable
+    if env_var in os.environ:
+        del os.environ[env_var]
+    
+    return None
+
+
 def detect_available_providers() -> list[str]:
-    """Detect available providers based on API keys and installations."""
+    """Detect available providers based on valid (non-blank) API keys in .env file."""
     providers = []
-    if os.environ.get("ANTHROPIC_API_KEY") and os.environ.get(
-        "ANTHROPIC_API_KEY"
-    ).strip().startswith("sk-ant-"):
+    
+    if get_valid_api_key("ANTHROPIC_API_KEY", "anthropic"):
         providers.append("anthropic")
-    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY").strip().startswith(
-        "sk-"
-    ):
+    if get_valid_api_key("OPENAI_API_KEY", "openai"):
         providers.append("openai")
     if shutil.which("ollama"):
         providers.append("ollama")
+    
     return providers
 
 
@@ -64,7 +220,6 @@ logger = logging.getLogger(__name__)
 
 class WizardStep(Enum):
     """Steps in the first-run wizard."""
-
     WELCOME = "welcome"
     API_SETUP = "api_setup"
     HARDWARE_DETECTION = "hardware_detection"
@@ -77,7 +232,6 @@ class WizardStep(Enum):
 @dataclass
 class WizardState:
     """Tracks the current state of the wizard."""
-
     current_step: WizardStep = WizardStep.WELCOME
     completed_steps: list[WizardStep] = field(default_factory=list)
     skipped_steps: list[WizardStep] = field(default_factory=list)
@@ -86,21 +240,17 @@ class WizardState:
     completed_at: datetime | None = None
 
     def mark_completed(self, step: WizardStep):
-        """Mark a step as completed."""
         if step not in self.completed_steps:
             self.completed_steps.append(step)
 
     def mark_skipped(self, step: WizardStep):
-        """Mark a step as skipped."""
         if step not in self.skipped_steps:
             self.skipped_steps.append(step)
 
     def is_completed(self, step: WizardStep) -> bool:
-        """Check if a step is completed."""
         return step in self.completed_steps
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to dict."""
         return {
             "current_step": self.current_step.value,
             "completed_steps": [s.value for s in self.completed_steps],
@@ -112,7 +262,6 @@ class WizardState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WizardState":
-        """Deserialize from dict."""
         return cls(
             current_step=WizardStep(data.get("current_step", "welcome")),
             completed_steps=[WizardStep(s) for s in data.get("completed_steps", [])],
@@ -132,7 +281,6 @@ class WizardState:
 @dataclass
 class StepResult:
     """Result of a wizard step."""
-
     success: bool
     message: str = ""
     data: dict[str, Any] = field(default_factory=dict)
@@ -141,109 +289,8 @@ class StepResult:
 
 
 class FirstRunWizard:
-    def _install_suggested_packages(self):
-        """Offer to install suggested packages and run the install if user agrees."""
-        suggestions = ["python", "numpy", "requests"]
-        print("\nTry installing a package to verify Cortex is ready:")
-        for pkg in suggestions:
-            print(f"  cortex install {pkg}")
-        resp = self._prompt("Would you like to install these packages now? [Y/n]: ", default="y")
-        if resp.strip().lower() in ("", "y", "yes"):
-            env = os.environ.copy()
-            for pkg in suggestions:
-                print(f"\nInstalling {pkg}...")
-                try:
-                    result = subprocess.run(
-                        [sys.executable, "-m", "cortex.cli", "install", pkg],
-                        capture_output=True,
-                        text=True,
-                        env=env,
-                    )
-                    print(result.stdout)
-                    if result.stderr:
-                        print(result.stderr)
-                except Exception as e:
-                    print(f"Error installing {pkg}: {e}")
-
-    def _setup_claude_api(self) -> StepResult:
-        print("\nTo get a Claude API key:")
-        print("  1. Go to https://console.anthropic.com")
-        print("  2. Sign up or log in")
-        print("  3. Create an API key\n")
-        api_key = self._prompt("Enter your Claude API key: ")
-        if not api_key or not api_key.startswith("sk-"):
-            print("\n⚠ Invalid API key format")
-            return StepResult(success=True, data={"api_provider": "none"})
-        # Set for current session
-        os.environ["ANTHROPIC_API_KEY"] = api_key
-        self.config["api_provider"] = "anthropic"
-        self.config["api_key_configured"] = True
-        print("\n✓ Claude API key set for this session!")
-        print("Note: Set ANTHROPIC_API_KEY in your environment for persistence.")
-        if self.interactive:
-            do_test = self._prompt(
-                "Would you like to test your Claude API key now? [Y/n]: ", default="y"
-            )
-            if do_test.strip().lower() in ("", "y", "yes"):
-                print("\nTesting Claude API key...")
-                if test_anthropic_api_key(api_key):
-                    print("\n✅ Claude API key is valid and working!")
-                    resp = self._prompt(
-                        "Would you like some package suggestions to try? [Y/n]: ", default="y"
-                    )
-                    if resp.strip().lower() in ("", "y", "yes"):
-                        self._install_suggested_packages()
-                else:
-                    print("\n❌ Claude API key test failed. Please check your key or network.")
-        return StepResult(success=True, data={"api_provider": "anthropic"})
-
-    def _setup_openai_api(self) -> StepResult:
-        print("\nTo get an OpenAI API key:")
-        print("  1. Go to https://platform.openai.com")
-        print("  2. Sign up or log in")
-        print("  3. Create an API key\n")
-        api_key = self._prompt("Enter your OpenAI API key: ")
-        if not api_key or not api_key.startswith("sk-"):
-            print("\n⚠ Invalid API key format")
-            return StepResult(success=True, data={"api_provider": "none"})
-        # Set for current session
-        os.environ["OPENAI_API_KEY"] = api_key
-        self.config["api_provider"] = "openai"
-        self.config["api_key_configured"] = True
-        print("\n✓ OpenAI API key set for this session!")
-        print("Note: Set OPENAI_API_KEY in your environment for persistence.")
-        if self.interactive:
-            do_test = self._prompt(
-                "Would you like to test your OpenAI API key now? [Y/n]: ", default="y"
-            )
-            if do_test.strip().lower() in ("", "y", "yes"):
-                print("\nTesting OpenAI API key...")
-                if test_openai_api_key(api_key):
-                    print("\n✅ OpenAI API key is valid and working!")
-                    resp = self._prompt(
-                        "Would you like some package suggestions to try? [Y/n]: ", default="y"
-                    )
-                    if resp.strip().lower() in ("", "y", "yes"):
-                        self._install_suggested_packages()
-                else:
-                    print("\n❌ OpenAI API key test failed. Please check your key or network.")
-        return StepResult(success=True, data={"api_provider": "openai"})
-
-    def _setup_ollama(self) -> StepResult:
-        print("\nOllama selected. No API key required.")
-        self.config["api_provider"] = "ollama"
-        return StepResult(success=True, data={"api_provider": "ollama"})
-
     """
     Interactive first-run wizard for Cortex Linux.
-
-    Guides users through:
-    1. Welcome and introduction
-    2. API key setup
-    3. Hardware detection
-    4. User preferences
-    5. Shell integration
-    6. Test command
     """
 
     CONFIG_DIR = Path.home() / ".cortex"
@@ -258,15 +305,23 @@ class FirstRunWizard:
         self._ensure_config_dir()
 
     def _ensure_config_dir(self):
-        """Ensure config directory exists."""
         self.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     def needs_setup(self) -> bool:
-        """Check if first-run setup is needed."""
         return not self.SETUP_COMPLETE_FILE.exists()
 
+    def _get_current_provider(self) -> str | None:
+        """Get the currently configured provider from config file."""
+        if self.CONFIG_FILE.exists():
+            try:
+                with open(self.CONFIG_FILE) as f:
+                    config = json.load(f)
+                    return config.get("api_provider")
+            except Exception:
+                pass
+        return None
+
     def load_state(self) -> bool:
-        """Load wizard state from file."""
         if self.STATE_FILE.exists():
             try:
                 with open(self.STATE_FILE) as f:
@@ -278,7 +333,6 @@ class FirstRunWizard:
         return False
 
     def save_state(self):
-        """Save wizard state to file."""
         try:
             with open(self.STATE_FILE, "w") as f:
                 json.dump(self.state.to_dict(), f, indent=2)
@@ -286,7 +340,6 @@ class FirstRunWizard:
             logger.warning(f"Could not save wizard state: {e}")
 
     def save_config(self):
-        """Save configuration to file."""
         try:
             with open(self.CONFIG_FILE, "w") as f:
                 json.dump(self.config, f, indent=2)
@@ -294,565 +347,332 @@ class FirstRunWizard:
             logger.warning(f"Could not save config: {e}")
 
     def mark_setup_complete(self):
-        """Mark setup as complete."""
         self.SETUP_COMPLETE_FILE.touch()
         self.state.completed_at = datetime.now()
         self.save_state()
 
+    def _prompt_for_api_key(self, key_type: str) -> str | None:
+        """
+        Prompt user for a valid API key, rejecting blank inputs.
+        """
+        if key_type == "anthropic":
+            prefix = "sk-ant-"
+            provider_name = "Claude (Anthropic)"
+            print("\nTo get a Claude API key:")
+            print("  1. Go to https://console.anthropic.com")
+            print("  2. Sign up or log in")
+            print("  3. Create an API key\n")
+        else:
+            prefix = "sk-"
+            provider_name = "OpenAI"
+            print("\nTo get an OpenAI API key:")
+            print("  1. Go to https://platform.openai.com")
+            print("  2. Sign up or log in")
+            print("  3. Create an API key\n")
+        
+        while True:
+            key = self._prompt(f"Enter your {provider_name} API key (or 'q' to cancel): ")
+            
+            if key.lower() == 'q':
+                return None
+            
+            # Check if blank
+            if not key or not key.strip():
+                print("\n⚠ API key cannot be blank. Please enter a valid key.")
+                continue
+            
+            key = key.strip()
+            
+            # Check format
+            if not key.startswith(prefix):
+                print(f"\n⚠ Invalid key format. {provider_name} keys should start with '{prefix}'")
+                continue
+            
+            return key
+
+    def _install_suggested_packages(self):
+        """Offer to install suggested packages."""
+        suggestions = ["python", "numpy", "requests"]
+        print("\nTry installing a package to verify Cortex is ready:")
+        for pkg in suggestions:
+            print(f"  cortex install {pkg}")
+        resp = self._prompt("Would you like to install these packages now? [Y/n]: ", default="y")
+        if resp.strip().lower() in ("", "y", "yes"):
+            env = os.environ.copy()
+            for pkg in suggestions:
+                print(f"\nInstalling {pkg}...")
+                try:
+                    result = subprocess.run([
+                        sys.executable, "-m", "cortex.cli", "install", pkg
+                    ], capture_output=True, text=True, env=env)
+                    print(result.stdout)
+                    if result.stderr:
+                        print(result.stderr)
+                except Exception as e:
+                    print(f"Error installing {pkg}: {e}")
+
     def run(self) -> bool:
         """
-        Refactored onboarding: detect available providers, auto-select if one, show menu if multiple, validate lazily, save provider.
+        Main wizard flow:
+        1. Reload and check .env file for API keys
+        2. Always show provider selection menu (with all options)
+        3. Show "Skip reconfiguration" only on second run onwards
+        4. If selected provider's key is blank in .env, prompt for key
+        5. Save key to .env file
+        6. Run dry run to verify
         """
-        # Ensure .env exists by copying from .env.example if needed
-        project_root = Path(__file__).parent.parent.parent
-        env_path = project_root / ".env"
-        env_example_path = project_root / ".env.example"
-        if not env_path.exists() and env_example_path.exists():
-            shutil.copy(env_example_path, env_path)
-            print(
-                "[Cortex Wizard] No .env found. Created .env from .env.example. Please update it with your API keys if needed."
-            )
-
-        # Load environment variables from .env files
-        from cortex.env_loader import load_env
-
-        load_env()
-
-        # Load current config to get existing provider
-        current_provider = None
-        if self.CONFIG_FILE.exists():
-            try:
-                with open(self.CONFIG_FILE) as f:
-                    current_config = json.load(f)
-                    current_provider = current_config.get("api_provider")
-            except Exception:
-                pass  # Ignore corrupted config
-
-        # Detect available providers (only count valid ones)
-        available_providers = []
-        providers = detect_available_providers()
-
-        # Validate providers - only count ones with working API keys
-        for provider in providers:
-            if provider == "ollama":
-                available_providers.append(provider)  # Ollama doesn't need validation
-            elif provider == "openai":
-                key = os.environ.get("OPENAI_API_KEY", "")
-                if key.startswith("sk-") and len(key) > 20:  # Basic validation
-                    available_providers.append(provider)
-            elif provider == "anthropic":
-                key = os.environ.get("ANTHROPIC_API_KEY", "")
-                if key.startswith("sk-ant-") and len(key) > 20:  # Basic validation
-                    available_providers.append(provider)
-
-        # Handle case when no providers are available
-        if not available_providers:
-            if not self.interactive:
-                # In non-interactive mode, use demo mode automatically
-                print("No API keys found. Using demo mode.")
-                self.config["api_provider"] = "openai"
-                self.config["api_key_configured"] = False
-                self.config["demo_mode"] = True
-                self.save_config()
-                self.mark_setup_complete()
-                return True
-
-            # Interactive mode: auto-enable demo mode for easy testing
-            self._clear_screen()
-            self._print_banner()
-
-            print(
-                """
-Welcome to Cortex! 🚀
-
-No API keys detected. For full functionality, you'll need API keys from:
-  • OpenAI: https://platform.openai.com/api-keys
-  • Anthropic: https://console.anthropic.com/
-  • Ollama: https://ollama.ai (free local AI)
-
-For now, let's set up demo mode so you can explore Cortex.
-"""
-            )
-
-            response = self._prompt("Continue with demo mode? [Y/n]: ", default="y")
-            if response.strip().lower() in ("", "y", "yes"):
-                print("\n✓ Demo mode enabled!")
-                print(
-                    "You can test basic commands. Run 'cortex wizard' again after adding API keys."
-                )
-                self.config["api_provider"] = "openai"
-                self.config["api_key_configured"] = False
-                self.config["demo_mode"] = True
-                self.save_config()
-                self.mark_setup_complete()
-                return True
-            else:
-                print("\nTo set up API keys later, run: cortex wizard")
-                return False
-
-        # Continue with normal flow when providers are available
-        # Non-interactive mode: auto-configure if possible
-        if not self.interactive:
-            if current_provider:
-                # Already configured, nothing to do
-                self.mark_setup_complete()
-                return True
-            # Auto-select provider
-            if "anthropic" in available_providers:
-                provider = "anthropic"
-            elif "openai" in available_providers:
-                provider = "openai"
-            elif "ollama" in available_providers:
-                provider = "ollama"
-            else:
-                return False
-
-            # Save configuration
-            self.config["api_provider"] = provider
-            self.config["api_key_configured"] = True
-            self.save_config()
-            self.mark_setup_complete()
-            return True
-
-        # Interactive mode - always show provider selection
         self._clear_screen()
         self._print_banner()
 
-        # Always show provider selection menu
-        print("\nSelect your preferred LLM provider:")
+        # Reload .env file to get fresh values
+        env_path = get_env_file_path()
+        try:
+            from dotenv import load_dotenv
+            # Force reload - override any existing environment variables
+            load_dotenv(dotenv_path=env_path, override=True)
+        except ImportError:
+            pass
 
-        # Show current provider if one exists
-        if current_provider:
-            provider_names = {
-                "anthropic": "Anthropic (Claude)",
-                "openai": "OpenAI",
-                "ollama": "Ollama (local)",
-            }
-            print(f"Current provider: {provider_names.get(current_provider, current_provider)}")
+        # Clear any stale API keys from environment if they're blank in .env
+        for key_name in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]:
+            file_value = read_key_from_env_file(key_name)
+            if file_value is None or len(file_value.strip()) == 0:
+                # Key is blank in .env, remove from environment
+                if key_name in os.environ:
+                    del os.environ[key_name]
 
-        # Build menu options - always include skip if there's a current provider
-        options = []
+        # Detect which providers have valid keys (checks .env file)
+        available_providers = detect_available_providers()
+        has_ollama = shutil.which("ollama") is not None
+        
+        # Check if there's already a configured provider (for second run)
+        current_provider = self._get_current_provider()
+        is_first_run = current_provider is None
+
+        # Provider display names
+        provider_names = {
+            "anthropic": "Anthropic (Claude)",
+            "openai": "OpenAI",
+            "ollama": "Ollama (local)",
+            "none": "None"
+        }
+
+        # Show .env file location
+        # print(f"\n[Checking API keys in: {env_path}]")
+
+        print("\nSelect your preferred LLM provider:\n")
+
+        # Build the menu dynamically
         option_num = 1
+        provider_map = {}
 
-        if current_provider:
-            options.append((f"{option_num}. Keep current provider (skip setup)", "skip"))
+        # Show "Skip reconfiguration" only on second run onwards
+        if not is_first_run and current_provider and current_provider != "none":
+            current_name = provider_names.get(current_provider, current_provider)
+            print(f"  {option_num}. Skip reconfiguration (current: {current_name})")
+            provider_map[str(option_num)] = "skip_reconfig"
             option_num += 1
 
-        if "anthropic" in available_providers:
-            options.append((f"{option_num}. Anthropic (Claude)", "anthropic"))
-            option_num += 1
-        if "openai" in available_providers:
-            options.append((f"{option_num}. OpenAI", "openai"))
-            option_num += 1
-        if "ollama" in available_providers:
-            options.append((f"{option_num}. Ollama (local)", "ollama"))
-            option_num += 1
+        # Always show Anthropic option
+        anthropic_status = " ✓ (key found)" if "anthropic" in available_providers else " (needs key)"
+        print(f"  {option_num}. Anthropic (Claude){anthropic_status} - Recommended")
+        provider_map[str(option_num)] = "anthropic"
+        option_num += 1
 
-        if not options:
-            print("No AI providers available. Please set up API keys or install Ollama.")
-            return False
+        # Always show OpenAI option
+        openai_status = " ✓ (key found)" if "openai" in available_providers else " (needs key)"
+        print(f"  {option_num}. OpenAI{openai_status}")
+        provider_map[str(option_num)] = "openai"
+        option_num += 1
 
-        # Display options
-        for opt, prov in options:
-            status = " ✓" if prov in available_providers else ""
-            if prov == current_provider and prov != "skip":
-                status += " (current)"
-            print(f"{opt}{status}")
+        # Always show Ollama option
+        ollama_status = " ✓ (installed)" if has_ollama else " (not installed)"
+        print(f"  {option_num}. Ollama (local){ollama_status}")
+        provider_map[str(option_num)] = "ollama"
 
-        # Get user choice
-        choice_map = {}
-        for i, (_, prov) in enumerate(options):
-            choice_map[str(i + 1)] = prov
-
-        valid_choices = list(choice_map.keys())
-        choice_prompt = f"Choose a provider [{','.join(valid_choices)}]: "
-
-        choice = self._prompt(choice_prompt, default="1")
-        provider = choice_map.get(choice)
-
+        # Get valid choices range
+        valid_choices = list(provider_map.keys())
+        default_choice = "1"
+        
+        choice = self._prompt(f"\nChoose a provider [{'-'.join([valid_choices[0], valid_choices[-1]])}]: ", default=default_choice)
+        
+        provider = provider_map.get(choice)
+        
         if not provider:
-            print("Invalid choice.")
+            print(f"Invalid choice. Please enter a number between {valid_choices[0]} and {valid_choices[-1]}.")
             return False
-
-        if provider == "skip":
-            print("Setup skipped. Your current configuration is unchanged.")
+        
+        # Handle "skip reconfiguration"
+        if provider == "skip_reconfig":
+            print(f"\n✓ Keeping current provider: {provider_names.get(current_provider, current_provider)}")
             self.mark_setup_complete()
             return True
 
-        # Validate and prompt for key lazily
+        # Handle Anthropic
         if provider == "anthropic":
-            key = os.environ.get("ANTHROPIC_API_KEY")
-            if key:
-                key = key.strip()
-            while not key or not key.startswith("sk-ant-"):
-                print("\nNo valid Anthropic API key found.")
-                key = self._prompt("Enter your Claude (Anthropic) API key: ")
-                if key and key.startswith("sk-ant-"):
-                    os.environ["ANTHROPIC_API_KEY"] = key
-            random_example = random.choice(DRY_RUN_EXAMPLES)
-            do_test = self._prompt(
-                f'Would you like to perform a real dry run (install "{random_example}") to test your Claude setup? [Y/n]: ',
-                default="y",
-            )
-            if do_test.strip().lower() in ("", "y", "yes"):
-                print(f'\nRunning: cortex install "{random_example}" (dry run)...')
-                try:
-                    # Import cli here to avoid circular import
-                    from cortex.cli import CortexCLI
-
-                    cli = CortexCLI()
-                    result = cli.install(
-                        random_example, execute=False, dry_run=True, forced_provider="claude"
-                    )
-                    if result != 0:
-                        print(
-                            "\n❌ Dry run failed for Anthropic provider. Please check your API key and network."
-                        )
-                        return False
-                except Exception as e:
-                    print(f"Error during dry run: {e}")
+            existing_key = get_valid_api_key("ANTHROPIC_API_KEY", "anthropic")
+            
+            if not existing_key:
+                print("\nNo valid Anthropic API key found in .env file (blank or missing).")
+                key = self._prompt_for_api_key("anthropic")
+                if key is None:
+                    print("\nSetup cancelled.")
                     return False
+                # Save to .env file
+                if save_key_to_env_file("ANTHROPIC_API_KEY", key):
+                    print(f"✓ API key saved to {get_env_file_path()}")
+                else:
+                    print("⚠ Could not save to .env file, saving to shell config instead.")
+                    self._save_env_var("ANTHROPIC_API_KEY", key)
+                os.environ["ANTHROPIC_API_KEY"] = key
+            else:
+                print(f"\n✓ Valid Anthropic API key found in .env file!")
+            
+            self.config["api_provider"] = "anthropic"
+            self.config["api_key_configured"] = True
+            
+            # Run dry run to verify
+            random_example = random.choice(DRY_RUN_EXAMPLES)
+            print(f'\nVerifying setup with dry run: cortex install "{random_example}"...')
+            try:
+                from cortex.cli import CortexCLI
+                cli = CortexCLI()
+                result = cli.install(random_example, execute=False, dry_run=True, forced_provider="claude")
+                if result != 0:
+                    print("\n❌ Dry run failed. Please check your API key and network.")
+                    return False
+                print("\n✅ API key verified successfully!")
+            except Exception as e:
+                print(f"\n❌ Error during verification: {e}")
+                return False
+
+        # Handle OpenAI
         elif provider == "openai":
-            key = os.environ.get("OPENAI_API_KEY")
-            if key:
-                key = key.strip()
-                if key.startswith("sk-") and test_openai_api_key(key):
-                    # Valid existing key, proceed
-                    pass
-                else:
-                    key = None
-            while not key or not key.startswith("sk-"):
-                print("\nNo valid OpenAI API key found.")
-                key = self._prompt("Enter your OpenAI API key: ")
-                if key and key.startswith("sk-") and test_openai_api_key(key):
-                    os.environ["OPENAI_API_KEY"] = key
-                else:
-                    print("Invalid API key. Please try again.")
-                    key = None
-            random_example = random.choice(DRY_RUN_EXAMPLES)
-            do_test = self._prompt(
-                f'Would you like to perform a real dry run (install "{random_example}") to test your OpenAI setup? [Y/n]: ',
-                default="y",
-            )
-            if do_test.strip().lower() in ("", "y", "yes"):
-                print(f'\nRunning: cortex install "{random_example}" (dry run)...')
-                try:
-                    # Import cli here to avoid circular import
-                    from cortex.cli import CortexCLI
-
-                    cli = CortexCLI()
-                    result = cli.install(
-                        random_example, execute=False, dry_run=True, forced_provider="openai"
-                    )
-                    if result != 0:
-                        print(
-                            "\n❌ Dry run failed for OpenAI provider. Please check your API key and network."
-                        )
-                        return False
-                except Exception as e:
-                    print(f"Error during dry run: {e}")
+            existing_key = get_valid_api_key("OPENAI_API_KEY", "openai")
+            
+            if not existing_key:
+                print("\nNo valid OpenAI API key found in .env file (blank or missing).")
+                key = self._prompt_for_api_key("openai")
+                if key is None:
+                    print("\nSetup cancelled.")
                     return False
-        elif provider == "ollama":
-            print("Ollama detected and ready.")
+                # Save to .env file
+                if save_key_to_env_file("OPENAI_API_KEY", key):
+                    print(f"✓ API key saved to {get_env_file_path()}")
+                else:
+                    print("⚠ Could not save to .env file, saving to shell config instead.")
+                    self._save_env_var("OPENAI_API_KEY", key)
+                os.environ["OPENAI_API_KEY"] = key
+            else:
+                print(f"\n✓ Valid OpenAI API key found in .env file!")
+            
+            self.config["api_provider"] = "openai"
+            self.config["api_key_configured"] = True
+            
+            # Run dry run to verify
+            random_example = random.choice(DRY_RUN_EXAMPLES)
+            print(f'\nVerifying setup with dry run: cortex install "{random_example}"...')
+            try:
+                from cortex.cli import CortexCLI
+                cli = CortexCLI()
+                result = cli.install(random_example, execute=False, dry_run=True, forced_provider="openai")
+                if result != 0:
+                    print("\n❌ Dry run failed. Please check your API key and network.")
+                    return False
+                print("\n✅ API key verified successfully!")
+            except Exception as e:
+                print(f"\n❌ Error during verification: {e}")
+                return False
 
-        # Save provider
-        self.config["api_provider"] = provider
+        # Handle Ollama
+        elif provider == "ollama":
+            if not has_ollama:
+                print("\n⚠ Ollama is not installed.")
+                print("Install it from: https://ollama.ai")
+                return False
+            print("\n✓ Ollama detected and ready. No API key required.")
+            self.config["api_provider"] = "ollama"
+            self.config["api_key_configured"] = True
+
+        # Save and complete
         self.save_config()
         self.mark_setup_complete()
 
-        # Success message
         print(f"\n[✔] Setup complete! Provider '{provider}' is ready for AI workloads.")
-        print("You can rerun this wizard anytime to change your provider.")
+        print("You can rerun this wizard anytime with: cortex wizard")
         return True
 
-    def _step_welcome(self) -> StepResult:
-        """Welcome step with introduction."""
-        self._clear_screen()
-        self._print_banner()
-
-        print(
-            """
-Welcome to Cortex Linux! 🚀
-
-Cortex is an AI-powered package manager that understands natural language.
-Instead of memorizing apt commands, just tell Cortex what you want:
-
-  $ cortex install a web server
-  $ cortex setup python for machine learning
-  $ cortex remove unused packages
-
-This wizard will help you set up Cortex in just a few minutes.
-"""
-        )
-
+    # Helper methods
+    def _clear_screen(self):
         if self.interactive:
-            response = self._prompt("Press Enter to continue (or 'q' to quit): ")
-            if response.lower() == "q":
-                return StepResult(success=False, message="User cancelled")
+            os.system("clear" if os.name == "posix" else "cls")
 
-        return StepResult(success=True)
+    def _print_banner(self):
+        banner = """
+   ____           _
+  / ___|___  _ __| |_ _____  __
+ | |   / _ \\| '__| __/ _ \\ \\/ /
+ | |__| (_) | |  | ||  __/>  <
+  \\____\\___/|_|   \\__\\___/_/\\_\\
 
-    def _step_api_setup(self) -> StepResult:
-        """API key configuration step."""
-        self._clear_screen()
-        self._print_header("Step 1: API Configuration")
-
-        # Check for existing API keys
-        existing_claude = os.environ.get("ANTHROPIC_API_KEY")
-        existing_openai = os.environ.get("OPENAI_API_KEY")
-
-        # Build menu with indicators for existing keys
-        claude_status = " ✓ (key found)" if existing_claude else ""
-        openai_status = " ✓ (key found)" if existing_openai else ""
-
-        print(
-            f"""
-Cortex uses AI to understand your commands. You can use:
-
-  1. Claude API (Anthropic){claude_status} - Recommended
-  2. OpenAI API{openai_status}
-  3. Local LLM (Ollama) - Free, runs on your machine
-  4. Skip for now (limited functionality)
 """
-        )
+        print(banner)
 
+    def _print_header(self, title: str):
+        print("\n" + "=" * 50)
+        print(f"  {title}")
+        print("=" * 50 + "\n")
+
+    def _print_error(self, message: str):
+        print(f"\n❌ {message}\n")
+
+    def _prompt(self, message: str, default: str = "") -> str:
         if not self.interactive:
-            # In non-interactive mode, auto-select if key exists
-            if existing_claude:
-                self.config["api_provider"] = "anthropic"
-                self.config["api_key_configured"] = True
-                return StepResult(success=True, data={"api_provider": "anthropic"})
-            if existing_openai:
-                self.config["api_provider"] = "openai"
-                self.config["api_key_configured"] = True
-                return StepResult(success=True, data={"api_provider": "openai"})
-            return StepResult(
-                success=True,
-                message="Non-interactive mode - skipping API setup",
-                data={"api_provider": "none"},
-            )
-
-        # Always let user choose
-        choice = self._prompt("Choose an option [1-4]: ", default="1")
-
-        if choice == "1":
-            if existing_claude:
-                print("\n✓ Using existing Claude API key!")
-                # Prompt for dry run even if key exists
-                if self.interactive:
-                    do_test = self._prompt(
-                        "Would you like to test your Claude API key now? [Y/n]: ", default="y"
-                    )
-                    if do_test.strip().lower() in ("", "y", "yes"):
-                        print("\nTesting Claude API key...")
-                        from cortex.utils.api_key_test import test_anthropic_api_key
-
-                        if test_anthropic_api_key(existing_claude):
-                            print("\n✅ Claude API key is valid and working!")
-                            resp = self._prompt(
-                                "Would you like some package suggestions to try? [Y/n]: ",
-                                default="y",
-                            )
-                            if resp.strip().lower() in ("", "y", "yes"):
-                                self._install_suggested_packages()
-                        else:
-                            print(
-                                "\n❌ Claude API key test failed. Please check your key or network."
-                            )
-                self.config["api_provider"] = "anthropic"
-                self.config["api_key_configured"] = True
-                return StepResult(success=True, data={"api_provider": "anthropic"})
-            return self._setup_claude_api()
-        elif choice == "2":
-            if existing_openai:
-                print("\n✓ Using existing OpenAI API key!")
-                # Prompt for dry run even if key exists
-                if self.interactive:
-                    do_test = self._prompt(
-                        "Would you like to test your OpenAI API key now? [Y/n]: ", default="y"
-                    )
-                    if do_test.strip().lower() in ("", "y", "yes"):
-                        print("\nTesting OpenAI API key...")
-                        from cortex.utils.api_key_test import test_openai_api_key
-
-                        if test_openai_api_key(existing_openai):
-                            print("\n✅ OpenAI API key is valid and working!")
-                            resp = self._prompt(
-                                "Would you like some package suggestions to try? [Y/n]: ",
-                                default="y",
-                            )
-                            if resp.strip().lower() in ("", "y", "yes"):
-                                self._install_suggested_packages()
-                        else:
-                            print(
-                                "\n❌ OpenAI API key test failed. Please check your key or network."
-                            )
-                self.config["api_provider"] = "openai"
-                self.config["api_key_configured"] = True
-                return StepResult(success=True, data={"api_provider": "openai"})
-            return self._setup_openai_api()
-        elif choice == "3":
-            return self._setup_ollama()
-        else:
-            print("\n⚠ Running without AI - you'll only have basic apt functionality")
-            return StepResult(success=True, data={"api_provider": "none"})
-
-    def _detect_hardware(self) -> dict[str, Any]:
-        """Detect system hardware."""
-        from cortex.hardware_detection import detect_hardware
-
+            return default
         try:
-            info = detect_hardware()
-            return asdict(info)
-        except Exception as e:
-            logger.warning(f"Hardware detection failed: {e}")
-            return {
-                "cpu": {"vendor": "unknown", "model": "unknown"},
-                "gpu": {"vendor": "unknown", "model": "unknown"},
-            }
+            response = input(message).strip()
+            return response if response else default
+        except (EOFError, KeyboardInterrupt):
+            return default
 
-    def _step_hardware_detection(self) -> StepResult:
-        """Detect and configure hardware settings."""
-        self._clear_screen()
-        self._print_header("Step 2: Hardware Detection")
-
-        print("\nDetecting your hardware for optimal performance...\n")
-
-        hardware_info = self._detect_hardware()
-
-        # Save hardware info
-        self.config["hardware"] = hardware_info
-
-        # Display results
-        cpu = hardware_info.get("cpu", {})
-        gpu_list = hardware_info.get("gpu", [])
-        memory = hardware_info.get("memory", {})
-
-        print("  • CPU:", cpu.get("model", "Unknown"))
-        if gpu_list:
-            gpu = gpu_list[0]  # Take first GPU
-            gpu_vendor = gpu.get("vendor", "unknown")
-            gpu_model = gpu.get("model", "Detected")
-            if gpu_vendor != "unknown":
-                print(f"  • GPU: {gpu_model} ({gpu_vendor})")
-            else:
-                print("  • GPU: Detected")
-        else:
-            print("  • GPU: Not detected")
-
-        if memory:
-            print(f"  • Memory: {memory.get('total_gb', 0)} GB")
-
-        print("\n✓ Hardware detection complete!")
-
-        return StepResult(success=True, data={"hardware": hardware_info})
-
-    def _step_preferences(self) -> StepResult:
-        """Configure user preferences."""
-        self._clear_screen()
-        self._print_header("Step 3: Preferences")
-
-        print("\nLet's customize Cortex for you.\n")
-
-        preferences = {}
-
-        if self.interactive:
-            # Confirmation mode
-            print("By default, Cortex will ask for confirmation before installing packages.")
-            auto_confirm = self._prompt("Enable auto-confirm for installs? [y/N]: ", default="n")
-            preferences["auto_confirm"] = auto_confirm.lower() == "y"
-
-            # Verbosity
-            print("\nVerbosity level:")
-            print("  1. Quiet (minimal output)")
-            print("  2. Normal (recommended)")
-            print("  3. Verbose (detailed output)")
-            verbosity = self._prompt("Choose [1-3]: ", default="2")
-            preferences["verbosity"] = (
-                ["quiet", "normal", "verbose"][int(verbosity) - 1]
-                if verbosity.isdigit()
-                else "normal"
-            )
-
-            # Offline mode
-            print("\nEnable offline caching? (stores AI responses for offline use)")
-            offline = self._prompt("Enable caching? [Y/n]: ", default="y")
-            preferences["enable_cache"] = offline.lower() != "n"
-        else:
-            preferences = {"auto_confirm": False, "verbosity": "normal", "enable_cache": True}
-
-        self.config["preferences"] = preferences
-
-        print("\n✓ Preferences saved!")
-        return StepResult(success=True, data={"preferences": preferences})
-
-    def _step_shell_integration(self) -> StepResult:
-        """Set up shell integration."""
-        self._clear_screen()
-        self._print_header("Step 4: Shell Integration")
-
-        print("\nCortex can integrate with your shell for a better experience:\n")
-        print("  • Tab completion for commands")
-        print("  • Keyboard shortcuts (optional)")
-        print("  • Automatic suggestions\n")
-
-        if not self.interactive:
-            return StepResult(success=True, data={"shell_integration": False})
-
-        setup = self._prompt("Set up shell integration? [Y/n]: ", default="y")
-
-        if setup.lower() == "n":
-            return StepResult(success=True, data={"shell_integration": False})
-
-        # Detect shell
+    def _save_env_var(self, name: str, value: str):
+        """Save environment variable to shell config (fallback)."""
         shell = os.environ.get("SHELL", "/bin/bash")
         shell_name = os.path.basename(shell)
+        config_file = self._get_shell_config(shell_name)
+        export_line = f'\nexport {name}="{value}"\n'
+        try:
+            with open(config_file, "a") as f:
+                f.write(export_line)
+            os.environ[name] = value
+            print(f"✓ API key saved to {config_file}")
+        except Exception as e:
+            logger.warning(f"Could not save env var: {e}")
 
-        print(f"\nDetected shell: {shell_name}")
-
-        # Create completion script
-        completion_script = self._generate_completion_script(shell_name)
-        completion_file = self.CONFIG_DIR / f"completion.{shell_name}"
-
-        with open(completion_file, "w") as f:
-            f.write(completion_script)
-
-        # Add to shell config
-        shell_config = self._get_shell_config(shell_name)
-        source_line = (
-            f'\n# Cortex completion\n[ -f "{completion_file}" ] && source "{completion_file}"\n'
-        )
-
-        if shell_config.exists():
-            with open(shell_config, "a") as f:
-                f.write(source_line)
-            print(f"\n✓ Added completion to {shell_config}")
-
-        print("\nRestart your shell or run:")
-        print(f"  source {completion_file}")
-
-        if self.interactive:
-            self._prompt("\nPress Enter to continue: ")
-
-        return StepResult(success=True, data={"shell_integration": True})
+    def _get_shell_config(self, shell: str) -> Path:
+        home = Path.home()
+        configs = {
+            "bash": home / ".bashrc",
+            "zsh": home / ".zshrc",
+            "fish": home / ".config" / "fish" / "config.fish",
+        }
+        return configs.get(shell, home / ".profile")
 
     def _generate_completion_script(self, shell: str) -> str:
-        """Generate shell completion script."""
         if shell in ["bash", "sh"]:
-            return """
+            return '''
 # Cortex bash completion
 _cortex_completion() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local commands="install remove update search info undo history help"
-
     if [ $COMP_CWORD -eq 1 ]; then
         COMPREPLY=($(compgen -W "$commands" -- "$cur"))
     fi
 }
 complete -F _cortex_completion cortex
-"""
+'''
         elif shell == "zsh":
-            return """
+            return '''
 # Cortex zsh completion
 _cortex() {
     local commands=(
@@ -868,9 +688,9 @@ _cortex() {
     _describe 'command' commands
 }
 compdef _cortex cortex
-"""
+'''
         elif shell == "fish":
-            return """
+            return '''
 # Cortex fish completion
 complete -c cortex -f
 complete -c cortex -n "__fish_use_subcommand" -a "install" -d "Install packages"
@@ -879,193 +699,21 @@ complete -c cortex -n "__fish_use_subcommand" -a "update" -d "Update system"
 complete -c cortex -n "__fish_use_subcommand" -a "search" -d "Search packages"
 complete -c cortex -n "__fish_use_subcommand" -a "undo" -d "Undo last operation"
 complete -c cortex -n "__fish_use_subcommand" -a "history" -d "Show history"
-"""
+'''
         return "# No completion available for this shell"
-
-    def _get_shell_config(self, shell: str) -> Path:
-        """Get the shell config file path."""
-        home = Path.home()
-        configs = {
-            "bash": home / ".bashrc",
-            "zsh": home / ".zshrc",
-            "fish": home / ".config" / "fish" / "config.fish",
-        }
-        return configs.get(shell, home / ".profile")
-
-    def _step_test_command(self) -> StepResult:
-        """Run a test command."""
-        self._clear_screen()
-        self._print_header("Step 5: Test Cortex")
-
-        print("\nLet's make sure everything works!\n")
-        print("Try running a simple command:\n")
-        print("  $ cortex search text editors\n")
-
-        if not self.interactive:
-            return StepResult(success=True, data={"test_completed": False})
-
-        run_test = self._prompt("Run test now? [Y/n]: ", default="y")
-
-        if run_test.lower() == "n":
-            return StepResult(success=True, data={"test_completed": False})
-
-        print("\n" + "=" * 50)
-
-        # Simulate or run actual test
-        try:
-            # Check if cortex command exists
-            cortex_path = shutil.which("cortex")
-            if cortex_path:
-                result = subprocess.run(
-                    ["cortex", "search", "text", "editors"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                print(result.stdout)
-                if result.returncode == 0:
-                    print("\n✓ Test successful!")
-                else:
-                    print(f"\n⚠ Test completed with warnings: {result.stderr}")
-            else:
-                # Fallback to apt search
-                print("Running: apt search text-editor")
-                subprocess.run(["apt", "search", "text-editor"], timeout=30)
-                print("\n✓ Basic functionality working!")
-        except subprocess.TimeoutExpired:
-            print("\n⚠ Test timed out - this is OK, Cortex is still usable")
-        except Exception as e:
-            print(f"\n⚠ Test failed: {e}")
-
-        print("=" * 50)
-
-        if self.interactive:
-            self._prompt("\nPress Enter to continue: ")
-
-        return StepResult(success=True, data={"test_completed": True})
-
-    def _step_complete(self) -> StepResult:
-        """Completion step."""
-        self._clear_screen()
-        self._print_header("Setup Complete! 🎉")
-
-        # Save all config
-        self.save_config()
-
-        print(
-            """
-Cortex is ready to use! Here are some things to try:
-
-  📦 Install packages:
-     cortex install docker
-     cortex install a web server
-
-  🔍 Search packages:
-     cortex search image editors
-     cortex search something for pdf
-
-  🔄 Update system:
-     cortex update everything
-
-  ⏪ Undo mistakes:
-     cortex undo
-
-  📖 Get help:
-     cortex help
-
-"""
-        )
-
-        # Show configuration summary
-        print("Configuration Summary:")
-        print(f"  • API Provider: {self.config.get('api_provider', 'none')}")
-
-        hardware = self.config.get("hardware", {})
-        if hardware.get("gpu_vendor"):
-            print(f"  • GPU: {hardware.get('gpu', 'Detected')}")
-
-        prefs = self.config.get("preferences", {})
-        print(f"  • Verbosity: {prefs.get('verbosity', 'normal')}")
-        print(f"  • Caching: {'enabled' if prefs.get('enable_cache') else 'disabled'}")
-
-        print("\n" + "=" * 50)
-        print("Happy computing! 🐧")
-        print("=" * 50 + "\n")
-
-        return StepResult(success=True)
-
-    # Helper methods
-    def _clear_screen(self):
-        """Clear the terminal screen."""
-        if self.interactive:
-            os.system("clear" if os.name == "posix" else "cls")
-
-    def _print_banner(self):
-        """Print the Cortex banner."""
-        banner = """
-   ____           _
-  / ___|___  _ __| |_ _____  __
- | |   / _ \\| '__| __/ _ \\ \\/ /
- | |__| (_) | |  | ||  __/>  <
-  \\____\\___/|_|   \\__\\___/_/\\_\\
-
-
-"""
-        print(banner)
-
-    def _print_header(self, title: str):
-        """Print a section header."""
-        print("\n" + "=" * 50)
-        print(f"  {title}")
-        print("=" * 50 + "\n")
-
-    def _print_error(self, message: str):
-        """Print an error message."""
-        print(f"\n❌ {message}\n")
-
-    def _prompt(self, message: str, default: str = "") -> str:
-        """Prompt for user input."""
-        if not self.interactive:
-            return default
-
-        try:
-            response = input(message).strip()
-            return response if response else default
-        except (EOFError, KeyboardInterrupt):
-            return default
-
-    def _save_env_var(self, name: str, value: str):
-        """Save environment variable to shell config."""
-        shell = os.environ.get("SHELL", "/bin/bash")
-        shell_name = os.path.basename(shell)
-        config_file = self._get_shell_config(shell_name)
-
-        export_line = f'\nexport {name}="{value}"\n'  # nosec - intentional user config storage
-
-        try:
-            with open(config_file, "a") as f:
-                f.write(export_line)
-
-            # Also set for current session
-            os.environ[name] = value
-        except Exception as e:
-            logger.warning(f"Could not save env var: {e}")
 
 
 # Convenience functions
 def needs_first_run() -> bool:
-    """Check if first-run wizard is needed."""
     return FirstRunWizard(interactive=False).needs_setup()
 
 
 def run_wizard(interactive: bool = True) -> bool:
-    """Run the first-run wizard."""
     wizard = FirstRunWizard(interactive=interactive)
     return wizard.run()
 
 
 def get_config() -> dict[str, Any]:
-    """Get the saved configuration."""
     config_file = FirstRunWizard.CONFIG_FILE
     if config_file.exists():
         with open(config_file) as f:
@@ -1074,7 +722,6 @@ def get_config() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    # Run wizard if needed
     if needs_first_run() or "--force" in sys.argv:
         success = run_wizard()
         sys.exit(0 if success else 1)
