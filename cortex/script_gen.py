@@ -6,30 +6,44 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 from rich.console import Console
 
 console = Console()
 
-STACK_DEPS = {
+
+class StackConfig(TypedDict):
+    packages: list[dict | str]
+    verification: str
+
+
+STACK_DEPS: dict[str, StackConfig] = {
     "docker": {
-        "packages": ["docker.io", "docker-compose"],
-        "check_command": "docker",
+        "packages": [
+            {"name": "docker.io", "check_command": "docker"},
+            {"name": "docker-compose", "check_command": "docker-compose"},
+        ],
         "verification": "docker --version",
     },
     "python": {
-        "packages": ["python3.11", "python3.11-venv"],
-        "check_command": "python3.11",
-        "verification": "python3.11 --version",
+        "packages": [
+            {"name": "python3", "check_command": "python3"},
+            {"name": "python3-venv", "check_command": "python3"},
+        ],
+        "verification": "python3 --version",
     },
     "nodejs": {
-        "packages": ["nodejs", "npm"],
-        "check_command": "node",
+        "packages": [
+            {"name": "nodejs", "check_command": "node"},
+            {"name": "npm", "check_command": "npm"},
+        ],
         "verification": "node --version",
     },
     "ollama": {
-        "packages": ["ollama"],
-        "check_command": "ollama",
+        "packages": [
+            {"name": "ollama", "check_command": "ollama"},
+        ],
         "verification": "ollama --version",
     },
 }
@@ -71,7 +85,10 @@ log_info "Complete!"
 
 
 class ScriptGenerator:
-    def __init__(self):
+    packages: list[dict | str]
+    verification: str
+
+    def __init__(self) -> None:
         self.cortex_dir = Path.home() / "cortex" / "install-scripts"
         self.cortex_dir.mkdir(parents=True, exist_ok=True)
         self.history_file = self.cortex_dir / "script_history.yaml"
@@ -89,14 +106,20 @@ class ScriptGenerator:
         if format == "bash":
             install_cmds = []
             for pkg in deps.get("packages", []):
-                check_command = deps.get("check_command", pkg)
+                if isinstance(pkg, dict):
+                    pkg_name = pkg["name"]
+                    check_command = pkg["check_command"]
+                else:
+                    pkg_name = pkg
+                    check_command = pkg
+
                 install_cmds.append(
                     f"""if ! command_exists {check_command}; then
-            log_info "Installing {pkg}..."
-            sudo apt-get install -y {pkg} >/dev/null 2>&1
-        else
-            log_warn "{pkg} already installed"
-        fi"""
+                    log_info "Installing {pkg_name}..."
+                    sudo apt-get install -y {pkg_name} >/dev/null 2>&1
+                else
+                    log_warn "{pkg_name} already installed"
+                fi"""
                 )
 
             content = BASH_TEMPLATE.format(

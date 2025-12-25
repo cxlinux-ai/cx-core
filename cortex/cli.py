@@ -316,7 +316,7 @@ class CortexCLI:
                 return 0
 
             elif args.script_action == "history":
-                limit = args.limit if hasattr(args, "limit") else 10
+                limit = args.limit
                 generator.show_history(limit=limit)
                 return 0
 

@@ -38,8 +38,8 @@ class TestScriptGenerator:
         generator.generate(str(temp_script), stack="python", format="bash")
         assert temp_script.exists()
         content = temp_script.read_text()
-        assert "python3.11" in content
-        assert "python3.11-venv" in content
+        assert "python3" in content
+        assert "python3 --version" in content
 
     def test_generate_nodejs_bash(self, generator, temp_script):
         generator.generate(str(temp_script), stack="nodejs", format="bash")
@@ -68,7 +68,7 @@ class TestScriptGenerator:
         assert temp_script.exists()
         content = temp_script.read_text()
         assert "---" in content
-        assert "python3.11" in content
+        assert "python3" in content
 
     # ===== FILE OPERATIONS =====
 
@@ -111,8 +111,8 @@ class TestScriptGenerator:
         generator.generate(str(temp_script), stack="python")
         content = temp_script.read_text()
 
-        assert "command_exists python3.11" in content
-        assert "Installing python3.11" in content
+        assert "command_exists python3" in content
+        assert "Installing python3" in content
         assert temp_script.stat().st_mode & 0o111
 
     def test_idempotent_check_nodejs(self, generator, temp_script):
@@ -178,7 +178,7 @@ class TestScriptGenerator:
     def test_verification_command_python(self, generator, temp_script):
         generator.generate(str(temp_script), stack="python")
         content = temp_script.read_text()
-        assert "python3.11 --version" in content
+        assert "python3 --version" in content
 
     def test_verification_command_nodejs(self, generator, temp_script):
         generator.generate(str(temp_script), stack="nodejs")
