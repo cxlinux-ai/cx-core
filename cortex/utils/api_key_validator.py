@@ -1,4 +1,8 @@
-import os
+"""
+API Key Validation Utilities
+
+Validates API keys for various LLM providers.
+"""
 
 import requests
 
@@ -24,6 +28,9 @@ def validate_anthropic_api_key(api_key: str) -> bool:
         return False
 
 
+
+
+
 def validate_openai_api_key(api_key: str) -> bool:
     """Validate OpenAI API key by making a minimal request."""
     try:
@@ -39,8 +46,3 @@ def validate_openai_api_key(api_key: str) -> bool:
         return resp.status_code == 200
     except Exception:
         return False
-
-
-# Aliases for backward compatibility
-test_anthropic_api_key = validate_anthropic_api_key
-test_openai_api_key = validate_openai_api_key
