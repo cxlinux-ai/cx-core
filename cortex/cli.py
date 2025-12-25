@@ -13,6 +13,7 @@ from cortex.demo import run_demo
 from cortex.env_manager import EnvironmentManager, get_env_manager
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
+from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
 from cortex.stack_manager import StackManager
 from cortex.user_preferences import (
@@ -1251,6 +1252,29 @@ def main():
     from cortex.env_loader import load_env
 
     load_env()
+
+    # Auto-configure network settings (proxy detection, VPN compatibility, offline mode)
+    # Use lazy loading - only detect when needed to improve CLI startup time
+    try:
+        network = NetworkConfig(auto_detect=False)  # Don't detect yet (fast!)
+
+        # Only detect network for commands that actually need it
+        # Parse args first to see what command we're running
+        temp_parser = argparse.ArgumentParser(add_help=False)
+        temp_parser.add_argument("command", nargs="?")
+        temp_args, _ = temp_parser.parse_known_args()
+
+        # Commands that need network detection
+        NETWORK_COMMANDS = ["install", "update", "upgrade", "search", "doctor", "stack"]
+
+        if temp_args.command in NETWORK_COMMANDS:
+            # Now detect network (only when needed)
+            network.detect(check_quality=True)  # Include quality check for these commands
+            network.auto_configure()
+
+    except Exception as e:
+        # Network config is optional - don't block execution if it fails
+        console.print(f"[yellow]⚠️  Network auto-config failed: {e}[/yellow]")
 
     parser = argparse.ArgumentParser(
         prog="cortex",
