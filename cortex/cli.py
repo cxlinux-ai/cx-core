@@ -1269,7 +1269,7 @@ def main():
     wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
 
     # Status command (includes comprehensive health checks)
-    status_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "status", help="Show comprehensive system status and health checks"
     )
 
