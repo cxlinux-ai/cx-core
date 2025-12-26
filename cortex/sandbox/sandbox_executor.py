@@ -27,7 +27,7 @@ try:
 except ImportError:  # pragma: no cover
     resource = None
 from datetime import datetime
-from typing import Any
+from typing import Any, Union
 
 from cortex.validators import DANGEROUS_PATTERNS
 
@@ -57,8 +57,8 @@ class ExecutionResult:
         stderr: str = "",
         execution_time: float = 0.0,
         blocked: bool = False,
-        violation: str | None = None,
-        preview: str | None = None,
+        violation: Union[str, None] = None,
+        preview: Union[str, None] = None,
     ):
         self.command = command
         self.exit_code = exit_code
@@ -169,8 +169,8 @@ class SandboxExecutor:
 
     def __init__(
         self,
-        firejail_path: str | None = None,
-        log_file: str | None = None,
+        firejail_path: Union[str, None] = None,
+        log_file: Union[str, None] = None,
         max_cpu_cores: int = 2,
         max_memory_mb: int = 2048,
         max_disk_mb: int = 1024,
@@ -204,7 +204,7 @@ class SandboxExecutor:
 
         # Rollback tracking
         self.rollback_snapshots: dict[str, dict[str, Any]] = {}
-        self.current_session_id: str | None = None
+        self.current_session_id: Union[str, None] = None
 
         # Audit log
         self.audit_log: list[dict[str, Any]] = []
@@ -216,7 +216,7 @@ class SandboxExecutor:
                 "Install firejail for full security: sudo apt-get install firejail"
             )
 
-    def _find_firejail(self) -> str | None:
+    def _find_firejail(self) -> Union[str, None]:
         """Find firejail binary in system PATH."""
         firejail_path = shutil.which("firejail")
         return firejail_path
@@ -263,7 +263,7 @@ class SandboxExecutor:
         # Prevent propagation to root logger
         self.logger.propagate = False
 
-    def validate_command(self, command: str) -> tuple[bool, str | None]:
+    def validate_command(self, command: str) -> tuple[bool, Union[str, None]]:
         """
         Validate command for security.
 
@@ -313,7 +313,7 @@ class SandboxExecutor:
         except ValueError as e:
             return False, f"Invalid command syntax: {str(e)}"
 
-    def _validate_paths(self, command: str) -> str | None:
+    def _validate_paths(self, command: str) -> Union[str, None]:
         """
         Validate file paths in command to prevent path traversal attacks.
 
@@ -499,7 +499,7 @@ class SandboxExecutor:
         return True
 
     def execute(
-        self, command: str, dry_run: bool = False, enable_rollback: bool | None = None
+        self, command: str, dry_run: bool = False, enable_rollback: Union[bool, None] = None
     ) -> ExecutionResult:
         """
         Execute command in sandbox.
@@ -549,7 +549,7 @@ class SandboxExecutor:
             return result
 
         # Execute command
-        process: subprocess.Popen[str] | None = None
+        process: subprocess.Popen[Union[str, None]] = None
         try:
             firejail_cmd = self._create_firejail_command(command)
 
@@ -646,7 +646,7 @@ class SandboxExecutor:
         self.audit_log.append(log_entry)
         self.logger.warning(f"Security violation: {result.command} - {result.violation}")
 
-    def get_audit_log(self, limit: int | None = None) -> list[dict[str, Any]]:
+    def get_audit_log(self, limit: Union[int, None] = None) -> list[dict[str, Any]]:
         """
         Get audit log entries.
 
