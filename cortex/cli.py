@@ -906,7 +906,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Demo command
-    demo_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "demo",
         help="Interactive demonstration of Cortex features",
         description="See example installations and learn how to use Cortex effectively."
