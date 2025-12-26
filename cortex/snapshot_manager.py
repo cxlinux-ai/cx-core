@@ -88,10 +88,10 @@ class SnapshotManager:
             prefs_manager = PreferencesManager()
             prefs_manager.load()
             return prefs_manager.preferences.snapshots.retention_limit
-        except (AttributeError, IOError, OSError) as e:
+        except (AttributeError, IOError, FileNotFoundError) as e:
             # Fall back to default if preferences not available
             import logging
-            logging.debug(f"Could not load retention from preferences: {e}")
+            logging.warning(f"Could not load retention limit from preferences: {e}")
             return self.DEFAULT_RETENTION_LIMIT
 
     def _enforce_directory_security(self) -> None:

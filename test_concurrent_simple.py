@@ -53,7 +53,7 @@ def test_concurrent_snapshots():
             print(f"   🚨 JSON CORRUPTION DETECTED!")
             failed = True
         
-        # Add to errors list only once per failed result
+        # Add to errors only once if any failure detected
         if failed:
             errors.append(r)
     
