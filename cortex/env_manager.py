@@ -1,16 +1,3 @@
-"""
-Environment Variable Manager for Cortex CLI.
-
-Provides first-class environment variable management with:
-- Per-application environment variable storage
-- Encrypted storage for secrets using Fernet encryption
-- Environment templates with validation
-- Integration with services for auto-loading
-
-Storage location: ~/.cortex/environments/<app>.json
-Encryption key: ~/.cortex/.env_key (chmod 600)
-"""
-
 from __future__ import annotations
 
 import json
@@ -21,7 +8,7 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 # Lazy import for cryptography to handle optional dependency
 _fernet_module = None
@@ -92,10 +79,10 @@ class TemplateVariable:
 
     name: str
     required: bool = True
-    default: str | None = None
+    default: Union[str, None] = None
     var_type: str = "string"
     description: str = ""
-    validation_pattern: str | None = None
+    validation_pattern: Union[str, None] = None
 
 
 @dataclass
@@ -393,8 +380,8 @@ class EnvironmentValidator:
         cls,
         value: str,
         var_type: str,
-        custom_pattern: str | None = None,
-    ) -> tuple[bool, str | None]:
+        custom_pattern: Union[str, None] = None,
+    ) -> tuple[bool, Union[str, None]]:
         """
         Validate a value against a type.
 
@@ -454,7 +441,7 @@ class EnvironmentValidator:
 class EncryptionManager:
     """Manages encryption keys and encrypts/decrypts values."""
 
-    def __init__(self, key_path: Path | None = None):
+    def __init__(self, key_path: Union[Path, None] = None):
         """
         Initialize encryption manager.
 
@@ -545,7 +532,7 @@ class EncryptionManager:
 class EnvironmentStorage:
     """Manages persistent storage of environment variables."""
 
-    def __init__(self, base_path: Path | None = None):
+    def __init__(self, base_path: Union[Path, None] = None):
         """
         Initialize storage.
 
@@ -742,7 +729,7 @@ class EnvironmentManager:
         app: str,
         key: str,
         decrypt: bool = True,
-    ) -> str | None:
+    ) -> Union[str, None]:
         """
         Get an environment variable value.
 
