@@ -72,6 +72,11 @@ class SystemDoctor:
 
         # Run checks with spinner
         with console.status("[bold cyan][CX] Scanning system...[/bold cyan]", spinner="dots"):
+            # System Info (includes API provider and security features)
+            self._print_section("System Configuration")
+            self._check_api_keys()
+            self._check_security_tools()
+
             # Python & Dependencies
             self._print_section("Python & Dependencies")
             self._check_python()
@@ -83,7 +88,6 @@ class SystemDoctor:
 
             self._print_section("AI & Services")
             self._check_ollama()
-            self._check_api_keys()
 
             # System Resources
             self._print_section("System Resources")
@@ -340,8 +344,8 @@ class SystemDoctor:
         else:
             self._print_check(
                 "WARN",
-                "No API keys configured (required for cloud models)",
-                "Configure API key: export ANTHROPIC_API_KEY=sk-... or run 'cortex wizard'",
+                "Firejail not installed (sandboxing unavailable)",
+                "Install: sudo apt-get install firejail",
             )
 
     def _check_disk_space(self) -> None:
