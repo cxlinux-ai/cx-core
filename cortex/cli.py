@@ -920,7 +920,7 @@ def main():
     )
 
     # Status command
-    status_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "status",
         help="Show system status and configuration",
         description="Display Cortex configuration, API keys, cache stats, and system info."
