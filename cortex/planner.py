@@ -2,6 +2,7 @@ from typing import Any, dict, list
 
 from cortex.llm.interpreter import CommandInterpreter
 
+
 def generate_plan(intent: str, slots: dict[str, Any]) -> list[str]:
     """
     Generate a human-readable installation plan using LLM (Ollama).
