@@ -258,7 +258,10 @@ class TestAskHandlerProviders(unittest.TestCase):
 
         # Test deterministic default behavior when no env var or config file exists.
         # Point the home directory to a temporary location without ~/.cortex/config.json
-        with tempfile.TemporaryDirectory() as tmpdir, patch("os.path.expanduser", return_value=tmpdir):
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch("os.path.expanduser", return_value=tmpdir),
+        ):
             handler2 = AskHandler(api_key="test", provider="ollama")
             # When no env var and no config file exist, AskHandler should use its built-in default.
             self.assertEqual(handler2.model, "llama3.2")
