@@ -1,8 +1,7 @@
 import time
 
 def fake_stream():
-    for i in range(2000):
-        yield i
+    yield from range(2000)
 
 def benchmark():
     start = time.perf_counter()

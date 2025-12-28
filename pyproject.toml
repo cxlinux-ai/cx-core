@@ -112,6 +112,7 @@ exclude = '''
 '''
 
 [tool.ruff]
+extend-exclude = ["benchmarks"]
 line-length = 100
 target-version = "py310"
 exclude = [
