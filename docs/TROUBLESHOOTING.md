@@ -26,7 +26,17 @@ Error: No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment var
 
 **Solutions:**
 
-1. **Set the environment variable:**
+1. **Use Ollama (FREE - No API key needed):**
+```bash
+# Quick setup
+python scripts/setup_ollama.py
+export CORTEX_PROVIDER=ollama
+cortex install nginx --dry-run
+
+# See full guide: docs/OLLAMA_SETUP.md
+```
+
+2. **Set the environment variable (Cloud APIs):**
 ```bash
 # For Claude (recommended)
 export ANTHROPIC_API_KEY='<YOUR_ANTHROPIC_API_KEY>'
@@ -35,19 +45,16 @@ export ANTHROPIC_API_KEY='<YOUR_ANTHROPIC_API_KEY>'
 export OPENAI_API_KEY='<YOUR_OPENAI_API_KEY>'
 ```
 
-2.  **Add to shell config for persistence:**
+3.  **Add to shell config for persistence:**
 ```bash
 echo 'export ANTHROPIC_API_KEY="<YOUR_ANTHROPIC_API_KEY>"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-3.  **Use the setup wizard:**
+4.  **Use the setup wizard:**
 ```bash
 cortex wizard
 ```
-
-4. **For Local Provider mode (No API key needed):**
-   *Note: Installation of tools like Docker may still require an internet connection.*
 ```bash
 export CORTEX_PROVIDER=ollama
 cortex install docker
@@ -206,28 +213,115 @@ ls -la ~/.cortex/
 **Symptom:**
 ```text
 Error: Could not connect to Ollama at localhost:11434
-````
+Ollama request failed. Is Ollama running? (ollama serve)
+```
 
 **Solutions:**
 
-1.  **Start System Service (Recommended):**
-
+1.  **Quick Setup (Recommended):**
 ```bash
+# Use the setup script
+python scripts/setup_ollama.py
+
+# Or follow the quick start guide
+cat OLLAMA_QUICKSTART.md
+```
+
+2.  **Start Ollama Service:**
+```bash
+# Check if installed
+which ollama
+
+# Start service
+ollama serve &
+
+# Or use systemd
 sudo systemctl start ollama
+sudo systemctl enable ollama  # Auto-start on boot
 ```
 
-2.  **Manual Start (Fallback):**
-    *Note: Only use this if the system service is unavailable.*
-
+3.  **Verify Ollama is running:**
 ```bash
-ollama serve
+# List models (also tests connection)
+ollama list
+
+# Test API endpoint
+curl http://localhost:11434/api/tags
 ```
 
-3.  **Install Ollama if missing:**
-    *Note: Always review remote scripts before running them.*
-
+4.  **Install Ollama if missing:**
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
+# Automated installation
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Or use setup script
+python scripts/setup_ollama.py
+```
+
+### Error: "No Ollama models found"
+
+**Symptom:**
+```text
+Error: Model 'llama3.2' not found
+```
+
+**Solutions:**
+
+1.  **Download a model:**
+```bash
+# Recommended (2GB)
+ollama pull llama3.2
+
+# Alternatives
+ollama pull llama3.2:1b      # Smaller (1.3GB)
+ollama pull llama3.1:8b      # More capable (4.7GB)
+```
+
+2.  **Check downloaded models:**
+```bash
+ollama list
+```
+
+3.  **Update config to use installed model:**
+```bash
+# In .env file
+export OLLAMA_MODEL=your-model-name
+
+# Or in ~/.cortex/config.json
+{
+  "ollama_model": "your-model-name"
+}
+```
+
+### Error: "Ollama out of memory"
+
+**Symptom:**
+```text
+Error: Failed to load model: out of memory
+```
+
+**Solutions:**
+
+1.  **Use smaller model:**
+```bash
+# Switch to 1B parameter model (uses less RAM)
+ollama pull llama3.2:1b
+export OLLAMA_MODEL=llama3.2:1b
+```
+
+2.  **Check available RAM:**
+```bash
+free -h
+```
+
+3.  **Close other applications** to free up memory
+
+4.  **See model requirements:**
+```bash
+# Check model size
+ollama list
+
+# See: docs/OLLAMA_SETUP.md for RAM requirements
 ```
 
 ### Error: "Context length exceeded"

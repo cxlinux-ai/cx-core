@@ -7,6 +7,44 @@ Validates user input and provides helpful error messages.
 import os
 import re
 
+# Dangerous command patterns to block for security
+DANGEROUS_PATTERNS: list[str] = [
+    r"rm\s+-rf\s+[/\*]",  # rm -rf / or rm -rf /*
+    r"rm\s+-rf\s+\$HOME",  # rm -rf $HOME
+    r"rm\s+--no-preserve-root",  # rm with no-preserve-root
+    r"dd\s+if=",  # dd command
+    r"mkfs\.",  # mkfs commands
+    r"fdisk",  # fdisk
+    r"parted",  # parted
+    r"wipefs",  # wipefs
+    r"format\s+",  # format commands
+    r">\s*/dev/(?!null\b)",  # Redirect to device files (excluding /dev/null)
+    r"chmod\s+[0-7]{3,4}\s+/",  # chmod on root
+    r"chmod\s+777",  # World-writable permissions
+    r"chmod\s+\+s",  # Setuid bit
+    r"chown\s+.*\s+/",  # chown on root
+    # Remote code execution patterns
+    r"curl\s+.*\|\s*sh",  # curl pipe to shell
+    r"curl\s+.*\|\s*bash",  # curl pipe to bash
+    r"wget\s+.*\|\s*sh",  # wget pipe to shell
+    r"wget\s+.*\|\s*bash",  # wget pipe to bash
+    r"curl\s+-o\s+-\s+.*\|",  # curl output to pipe
+    # Code injection patterns
+    r"\beval\s+",  # eval command
+    r"python\s+-c\s+[\"\'].*exec",  # python -c exec
+    r"python\s+-c\s+[\"\'].*__import__",  # python -c import
+    r"base64\s+-d\s+.*\|",  # base64 decode to pipe
+    r">\s*/etc/",  # Write to /etc
+    # Privilege escalation
+    r"sudo\s+su\s*$",  # sudo su
+    r"sudo\s+-i\s*$",  # sudo -i (interactive root)
+    # Environment manipulation
+    r"export\s+LD_PRELOAD",  # LD_PRELOAD hijacking
+    r"export\s+LD_LIBRARY_PATH.*=/",  # Library path hijacking
+    # Fork bomb
+    r":\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}",  # :(){ :|:& };:
+]
+
 
 class ValidationError(Exception):
     """Custom exception for validation errors with user-friendly messages"""

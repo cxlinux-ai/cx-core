@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -54,6 +55,7 @@ class ConfigManager:
         self.sandbox_executor = sandbox_executor
         self.cortex_dir = Path.home() / ".cortex"
         self.preferences_file = self.cortex_dir / "preferences.yaml"
+        self._file_lock = threading.Lock()  # Protect file I/O operations
 
         # Ensure .cortex directory exists with secure permissions
         self.cortex_dir.mkdir(mode=0o700, exist_ok=True)
@@ -72,6 +74,11 @@ class ConfigManager:
         Raises:
             PermissionError: If ownership or permissions cannot be secured
         """
+        # Cortex targets Linux. On non-POSIX systems (e.g., Windows), uid/gid ownership
+        # APIs like os.getuid/os.chown are unavailable, so skip strict enforcement.
+        if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+            return
+
         try:
             # Get directory statistics
             stat_info = directory.stat()
@@ -275,8 +282,9 @@ class ConfigManager:
         """
         if self.preferences_file.exists():
             try:
-                with open(self.preferences_file) as f:
-                    return yaml.safe_load(f) or {}
+                with self._file_lock:
+                    with open(self.preferences_file) as f:
+                        return yaml.safe_load(f) or {}
             except Exception:
                 pass
 
@@ -290,8 +298,9 @@ class ConfigManager:
             preferences: Dictionary of preferences to save
         """
         try:
-            with open(self.preferences_file, "w") as f:
-                yaml.safe_dump(preferences, f, default_flow_style=False)
+            with self._file_lock:
+                with open(self.preferences_file, "w") as f:
+                    yaml.safe_dump(preferences, f, default_flow_style=False)
         except Exception as e:
             raise RuntimeError(f"Failed to save preferences: {e}")
 

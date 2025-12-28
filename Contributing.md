@@ -79,7 +79,7 @@ pip install -r requirements-dev.txt
 pip install -e .
 
 # Run tests to verify setup
-pytest test/ -v
+pytest tests/ -v
 ```
 
 ### Requirements Files
@@ -100,7 +100,7 @@ pip install pytest pytest-cov pytest-mock black pylint mypy bandit
     "python.linting.pylintEnabled": true,
     "python.formatting.provider": "black",
     "python.testing.pytestEnabled": true,
-    "python.testing.pytestArgs": ["test/"]
+    "python.testing.pytestArgs": ["tests/"]
 }
 ```
 
@@ -137,7 +137,7 @@ pip install pytest pytest-cov pytest-mock black pylint mypy bandit
 ### Before Submitting
 
 - [ ] Code follows style guide
-- [ ] All tests pass (`pytest test/ -v`)
+- [ ] All tests pass (`pytest tests/ -v`)
 - [ ] New code has tests (aim for >80% coverage)
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear
@@ -258,13 +258,13 @@ black cortex/          # Format all files
 
 ```bash
 # Run all tests
-pytest test/ -v
+pytest tests/ -v
 
 # Run with coverage
-pytest test/ --cov=cortex --cov-report=html
+pytest tests/ --cov=cortex --cov-report=html
 
 # Run specific test file
-pytest test/test_cli.py -v
+pytest tests/test_cli.py -v
 ```
 
 ### Coverage Requirements

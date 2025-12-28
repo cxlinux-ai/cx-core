@@ -12,8 +12,11 @@ import contextlib
 import json
 import logging
 import os
+import platform
 import re
+import shutil
 import subprocess
+import threading
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -190,6 +193,14 @@ class HardwareDetector:
     def __init__(self, use_cache: bool = True):
         self.use_cache = use_cache
         self._info: SystemInfo | None = None
+        self._cache_lock = threading.RLock()  # Reentrant lock for cache file access
+
+    def _uname(self):
+        """Return uname-like info with nodename/release/machine attributes."""
+        uname_fn = getattr(os, "uname", None)
+        if callable(uname_fn):
+            return uname_fn()
+        return platform.uname()
 
     def detect(self, force_refresh: bool = False) -> SystemInfo:
         """
@@ -239,74 +250,81 @@ class HardwareDetector:
         }
 
     def _load_cache(self) -> SystemInfo | None:
-        """Load cached hardware info if valid."""
-        try:
-            if not self.CACHE_FILE.exists():
-                return None
-
-            # Check age
-            import time
-
-            if time.time() - self.CACHE_FILE.stat().st_mtime > self.CACHE_MAX_AGE_SECONDS:
-                return None
-
-            with open(self.CACHE_FILE) as f:
-                data = json.load(f)
-
-            # Reconstruct SystemInfo
-            info = SystemInfo()
-            info.hostname = data.get("hostname", "")
-            info.kernel_version = data.get("kernel_version", "")
-            info.distro = data.get("distro", "")
-            info.distro_version = data.get("distro_version", "")
-
-            # CPU
-            cpu_data = data.get("cpu", {})
-            info.cpu = CPUInfo(
-                vendor=CPUVendor(cpu_data.get("vendor", "unknown")),
-                model=cpu_data.get("model", "Unknown"),
-                cores=cpu_data.get("cores", 0),
-                threads=cpu_data.get("threads", 0),
-            )
-
-            # Memory
-            mem_data = data.get("memory", {})
-            info.memory = MemoryInfo(
-                total_mb=mem_data.get("total_mb", 0),
-                available_mb=mem_data.get("available_mb", 0),
-            )
-
-            # Capabilities
-            info.has_nvidia_gpu = data.get("has_nvidia_gpu", False)
-            info.cuda_available = data.get("cuda_available", False)
-
-            return info
-
-        except Exception as e:
-            logger.debug(f"Cache load failed: {e}")
+        """Load cached hardware info if valid (thread-safe)."""
+        if not self.use_cache:
             return None
 
-    def _save_cache(self, info: SystemInfo):
-        """Save hardware info to cache."""
-        try:
-            self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.CACHE_FILE, "w") as f:
-                json.dump(info.to_dict(), f, indent=2)
-        except Exception as e:
-            logger.debug(f"Cache save failed: {e}")
+        with self._cache_lock:
+            try:
+                if not self.CACHE_FILE.exists():
+                    return None
+
+                # Check age
+                import time
+
+                if time.time() - self.CACHE_FILE.stat().st_mtime > self.CACHE_MAX_AGE_SECONDS:
+                    return None
+
+                with open(self.CACHE_FILE) as f:
+                    data = json.load(f)
+
+                # Reconstruct SystemInfo
+                info = SystemInfo()
+                info.hostname = data.get("hostname", "")
+                info.kernel_version = data.get("kernel_version", "")
+                info.distro = data.get("distro", "")
+                info.distro_version = data.get("distro_version", "")
+
+                # CPU
+                cpu_data = data.get("cpu", {})
+                info.cpu = CPUInfo(
+                    vendor=CPUVendor(cpu_data.get("vendor", "unknown")),
+                    model=cpu_data.get("model", "Unknown"),
+                    cores=cpu_data.get("cores", 0),
+                    threads=cpu_data.get("threads", 0),
+                )
+
+                # Memory
+                mem_data = data.get("memory", {})
+                info.memory = MemoryInfo(
+                    total_mb=mem_data.get("total_mb", 0),
+                    available_mb=mem_data.get("available_mb", 0),
+                )
+
+                # Capabilities
+                info.has_nvidia_gpu = data.get("has_nvidia_gpu", False)
+                info.cuda_available = data.get("cuda_available", False)
+
+                return info
+
+            except Exception as e:
+                logger.debug(f"Cache load failed: {e}")
+                return None
+
+    def _save_cache(self, info: SystemInfo) -> None:
+        """Save hardware info to cache (thread-safe)."""
+        if not self.use_cache:
+            return
+
+        with self._cache_lock:
+            try:
+                self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.CACHE_FILE, "w") as f:
+                    json.dump(info.to_dict(), f, indent=2)
+            except Exception as e:
+                logger.debug(f"Cache save failed: {e}")
 
     def _detect_system(self, info: SystemInfo):
         """Detect basic system information."""
         # Hostname
         try:
-            info.hostname = os.uname().nodename
+            info.hostname = self._uname().nodename
         except:
             info.hostname = "unknown"
 
         # Kernel
         with contextlib.suppress(builtins.BaseException):
-            info.kernel_version = os.uname().release
-
+            info.kernel_version = self._uname().release
         # Distro
         try:
             if Path("/etc/os-release").exists():
@@ -329,6 +347,7 @@ class HardwareDetector:
     def _detect_cpu(self, info: SystemInfo):
         """Detect CPU information."""
         try:
+            uname = self._uname()
             with open("/proc/cpuinfo") as f:
                 content = f.read()
 
@@ -342,7 +361,7 @@ class HardwareDetector:
                 info.cpu.vendor = CPUVendor.INTEL
             elif "AMD" in info.cpu.model:
                 info.cpu.vendor = CPUVendor.AMD
-            elif "ARM" in info.cpu.model or "aarch" in os.uname().machine:
+            elif "ARM" in info.cpu.model or "aarch" in uname.machine:
                 info.cpu.vendor = CPUVendor.ARM
 
             # Cores (physical)
@@ -362,8 +381,7 @@ class HardwareDetector:
                 info.cpu.frequency_mhz = float(match.group(1))
 
             # Architecture
-            info.cpu.architecture = os.uname().machine
-
+            info.cpu.architecture = uname.machine
             # Features
             match = re.search(r"flags\s*:\s*(.+)", content)
             if match:
@@ -611,8 +629,14 @@ class HardwareDetector:
     def _get_disk_free_gb(self) -> float:
         """Quick disk free space on root."""
         try:
-            statvfs = os.statvfs("/")
-            return round((statvfs.f_frsize * statvfs.f_bavail) / (1024**3), 1)
+            statvfs_fn = getattr(os, "statvfs", None)
+            if callable(statvfs_fn):
+                statvfs = statvfs_fn("/")
+                return round((statvfs.f_frsize * statvfs.f_bavail) / (1024**3), 1)
+
+            root_path = os.path.abspath(os.sep)
+            _total, _used, free = shutil.disk_usage(root_path)
+            return round(free / (1024**3), 1)
         except:
             return 0.0
 
@@ -672,7 +696,7 @@ if __name__ == "__main__":
     print("\n⚡ Quick Detection:")
     start = time.time()
     quick = detector.detect_quick()
-    print(f"  Time: {(time.time() - start)*1000:.0f}ms")
+    print(f"  Time: {(time.time() - start) * 1000:.0f}ms")
     print(f"  CPU Cores: {quick['cpu_cores']}")
     print(f"  RAM: {quick['ram_gb']} GB")
     print(f"  NVIDIA GPU: {quick['has_nvidia']}")
@@ -682,7 +706,7 @@ if __name__ == "__main__":
     print("\n🔍 Full Detection:")
     start = time.time()
     info = detector.detect()
-    print(f"  Time: {(time.time() - start)*1000:.0f}ms")
+    print(f"  Time: {(time.time() - start) * 1000:.0f}ms")
 
     print("\n📋 System:")
     print(f"  Hostname: {info.hostname}")

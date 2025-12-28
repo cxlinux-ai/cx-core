@@ -101,7 +101,7 @@ async def demo_cancelled_operation(tracker: ProgressTracker):
 
     stages = []
     for i in range(10):
-        idx = tracker.add_stage(f"Processing step {i+1}")
+        idx = tracker.add_stage(f"Processing step {i + 1}")
         stages.append(idx)
 
     for idx in stages:

@@ -16,14 +16,28 @@ import json
 import logging
 import os
 import re
-import resource
 import shlex
 import shutil
 import subprocess
 import sys
 import time
+
+try:
+    import resource  # POSIX-only
+except ImportError:  # pragma: no cover
+    resource = None
 from datetime import datetime
 from typing import Any
+
+from cortex.validators import DANGEROUS_PATTERNS
+
+try:
+    import resource  # type: ignore
+
+    HAS_RESOURCE = True
+except ImportError:  # pragma: no cover
+    resource = None  # type: ignore
+    HAS_RESOURCE = False
 
 
 class CommandBlocked(Exception):
@@ -146,44 +160,6 @@ class SandboxExecutor:
         "dpkg -i",
     }
 
-    # Dangerous patterns to block
-    DANGEROUS_PATTERNS = [
-        r"rm\s+-rf\s+[/\*]",  # rm -rf / or rm -rf /*
-        r"rm\s+-rf\s+\$HOME",  # rm -rf $HOME
-        r"rm\s+--no-preserve-root",  # rm with no-preserve-root
-        r"dd\s+if=",  # dd command
-        r"mkfs\.",  # mkfs commands
-        r"fdisk",  # fdisk
-        r"parted",  # parted
-        r"wipefs",  # wipefs
-        r"format\s+",  # format commands
-        r">\s*/dev/",  # Redirect to device files
-        r"chmod\s+[0-7]{3,4}\s+/",  # chmod on root
-        r"chmod\s+777",  # World-writable permissions
-        r"chmod\s+\+s",  # Setuid bit
-        r"chown\s+.*\s+/",  # chown on root
-        # Remote code execution patterns
-        r"curl\s+.*\|\s*sh",  # curl pipe to shell
-        r"curl\s+.*\|\s*bash",  # curl pipe to bash
-        r"wget\s+.*\|\s*sh",  # wget pipe to shell
-        r"wget\s+.*\|\s*bash",  # wget pipe to bash
-        r"curl\s+-o\s+-\s+.*\|",  # curl output to pipe
-        # Code injection patterns
-        r"\beval\s+",  # eval command
-        r'python\s+-c\s+["\'].*exec',  # python -c exec
-        r'python\s+-c\s+["\'].*__import__',  # python -c import
-        r"base64\s+-d\s+.*\|",  # base64 decode to pipe
-        r">\s*/etc/",  # Write to /etc
-        # Privilege escalation
-        r"sudo\s+su\s*$",  # sudo su
-        r"sudo\s+-i\s*$",  # sudo -i (interactive root)
-        # Environment manipulation
-        r"export\s+LD_PRELOAD",  # LD_PRELOAD hijacking
-        r"export\s+LD_LIBRARY_PATH.*=/",  # Library path hijacking
-        # Fork bomb
-        r":\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}",  # :(){ :|:& };:
-    ]
-
     # Allowed directories for file operations
     ALLOWED_DIRECTORIES = [
         "/tmp",
@@ -298,7 +274,7 @@ class SandboxExecutor:
             Tuple of (is_valid, violation_reason)
         """
         # Check for dangerous patterns
-        for pattern in self.DANGEROUS_PATTERNS:
+        for pattern in DANGEROUS_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 return False, f"Dangerous pattern detected: {pattern}"
 
@@ -360,21 +336,6 @@ class SandboxExecutor:
                 abs_path = os.path.abspath(expanded)
             except (OSError, ValueError):
                 continue
-
-            # Check if path is in allowed directories
-            allowed = False
-            for allowed_dir in self.ALLOWED_DIRECTORIES:
-                allowed_expanded = os.path.expanduser(allowed_dir)
-                allowed_abs = os.path.abspath(allowed_expanded)
-
-                # Allow if path is within allowed directory
-                try:
-                    if os.path.commonpath([abs_path, allowed_abs]) == allowed_abs:
-                        allowed = True
-                        break
-                except ValueError:
-                    # Paths don't share common path
-                    pass
 
             # Block access to critical system directories
             critical_dirs = [
@@ -588,6 +549,7 @@ class SandboxExecutor:
             return result
 
         # Execute command
+        process: subprocess.Popen[str] | None = None
         try:
             firejail_cmd = self._create_firejail_command(command)
 
@@ -595,10 +557,12 @@ class SandboxExecutor:
 
             # Set resource limits if not using Firejail
             preexec_fn = None
-            if not self.firejail_path:
+            if os.name != "nt" and not self.firejail_path and resource is not None:
 
                 def set_resource_limits():
                     """Set resource limits for the subprocess."""
+                    if not HAS_RESOURCE:
+                        return
                     try:
                         # Memory limit (RSS - Resident Set Size)
                         memory_bytes = self.max_memory_mb * 1024 * 1024
@@ -614,14 +578,16 @@ class SandboxExecutor:
 
                 preexec_fn = set_resource_limits
 
-            process = subprocess.Popen(
-                firejail_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                preexec_fn=preexec_fn,
-            )
+            popen_kwargs = {
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+                "text": True,
+            }
+            # preexec_fn is unsupported on Windows; only pass it when set.
+            if preexec_fn is not None:
+                popen_kwargs["preexec_fn"] = preexec_fn
 
+            process = subprocess.Popen(firejail_cmd, **popen_kwargs)
             stdout, stderr = process.communicate(timeout=self.timeout_seconds)
             exit_code = process.returncode
             execution_time = time.time() - start_time
@@ -645,7 +611,8 @@ class SandboxExecutor:
             return result
 
         except subprocess.TimeoutExpired:
-            process.kill()
+            if process is not None:
+                process.kill()
             result = ExecutionResult(
                 command=command,
                 exit_code=-1,
@@ -689,15 +656,10 @@ class SandboxExecutor:
         Returns:
             List of audit log entries
         """
-        if limit:
-            return self.audit_log[-limit:]
-        return self.audit_log.copy()
 
-    def save_audit_log(self, file_path: str | None = None):
-        """Save audit log to file."""
-        file_path = file_path or self.log_file.replace(".log", "_audit.json")
-        with open(file_path, "w") as f:
-            json.dump(self.audit_log, f, indent=2)
+        if limit is None:
+            return list(self.audit_log)
+        return list(self.audit_log)[-limit:]
 
 
 def main():

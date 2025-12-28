@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import subprocess
+import threading
 from dataclasses import asdict, dataclass
 
 logging.basicConfig(level=logging.INFO)
@@ -64,6 +65,8 @@ class DependencyResolver:
     }
 
     def __init__(self):
+        self._cache_lock = threading.Lock()  # Protect dependency_cache
+        self._packages_lock = threading.Lock()  # Protect installed_packages
         self.dependency_cache: dict[str, DependencyGraph] = {}
         self.installed_packages: set[str] = set()
         self._refresh_installed_packages()
@@ -84,17 +87,21 @@ class DependencyResolver:
         success, stdout, _ = self._run_command(["dpkg", "-l"])
 
         if success:
+            new_packages = set()
             for line in stdout.split("\n"):
                 if line.startswith("ii"):
                     parts = line.split()
                     if len(parts) >= 2:
-                        self.installed_packages.add(parts[1])
+                        new_packages.add(parts[1])
 
-        logger.info(f"Found {len(self.installed_packages)} installed packages")
+            with self._packages_lock:
+                self.installed_packages = new_packages
+                logger.info(f"Found {len(self.installed_packages)} installed packages")
 
     def is_package_installed(self, package_name: str) -> bool:
-        """Check if package is installed"""
-        return package_name in self.installed_packages
+        """Check if package is installed (thread-safe)"""
+        with self._packages_lock:
+            return package_name in self.installed_packages
 
     def get_installed_version(self, package_name: str) -> str | None:
         """Get version of installed package"""
@@ -209,10 +216,11 @@ class DependencyResolver:
         """
         logger.info(f"Resolving dependencies for {package_name}...")
 
-        # Check cache
-        if package_name in self.dependency_cache:
-            logger.info(f"Using cached dependencies for {package_name}")
-            return self.dependency_cache[package_name]
+        # Check cache (thread-safe)
+        with self._cache_lock:
+            if package_name in self.dependency_cache:
+                logger.info(f"Using cached dependencies for {package_name}")
+                return self.dependency_cache[package_name]
 
         # Get dependencies from multiple sources
         apt_deps = self.get_apt_dependencies(package_name)
@@ -254,8 +262,9 @@ class DependencyResolver:
             installation_order=installation_order,
         )
 
-        # Cache result
-        self.dependency_cache[package_name] = graph
+        # Cache result (thread-safe)
+        with self._cache_lock:
+            self.dependency_cache[package_name] = graph
 
         return graph
 

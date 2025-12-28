@@ -7,15 +7,25 @@ Author: Cortex Linux Team
 License: Modified MIT License
 """
 
+import asyncio
 import os
 import sys
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from cortex.llm_router import LLMProvider, LLMResponse, LLMRouter, TaskType, complete_task
+from cortex.llm_router import (
+    LLMProvider,
+    LLMResponse,
+    LLMRouter,
+    TaskType,
+    check_hardware_configs_parallel,
+    complete_task,
+    diagnose_errors_parallel,
+    query_multiple_packages,
+)
 
 
 class TestRoutingLogic(unittest.TestCase):
@@ -78,26 +88,33 @@ class TestRoutingLogic(unittest.TestCase):
 class TestFallbackBehavior(unittest.TestCase):
     """Test fallback when primary LLM is unavailable."""
 
+    @patch.dict(os.environ, {}, clear=True)
     def test_fallback_to_kimi_when_claude_unavailable(self):
         """Should fallback to Kimi K2 if Claude unavailable."""
         router = LLMRouter(
-            claude_api_key=None, kimi_api_key="test-kimi-key", enable_fallback=True  # No Claude
+            claude_api_key=None,
+            kimi_api_key="test-kimi-key",
+            enable_fallback=True,  # No Claude
         )
 
         # User chat normally goes to Claude, should fallback to Kimi
         decision = router.route_task(TaskType.USER_CHAT)
         self.assertEqual(decision.provider, LLMProvider.KIMI_K2)
 
+    @patch.dict(os.environ, {}, clear=True)
     def test_fallback_to_claude_when_kimi_unavailable(self):
         """Should fallback to Claude if Kimi K2 unavailable."""
         router = LLMRouter(
-            claude_api_key="test-claude-key", kimi_api_key=None, enable_fallback=True  # No Kimi
+            claude_api_key="test-claude-key",
+            kimi_api_key=None,
+            enable_fallback=True,  # No Kimi
         )
 
         # System ops normally go to Kimi, should fallback to Claude
         decision = router.route_task(TaskType.SYSTEM_OPERATION)
         self.assertEqual(decision.provider, LLMProvider.CLAUDE)
 
+    @patch.dict(os.environ, {}, clear=True)
     def test_error_when_no_providers_available(self):
         """Should raise error if no providers configured."""
         router = LLMRouter(claude_api_key=None, kimi_api_key=None, enable_fallback=True)
@@ -105,6 +122,7 @@ class TestFallbackBehavior(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             router.route_task(TaskType.USER_CHAT)
 
+    @patch.dict(os.environ, {}, clear=True)
     def test_error_when_fallback_disabled(self):
         """Should raise error if primary unavailable and fallback disabled."""
         router = LLMRouter(claude_api_key=None, kimi_api_key="test-kimi-key", enable_fallback=False)
@@ -490,6 +508,224 @@ class TestConvenienceFunction(unittest.TestCase):
         self.assertEqual(messages[0]["content"], "You are helpful")
 
 
+class TestParallelProcessing(unittest.TestCase):
+    """Test parallel LLM call functionality."""
+
+    def setUp(self):
+        """Set up test router with mock API keys."""
+        self.router = LLMRouter(claude_api_key="test-claude-key", kimi_api_key="test-kimi-key")
+
+    @patch("cortex.llm_router.AsyncAnthropic")
+    @patch("cortex.llm_router.AsyncOpenAI")
+    def test_acomplete_claude(self, mock_async_openai, mock_async_anthropic):
+        """Test async completion with Claude."""
+        # Mock async Claude client
+        mock_message = Mock()
+        mock_message.text = "Async Claude response"
+
+        mock_content = Mock()
+        mock_content.text = "Async Claude response"
+
+        mock_response = Mock()
+        mock_response.content = [mock_content]
+        mock_response.usage = Mock(input_tokens=100, output_tokens=50)
+        mock_response.model_dump = lambda: {}
+
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_async_anthropic.return_value = mock_client
+
+        # Create router and test
+        router = LLMRouter(claude_api_key="test-claude")
+        router.claude_client_async = mock_client
+
+        async def run_test():
+            response = await router.acomplete(
+                messages=[{"role": "user", "content": "Hello"}],
+                task_type=TaskType.USER_CHAT,
+            )
+            self.assertEqual(response.provider, LLMProvider.CLAUDE)
+            self.assertEqual(response.content, "Async Claude response")
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    def test_acomplete_kimi(self, mock_async_openai):
+        """Test async completion with Kimi K2."""
+        # Mock async Kimi client
+        mock_message = Mock()
+        mock_message.content = "Async Kimi response"
+
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=100, completion_tokens=50)
+        mock_response.model_dump = lambda: {}
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_async_openai.return_value = mock_client
+
+        # Create router and test
+        router = LLMRouter(kimi_api_key="test-kimi")
+        router.kimi_client_async = mock_client
+
+        async def run_test():
+            response = await router.acomplete(
+                messages=[{"role": "user", "content": "Install nginx"}],
+                task_type=TaskType.SYSTEM_OPERATION,
+            )
+            self.assertEqual(response.provider, LLMProvider.KIMI_K2)
+            self.assertEqual(response.content, "Async Kimi response")
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncAnthropic")
+    @patch("cortex.llm_router.AsyncOpenAI")
+    def test_complete_batch(self, mock_async_openai, mock_async_anthropic):
+        """Test batch completion with multiple requests."""
+        # Mock responses
+        mock_claude_response = Mock()
+        mock_claude_content = Mock()
+        mock_claude_content.text = "Response 1"
+        mock_claude_response.content = [mock_claude_content]
+        mock_claude_response.usage = Mock(input_tokens=50, output_tokens=25)
+        mock_claude_response.model_dump = lambda: {}
+
+        mock_kimi_response = Mock()
+        mock_kimi_message = Mock()
+        mock_kimi_message.content = "Response 2"
+        mock_kimi_choice = Mock()
+        mock_kimi_choice.message = mock_kimi_message
+        mock_kimi_response.choices = [mock_kimi_choice]
+        mock_kimi_response.usage = Mock(prompt_tokens=50, completion_tokens=25)
+        mock_kimi_response.model_dump = lambda: {}
+
+        # Setup async clients
+        mock_claude_client = AsyncMock()
+        mock_claude_client.messages.create = AsyncMock(return_value=mock_claude_response)
+        mock_async_anthropic.return_value = mock_claude_client
+
+        mock_kimi_client = AsyncMock()
+        mock_kimi_client.chat.completions.create = AsyncMock(return_value=mock_kimi_response)
+        mock_async_openai.return_value = mock_kimi_client
+
+        router = LLMRouter(claude_api_key="test-claude", kimi_api_key="test-kimi")
+        router.claude_client_async = mock_claude_client
+        router.kimi_client_async = mock_kimi_client
+
+        async def run_test():
+            requests = [
+                {
+                    "messages": [{"role": "user", "content": "Query 1"}],
+                    "task_type": TaskType.USER_CHAT,
+                },
+                {
+                    "messages": [{"role": "user", "content": "Query 2"}],
+                    "task_type": TaskType.SYSTEM_OPERATION,
+                },
+            ]
+
+            responses = await router.complete_batch(requests, max_concurrent=2)
+            self.assertEqual(len(responses), 2)
+            self.assertEqual(responses[0].provider, LLMProvider.CLAUDE)
+            self.assertEqual(responses[1].provider, LLMProvider.KIMI_K2)
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncAnthropic")
+    @patch("cortex.llm_router.AsyncOpenAI")
+    def test_query_multiple_packages(self, mock_async_openai, mock_async_anthropic):
+        """Test parallel package queries."""
+        # Mock responses
+        mock_response = Mock()
+        mock_content = Mock()
+        mock_content.text = "Package info for {pkg}"
+        mock_response.content = [mock_content]
+        mock_response.usage = Mock(input_tokens=50, output_tokens=25)
+        mock_response.model_dump = lambda: {}
+
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_async_anthropic.return_value = mock_client
+
+        router = LLMRouter(claude_api_key="test-claude")
+        router.claude_client_async = mock_client
+
+        async def run_test():
+            packages = ["nginx", "postgresql", "redis"]
+            responses = await query_multiple_packages(router, packages, max_concurrent=3)
+            self.assertEqual(len(responses), 3)
+            self.assertIn("nginx", responses)
+            self.assertIn("postgresql", responses)
+            self.assertIn("redis", responses)
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    def test_diagnose_errors_parallel(self, mock_async_openai):
+        """Test parallel error diagnosis."""
+        mock_response = Mock()
+        mock_message = Mock()
+        mock_message.content = "Diagnosis for error"
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=50, completion_tokens=25)
+        mock_response.model_dump = lambda: {}
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_async_openai.return_value = mock_client
+
+        router = LLMRouter(kimi_api_key="test-kimi")
+        router.kimi_client_async = mock_client
+
+        async def run_test():
+            errors = ["Error 1", "Error 2"]
+            diagnoses = await diagnose_errors_parallel(router, errors, max_concurrent=2)
+            self.assertEqual(len(diagnoses), 2)
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    def test_check_hardware_configs_parallel(self, mock_async_openai):
+        """Test parallel hardware config checks."""
+        mock_response = Mock()
+        mock_message = Mock()
+        mock_message.content = "Config for hardware"
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=50, completion_tokens=25)
+        mock_response.model_dump = lambda: {}
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_async_openai.return_value = mock_client
+
+        router = LLMRouter(kimi_api_key="test-kimi")
+        router.kimi_client_async = mock_client
+
+        async def run_test():
+            components = ["nvidia_gpu", "intel_cpu"]
+            configs = await check_hardware_configs_parallel(router, components, max_concurrent=2)
+            self.assertEqual(len(configs), 2)
+            self.assertIn("nvidia_gpu", configs)
+            self.assertIn("intel_cpu", configs)
+
+        asyncio.run(run_test())
+
+    def test_rate_limit_semaphore(self):
+        """Test rate limiting semaphore setup."""
+        router = LLMRouter()
+        router.set_rate_limit(max_concurrent=5)
+        self.assertIsNotNone(router._rate_limit_semaphore)
+        self.assertEqual(router._rate_limit_semaphore._value, 5)
+
+
 def run_tests():
     """Run all tests with detailed output."""
     loader = unittest.TestLoader()
@@ -503,6 +739,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestKimiIntegration))
     suite.addTests(loader.loadTestsFromTestCase(TestEndToEnd))
     suite.addTests(loader.loadTestsFromTestCase(TestConvenienceFunction))
+    suite.addTests(loader.loadTestsFromTestCase(TestParallelProcessing))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

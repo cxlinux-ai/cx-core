@@ -4,18 +4,45 @@
 This module provides a Python-based LLM integration layer that converts natural language commands into validated, executable bash commands for Linux systems.
 
 ## Features
-- **Multi-Provider Support**: Compatible with both OpenAI GPT-4 and Anthropic Claude APIs
+- **Multi-Provider Support**: Compatible with OpenAI GPT-4, Anthropic Claude, and Ollama (local LLMs)
 - **Natural Language Processing**: Converts user intent into executable system commands
 - **Command Validation**: Built-in safety mechanisms to prevent destructive operations
 - **Flexible API**: Simple interface with context-aware parsing capabilities
+- **Free Local Option**: Use Ollama for free, offline LLM inference
 - **Comprehensive Testing**: Unit test suite with 80%+ coverage
+
+## Supported Providers
+
+| Provider | Type | Cost | Privacy | Offline | Setup |
+|----------|------|------|---------|---------|-------|
+| **Ollama** | Local | Free | 100% Private | Yes | [Setup Guide](OLLAMA_SETUP.md) |
+| **Claude** | Cloud API | Paid | Data sent to cloud | No | API key required |
+| **OpenAI** | Cloud API | Paid | Data sent to cloud | No | API key required |
+| **Kimi K2** | Cloud API | Paid | Data sent to cloud | No | API key required |
 
 ## Architecture
 
 ### Core Components
-1. **CommandInterpreter**: Main class handling LLM interactions and command generation
-2. **APIProvider**: Enum for supported LLM providers (OpenAI, Claude)
-3. **Validation Layer**: Safety checks for dangerous command patterns
+1. **LLMRouter**: Intelligent routing between multiple LLM providers
+2. **CommandInterpreter**: Main class handling LLM interactions and command generation
+3. **LLMProvider**: Enum for supported LLM providers (Claude, OpenAI, Ollama, Kimi K2)
+4. **Validation Layer**: Safety checks for dangerous command patterns
+
+### Key Classes
+
+#### LLMRouter
+Routes requests to the most appropriate LLM based on task type:
+- User-facing tasks → Claude (better at natural language)
+- System operations → Kimi K2 (superior agentic capabilities)
+- Local inference → Ollama (free, private)
+
+#### LLMProvider Enum
+```python
+class LLMProvider(Enum):
+    CLAUDE = "claude"
+    KIMI_K2 = "kimi_k2"
+    OLLAMA = "ollama"
+```
 
 ### Key Methods
 - `parse(user_input, validate)`: Convert natural language to bash commands
@@ -26,7 +53,56 @@ This module provides a Python-based LLM integration layer that converts natural 
 
 ## Usage Examples
 
-### Basic Usage
+### Using Ollama (Free, Local)
+```python
+from cortex.llm_router import LLMRouter, LLMProvider
+
+# Initialize with Ollama
+router = LLMRouter(
+    ollama_base_url="http://localhost:11434",
+    ollama_model="llama3.2",
+    default_provider=LLMProvider.OLLAMA
+)
+
+# Generate response
+response = router.complete(
+    messages=[{"role": "user", "content": "install nginx"}],
+    task_type=TaskType.SYSTEM_OPERATION
+)
+
+print(response.content)
+# No API costs! All processing happens locally
+```
+
+### Basic Usage with Claude
+```python
+from cortex.llm_router import LLMRouter
+
+router = LLMRouter(api_key="your-api-key", provider="claude")
+commands = router.parse("install docker with nvidia support")
+# Returns: ["sudo apt update", "sudo apt install -y docker.io", "sudo apt install -y nvidia-docker2", "sudo systemctl restart docker"]
+```
+
+### Using Multiple Providers
+```python
+from cortex.llm_router import LLMRouter, LLMProvider
+
+# Initialize with multiple providers
+router = LLMRouter(
+    claude_api_key="your-claude-key",
+    ollama_base_url="http://localhost:11434",
+    ollama_model="llama3.2",
+    enable_fallback=True  # Fall back to Ollama if Claude fails
+)
+
+# Router automatically selects best provider for task
+response = router.complete(
+    messages=[{"role": "user", "content": "install nginx"}],
+    task_type=TaskType.SYSTEM_OPERATION
+)
+```
+
+### Basic Usage (Legacy)
 ```python
 from LLM import CommandInterpreter
 

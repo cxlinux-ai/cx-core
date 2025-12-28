@@ -4,6 +4,8 @@ Tests for Hardware Detection Module
 Issue: #253
 """
 
+import json
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
@@ -284,7 +286,7 @@ class TestHardwareDetector:
 
         assert result is False
 
-    @patch("os.statvfs")
+    @patch("os.statvfs", create=True)
     def test_get_disk_free_gb(self, mock_statvfs, detector):
         """Test disk free space detection."""
         mock_statvfs.return_value = MagicMock(f_frsize=4096, f_bavail=262144000)  # ~1TB free
@@ -317,7 +319,7 @@ class TestDetectionMethods:
     def detector(self):
         return HardwareDetector(use_cache=False)
 
-    @patch("os.uname")
+    @patch("os.uname", create=True)
     def test_detect_system(self, mock_uname, detector):
         """Test system info detection."""
         mock_uname.return_value = MagicMock(nodename="testhost", release="5.15.0-generic")
@@ -544,9 +546,7 @@ class TestEdgeCases:
     @patch("subprocess.run")
     def test_nvidia_smi_not_found(self, mock_run, detector):
         """Test handling missing nvidia-smi."""
-        # nvidia-smi not found
-        mock_run.side_effect = FileNotFoundError()
-
+        mock_run.side_effect = FileNotFoundError()  # nvidia-smi not found
         info = SystemInfo()
         info.has_nvidia_gpu = True
         detector._detect_nvidia_details(info)

@@ -11,9 +11,10 @@ from pathlib import Path
 
 from rich import box
 from rich.panel import Panel
+from rich.status import Status
 from rich.table import Table
 
-from cortex.branding import console
+from cortex.branding import console, cx_header
 from cortex.validators import validate_api_key
 
 
@@ -56,36 +57,45 @@ class SystemDoctor:
         Returns:
         int: Exit code reflecting system health status (0, 1, or 2)
         """
-        # Header
-        console.print()
-        console.print(
-            Panel.fit(
-                "[bold cyan]CORTEX SYSTEM CHECK[/bold cyan]", border_style="cyan", padding=(1, 4)
-            )
-        )
+        # Show banner once
+        # show_banner()
         console.print()
 
-        # Run all check groups
-        self._print_section("Python & Dependencies")
-        self._check_python()
-        self._check_dependencies()
+        # Option 2: Stylized CX header with SYSTEM HEALTH CHECK
+        console.print("[bold cyan]   ██████╗██╗  ██╗    SYSTEM HEALTH CHECK[/bold cyan]")
+        console.print("[bold cyan]  ██╔════╝╚██╗██╔╝   ─────────────────────[/bold cyan]")
+        console.print("[bold cyan]  ██║      ╚███╔╝          Running...[/bold cyan]")
+        console.print("[bold cyan]  ██║      ██╔██╗ [/bold cyan]")
+        console.print("[bold cyan]  ╚██████╗██╔╝ ██╗[/bold cyan]")
+        console.print("[bold cyan]   ╚═════╝╚═╝  ╚═╝[/bold cyan]")
+        console.print()
 
-        self._print_section("GPU & Acceleration")
-        self._check_gpu_driver()
-        self._check_cuda()
+        # Run checks with spinner
+        with console.status("[bold cyan][CX] Scanning system...[/bold cyan]", spinner="dots"):
+            # System Info (includes API provider and security features)
+            self._print_section("System Configuration")
+            self._check_api_keys()
+            self._check_security_tools()
 
-        self._print_section("AI & Services")
-        self._check_ollama()
-        self._check_api_keys()
+            # Python & Dependencies
+            self._print_section("Python & Dependencies")
+            self._check_python()
+            self._check_dependencies()
 
-        self._print_section("System Resources")
-        self._check_disk_space()
-        self._check_memory()
+            self._print_section("GPU & Acceleration")
+            self._check_gpu_driver()
+            self._check_cuda()
 
-        # Print summary
+            self._print_section("AI & Services")
+            self._check_ollama()
+
+            # System Resources
+            self._print_section("System Resources")
+            self._check_disk_space()
+            self._check_memory()
+
         self._print_summary()
 
-        # Return appropriate exit code
         if self.failures:
             return 2  # Critical failures
         elif self.warnings:
@@ -93,8 +103,8 @@ class SystemDoctor:
         return 0  # All good
 
     def _print_section(self, title: str) -> None:
-        """Print a section header for grouping checks."""
-        console.print(f"\n[bold cyan]{title}[/bold cyan]")
+        """Print a section header using CX branding."""
+        cx_header(title)
 
     def _print_check(
         self,
@@ -164,6 +174,7 @@ class SystemDoctor:
         name_overrides = {
             "pyyaml": "yaml",
             "typing-extensions": "typing_extensions",
+            "python-dotenv": "dotenv",
         }
 
         try:
@@ -171,8 +182,10 @@ class SystemDoctor:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#"):
-                        raw_name = line.split("==")[0].split(">")[0].split("<")[0]
-                        pkg_name = name_overrides.get(raw_name, raw_name)
+                        raw_name = line.split("==")[0].split(">")[0].split("<")[0].strip()
+                        pkg_name = name_overrides.get(
+                            raw_name.lower(), raw_name.lower().replace("-", "_")
+                        )
                         try:
                             __import__(pkg_name)
                         except ImportError:
@@ -229,7 +242,7 @@ class SystemDoctor:
         # No GPU found - this is a warning, not a failure
         self._print_check(
             "WARN",
-            "No GPU detected (CPU-only mode supported, local inference will be slower)",  # ← NEW
+            "No GPU detected (CPU-only mode supported, local inference will be slower)",
             "Optional: Install NVIDIA/AMD drivers for acceleration",
         )
 
@@ -312,10 +325,27 @@ class SystemDoctor:
         if is_valid:
             self._print_check("PASS", f"{provider} API key configured")
         else:
+            # Check for Ollama
+            ollama_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+            if ollama_provider == "ollama":
+                self._print_check("PASS", "API Provider: Ollama (local)")
+            else:
+                self._print_check(
+                    "WARN",
+                    "No API keys configured (required for cloud models)",
+                    "Configure API key: export ANTHROPIC_API_KEY=sk-... or run 'cortex wizard'",
+                )
+
+    def _check_security_tools(self) -> None:
+        """Check security features like Firejail availability."""
+        firejail_path = shutil.which("firejail")
+        if firejail_path:
+            self._print_check("PASS", f"Firejail available at {firejail_path}")
+        else:
             self._print_check(
                 "WARN",
-                "No API keys configured (required for cloud models)",
-                "Configure API key: export ANTHROPIC_API_KEY=sk-... " "or run 'cortex wizard'",
+                "Firejail not installed (sandboxing unavailable)",
+                "Install: sudo apt-get install firejail",
             )
 
     def _check_disk_space(self) -> None:
