@@ -13,6 +13,7 @@ Usage:
 """
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -51,7 +52,7 @@ def get_available_ollama_model() -> str | None:
 
 def is_ollama_installed() -> bool:
     """Check if Ollama is installed."""
-    return subprocess.run(["which", "ollama"], capture_output=True).returncode == 0
+    return shutil.which("ollama") is not None
 
 
 def is_ollama_running() -> bool:
@@ -91,8 +92,7 @@ pytestmark = [
 def check_ollama_installed():
     """Check if Ollama is installed."""
     print("1. Checking Ollama installation...")
-    result = subprocess.run(["which", "ollama"], capture_output=True)
-    if result.returncode == 0:
+    if _ollama_installed():
         print("   ✓ Ollama is installed")
         return True
     else:

@@ -39,7 +39,7 @@ class TestConflictResolutionUI(unittest.TestCase):
         self.config_file = Path(self.temp_dir) / "test_preferences.yaml"
 
         # Mock preferences manager to use temp config
-        self.cli.prefs_manager = PreferencesManager(config_path=self.config_file)
+        self.cli._prefs_manager = PreferencesManager(config_path=self.config_file)
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -134,7 +134,8 @@ class TestConflictPreferenceSaving(unittest.TestCase):
         self.config_file = Path(self.temp_dir) / "test_preferences.yaml"
         self.prefs_manager = PreferencesManager(config_path=self.config_file)
         self.cli = CortexCLI()
-        self.cli.prefs_manager = self.prefs_manager
+        # Use the internal attribute that _get_prefs_manager() checks
+        self.cli._prefs_manager = self.prefs_manager
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -217,7 +218,7 @@ class TestConfigurationManagement(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.config_file = Path(self.temp_dir) / "test_preferences.yaml"
         self.cli = CortexCLI()
-        self.cli.prefs_manager = PreferencesManager(config_path=self.config_file)
+        self.cli._prefs_manager = PreferencesManager(config_path=self.config_file)
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -228,8 +229,8 @@ class TestConfigurationManagement(unittest.TestCase):
     def test_config_list_command(self, mock_stdout):
         """Test listing all configuration settings."""
         # Set some preferences
-        self.cli.prefs_manager.set("ai.model", "gpt-4")
-        self.cli.prefs_manager.set("verbosity", "verbose")
+        self.cli._prefs_manager.set("ai.model", "gpt-4")
+        self.cli._prefs_manager.set("verbosity", "verbose")
 
         # Run list command
         result = self.cli.config("list")
@@ -246,7 +247,7 @@ class TestConfigurationManagement(unittest.TestCase):
     def test_config_get_command(self, mock_stdout):
         """Test getting specific configuration value."""
         # Set a preference
-        self.cli.prefs_manager.set("ai.model", "gpt-4")
+        self.cli._prefs_manager.set("ai.model", "gpt-4")
 
         # Run get command
         result = self.cli.config("get", "ai.model")
@@ -268,7 +269,7 @@ class TestConfigurationManagement(unittest.TestCase):
         self.assertEqual(result, 0)
 
         # Verify value was set
-        value = self.cli.prefs_manager.get("ai.model")
+        value = self.cli._prefs_manager.get("ai.model")
         self.assertEqual(value, "gpt-4")
 
     @patch("builtins.input", return_value="y")
@@ -276,8 +277,8 @@ class TestConfigurationManagement(unittest.TestCase):
     def test_config_reset_command(self, mock_stdout, mock_input):
         """Test resetting configuration to defaults."""
         # Set some preferences
-        self.cli.prefs_manager.set("ai.model", "custom-model")
-        self.cli.prefs_manager.set("verbosity", "debug")
+        self.cli._prefs_manager.set("ai.model", "custom-model")
+        self.cli._prefs_manager.set("verbosity", "debug")
 
         # Run reset command
         result = self.cli.config("reset")
@@ -286,17 +287,17 @@ class TestConfigurationManagement(unittest.TestCase):
         self.assertEqual(result, 0)
 
         # Verify preferences were reset
-        self.assertEqual(self.cli.prefs_manager.get("ai.model"), "claude-sonnet-4")
+        self.assertEqual(self.cli._prefs_manager.get("ai.model"), "claude-sonnet-4")
 
     def test_config_export_import(self):
         """Test exporting and importing configuration."""
         export_file = Path(self.temp_dir) / "export.json"
 
         # Set preferences
-        self.cli.prefs_manager.set("ai.model", "gpt-4")
-        self.cli.prefs_manager.set("verbosity", "verbose")
+        self.cli._prefs_manager.set("ai.model", "gpt-4")
+        self.cli._prefs_manager.set("verbosity", "verbose")
         resolutions = {"apache2:nginx": "nginx"}
-        self.cli.prefs_manager.set("conflicts.saved_resolutions", resolutions)
+        self.cli._prefs_manager.set("conflicts.saved_resolutions", resolutions)
 
         # Export
         result = self.cli.config("export", str(export_file))
@@ -306,16 +307,16 @@ class TestConfigurationManagement(unittest.TestCase):
         self.assertTrue(export_file.exists())
 
         # Reset preferences
-        self.cli.prefs_manager.reset()
+        self.cli._prefs_manager.reset()
 
         # Import
         result = self.cli.config("import", str(export_file))
         self.assertEqual(result, 0)
 
         # Verify preferences were restored
-        self.assertEqual(self.cli.prefs_manager.get("ai.model"), "gpt-4")
-        self.assertEqual(self.cli.prefs_manager.get("verbosity"), "verbose")
-        saved = self.cli.prefs_manager.get("conflicts.saved_resolutions")
+        self.assertEqual(self.cli._prefs_manager.get("ai.model"), "gpt-4")
+        self.assertEqual(self.cli._prefs_manager.get("verbosity"), "verbose")
+        saved = self.cli._prefs_manager.get("conflicts.saved_resolutions")
         self.assertEqual(saved, resolutions)
 
 
@@ -327,7 +328,7 @@ class TestConflictDetectionWorkflow(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.config_file = Path(self.temp_dir) / "test_preferences.yaml"
         self.cli = CortexCLI()
-        self.cli.prefs_manager = PreferencesManager(config_path=self.config_file)
+        self.cli._prefs_manager = PreferencesManager(config_path=self.config_file)
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -359,11 +360,11 @@ class TestConflictDetectionWorkflow(unittest.TestCase):
         """Test that saved preferences bypass interactive UI."""
         # Save a conflict preference (using min:max format)
         conflict_key = "mariadb-server:mysql-server"
-        self.cli.prefs_manager.set("conflicts.saved_resolutions", {conflict_key: "mysql-server"})
-        self.cli.prefs_manager.save()
+        self.cli._prefs_manager.set("conflicts.saved_resolutions", {conflict_key: "mysql-server"})
+        self.cli._prefs_manager.save()
 
         # Verify preference exists
-        saved = self.cli.prefs_manager.get("conflicts.saved_resolutions")
+        saved = self.cli._prefs_manager.get("conflicts.saved_resolutions")
         self.assertIn(conflict_key, saved)
         self.assertEqual(saved[conflict_key], "mysql-server")
 
