@@ -400,12 +400,9 @@ class CortexCLI:
 
                 # Smart suggestions (LLM optional, fallback safe)
                 try:
-                    suggestions = suggest_alternatives(
-                        software,
-                        llm_complete=lambda prompt: interpreter.complete(prompt),
-                    )
-                except Exception:
                     suggestions = suggest_alternatives(software)
+                except Exception:
+                    suggestions = []
 
                 if suggestions:
                     cx_print("💡 Did you mean:", "info")
