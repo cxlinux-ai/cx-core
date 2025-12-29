@@ -8,8 +8,6 @@ import json
 import os
 import re
 import sys
-from typing import Optional
-
 import requests
 
 # Configuration
@@ -77,7 +75,7 @@ def extract_co_authors(message: str) -> list[tuple[str, str]]:
 def load_cla_signers() -> dict:
     """Load CLA signers from JSON file."""
     try:
-        with open(CLA_FILE, "r") as f:
+        with open(CLA_FILE) as f:
             return json.load(f)
     except FileNotFoundError:
         print(f"Warning: {CLA_FILE} not found, creating empty signer list")
@@ -88,10 +86,10 @@ def load_cla_signers() -> dict:
 
 
 def is_signer(
-    username: Optional[str],
+    username: str | None,
     email: str,
     signers: dict
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Check if a user has signed the CLA.
     Returns (is_signed, signing_entity).
