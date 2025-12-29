@@ -463,7 +463,7 @@ if __name__ == "__main__":
     else:
         print(f"✅ Installed version: {analysis.installed_version}")
 
-    print(f"\n📊 Impact Summary")
+    print("\n📊 Impact Summary")
     print("-" * 70)
     print(f"Severity: {analysis.severity.upper()}")
     print(f"Safe to remove: {'✅ Yes' if analysis.safe_to_remove else '❌ No'}")
@@ -477,24 +477,24 @@ if __name__ == "__main__":
             print(f"   ... and {len(analysis.directly_depends) - 10} more")
 
     if analysis.indirectly_depends:
-        print(f"\n🔗 Indirectly depends (through dependencies):")
+        print("\n🔗 Indirectly depends (through dependencies):")
         for dep in analysis.indirectly_depends[:5]:
             print(f"   - {dep.name}")
         if len(analysis.indirectly_depends) > 5:
             print(f"   ... and {len(analysis.indirectly_depends) - 5} more")
 
     if analysis.affected_services:
-        print(f"\n🔧 Services that may be affected:")
+        print("\n🔧 Services that may be affected:")
         for service in analysis.affected_services:
             critical_str = " ⚠️ CRITICAL" if service.critical else ""
             print(f"   - {service.service_name} ({service.status}){critical_str}")
 
     if analysis.orphaned_packages:
-        print(f"\n🗑️  Orphaned packages (would have no dependencies):")
+        print("\n🗑️  Orphaned packages (would have no dependencies):")
         for pkg in analysis.orphaned_packages[:5]:
             print(f"   - {pkg}")
 
-    print(f"\n💡 Recommendations")
+    print("\n💡 Recommendations")
     print("-" * 70)
     for i, rec in enumerate(analysis.recommendations, 1):
         print(f"   {rec}")

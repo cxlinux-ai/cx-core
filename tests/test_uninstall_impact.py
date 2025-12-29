@@ -128,7 +128,7 @@ class TestUninstallImpactAnalyzerCommands(unittest.TestCase):
             returncode=1, stdout="", stderr="error"
         )
 
-        success, stdout, stderr = self.analyzer._run_command(["false"])
+        success, _, stderr = self.analyzer._run_command(["false"])
 
         self.assertFalse(success)
         self.assertEqual(stderr, "error")
@@ -140,7 +140,7 @@ class TestUninstallImpactAnalyzerCommands(unittest.TestCase):
 
         mock_run.side_effect = subprocess.TimeoutExpired("cmd", timeout=30)
 
-        success, stdout, stderr = self.analyzer._run_command(["sleep", "100"])
+        success, _, stderr = self.analyzer._run_command(["sleep", "100"])
 
         self.assertFalse(success)
         self.assertIn("timed out", stderr.lower())
