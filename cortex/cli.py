@@ -471,7 +471,7 @@ class CortexCLI:
                             print(f"  Error: {error_msg}", file=sys.stderr)
                         if install_id:
                             print(f"\n📝 Installation recorded (ID: {install_id})")
-                            print(f"   View details: cortex history show {install_id}")
+                            print(f"   View details: cortex history {install_id}")
                         return 1
 
                     except (ValueError, OSError) as e:
@@ -530,7 +530,7 @@ class CortexCLI:
                         print(f"  Error: {result.error_message}", file=sys.stderr)
                     if install_id:
                         print(f"\n📝 Installation recorded (ID: {install_id})")
-                        print(f"   View details: cortex history show {install_id}")
+                        print(f"   View details: cortex history {install_id}")
                     return 1
             else:
                 print("\nTo execute these commands, run with --execute flag")
