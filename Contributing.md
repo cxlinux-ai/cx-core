@@ -5,6 +5,7 @@ Thank you for your interest in contributing to Cortex Linux! We're building the 
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [Contributor License Agreement (CLA)](#contributor-license-agreement-cla)
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [How to Contribute](#how-to-contribute)
@@ -26,6 +27,30 @@ We are committed to providing a welcoming and inclusive environment. Please:
 - Accept constructive criticism gracefully
 - Focus on what's best for the community
 - Show empathy towards other community members
+
+---
+
+## Contributor License Agreement (CLA)
+
+**All contributors must sign our CLA before their first PR can be merged.**
+
+### Why a CLA?
+
+The CLA protects you, the project, and all users by clarifying intellectual property rights:
+- You have the right to contribute the code
+- AI Venture Holdings LLC can distribute Cortex Linux
+- Your rights to your own code are preserved
+
+### How to Sign (10 seconds)
+
+1. Open a Pull Request
+2. The CLA Assistant bot will comment on your PR
+3. Reply with: `I have read the CLA Document and I hereby sign the CLA`
+4. Done! All future PRs will pass automatically.
+
+**[Read the full CLA](CLA.md)**
+
+**Corporate contributors:** If you're contributing on behalf of your employer, have an authorized representative complete the [Corporate CLA](CLA-CORPORATE.md) and email it to legal@aiventureholdings.com.
 
 ---
 
@@ -136,6 +161,7 @@ pip install pytest pytest-cov pytest-mock black pylint mypy bandit
 
 ### Before Submitting
 
+- [ ] CLA signed (bot will prompt you on first PR)
 - [ ] Code follows style guide
 - [ ] All tests pass (`pytest tests/ -v`)
 - [ ] New code has tests (aim for >80% coverage)
@@ -169,11 +195,12 @@ How did you test these changes?
 
 ### Review Process
 
-1. **Automated checks** run on PR creation
-2. **Maintainer review** within 48-72 hours
-3. **Address feedback** if changes requested
-4. **Approval** from at least one maintainer
-5. **Merge** by maintainer
+1. **CLA verification** - Bot checks for signature
+2. **Automated checks** run on PR creation
+3. **Maintainer review** within 48-72 hours
+4. **Address feedback** if changes requested
+5. **Approval** from at least one maintainer
+6. **Merge** by maintainer
 
 ---
 
