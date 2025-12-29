@@ -64,6 +64,7 @@ cortex install "tools for video compression"
 | Feature | Description |
 |---------|-------------|
 | **Natural Language** | Describe what you need in plain English |
+| **Smart Uninstall** | Analyze impact before removal - see dependencies, services, and orphaned packages |
 | **Dry-Run Default** | Preview all commands before execution |
 | **Sandboxed Execution** | Commands run in Firejail isolation |
 | **Full Rollback** | Undo any installation with `cortex rollback` |
@@ -131,6 +132,10 @@ cortex install nginx --execute
 cortex install "web server for static sites" --dry-run
 cortex install "image editing software like photoshop" --execute
 
+# Safely uninstall with impact analysis
+cortex remove nginx --dry-run
+cortex remove nginx --execute
+
 # View installation history
 cortex history
 
@@ -145,6 +150,9 @@ cortex rollback <installation-id>
 | `cortex install <query>` | Install packages matching natural language query |
 | `cortex install <query> --dry-run` | Preview installation plan (default) |
 | `cortex install <query> --execute` | Execute the installation |
+| `cortex remove <package>` | Remove package with impact analysis |
+| `cortex remove <package> --dry-run` | Preview removal impact (default) |
+| `cortex remove <package> --execute` | Execute the removal |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
 | `cortex --version` | Show version information |
@@ -213,18 +221,19 @@ Cortex stores configuration in `~/.cortex/`:
 
 ```
 cortex/
-├── cortex/                 # Main package
-│   ├── cli.py              # Command-line interface
-│   ├── coordinator.py      # Installation orchestration
-│   ├── llm_router.py       # Multi-LLM routing
-│   ├── packages.py         # Package manager wrapper
-│   ├── hardware_detection.py
-│   ├── installation_history.py
-│   └── utils/              # Utility modules
-├── tests/                  # Test suite
-├── docs/                   # Documentation
-├── examples/               # Example scripts
-└── scripts/                # Utility scripts
+├── cortex/                        # Main package
+│   ├── cli.py                     # Command-line interface
+│   ├── coordinator.py             # Installation orchestration
+│   ├── llm_router.py              # Multi-LLM routing
+│   ├── packages.py                # Package manager wrapper
+│   ├── uninstall_impact.py        # Smart uninstall impact analysis
+│   ├── hardware_detection.py      # Hardware detection
+│   ├── installation_history.py    # Installation history tracking
+│   └── utils/                     # Utility modules
+├── tests/                         # Test suite (36+ tests)
+├── docs/                          # Documentation
+├── examples/                      # Example scripts
+└── scripts/                        # Utility scripts
 ```
 
 ---
@@ -322,6 +331,8 @@ pip install -e .
 - [x] Hardware detection (GPU/CPU/Memory)
 - [x] Firejail sandboxing
 - [x] Dry-run preview mode
+- [x] **Smart uninstall with impact analysis** (reverse dependencies, service impact, orphan detection)
+- [x] Comprehensive test coverage (36+ tests, 92%+ coverage)
 
 ### In Progress
 - [ ] Conflict resolution UI
