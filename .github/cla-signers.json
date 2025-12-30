@@ -18,9 +18,18 @@
       "name": "Sujay Dongre",
       "github_username": "sujay-d07",
       "emails": [
-        "sujaydongre07@gmail.com"        
+        "sujaydongre07@gmail.com"
       ],
       "signed_date": "2024-12-29",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Ansh Grover",
+      "github_username": "Anshgrover23",
+      "emails": [
+        "anshgrover938@gmail.com"
+      ],
+      "signed_date": "2025-12-30",
       "cla_version": "1.0"
     }
   ],
