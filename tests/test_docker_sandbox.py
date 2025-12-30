@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -31,7 +32,11 @@ from cortex.sandbox.docker_sandbox import (
 )
 
 
-def create_sandbox_metadata(name="test-env", packages=None, state="running"):
+def create_sandbox_metadata(
+    name: str = "test-env",
+    packages: list[str] | None = None,
+    state: str = "running",
+) -> dict[str, Any]:
     """Create a sandbox metadata dictionary."""
     return {
         "name": name,
@@ -43,7 +48,7 @@ def create_sandbox_metadata(name="test-env", packages=None, state="running"):
     }
 
 
-def mock_docker_available():
+def mock_docker_available() -> tuple[str, Mock]:
     """Return mocks configured for Docker available."""
     return "/usr/bin/docker", Mock(returncode=0, stdout="Docker info", stderr="")
 
@@ -51,24 +56,29 @@ def mock_docker_available():
 class SandboxTestBase(unittest.TestCase):
     """Base class for sandbox tests with common setup/teardown."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """Set up temp directory for sandbox metadata."""
         self.temp_dir = tempfile.mkdtemp()
         self.data_dir = Path(self.temp_dir) / "sandboxes"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         """Clean up temp directory."""
         shutil_module.rmtree(self.temp_dir, ignore_errors=True)
 
-    def write_metadata(self, name="test-env", packages=None, state="running"):
+    def write_metadata(
+        self,
+        name: str = "test-env",
+        packages: list[str] | None = None,
+        state: str = "running",
+    ) -> dict[str, Any]:
         """Helper to write sandbox metadata to disk."""
         metadata = create_sandbox_metadata(name, packages, state)
         with open(self.data_dir / f"{name}.json", "w") as f:
             json.dump(metadata, f)
         return metadata
 
-    def create_sandbox_instance(self):
+    def create_sandbox_instance(self) -> DockerSandbox:
         """Create a DockerSandbox instance with test data directory."""
         return DockerSandbox(data_dir=self.data_dir)
 
@@ -77,14 +87,14 @@ class TestDockerDetection(unittest.TestCase):
     """Tests for Docker availability detection."""
 
     @patch("shutil.which")
-    def test_docker_not_installed(self, mock_which):
+    def test_docker_not_installed(self, mock_which: Mock) -> None:
         """Test detection when Docker is not installed."""
         mock_which.return_value = None
         self.assertFalse(DockerSandbox().check_docker())
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_docker_installed_but_not_running(self, mock_run, mock_which):
+    def test_docker_installed_but_not_running(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test detection when Docker is installed but daemon not running."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.side_effect = [
@@ -95,13 +105,13 @@ class TestDockerDetection(unittest.TestCase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_docker_available(self, mock_run, mock_which):
+    def test_docker_available(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test detection when Docker is fully available."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
         self.assertTrue(DockerSandbox().check_docker())
 
     @patch("shutil.which")
-    def test_require_docker_raises_when_not_found(self, mock_which):
+    def test_require_docker_raises_when_not_found(self, mock_which: Mock) -> None:
         """Test require_docker raises DockerNotFoundError when not installed."""
         mock_which.return_value = None
         with self.assertRaises(DockerNotFoundError) as ctx:
@@ -110,7 +120,9 @@ class TestDockerDetection(unittest.TestCase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_require_docker_raises_when_daemon_not_running(self, mock_run, mock_which):
+    def test_require_docker_raises_when_daemon_not_running(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """Test require_docker raises when daemon not running."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = Mock(returncode=1, stderr="Cannot connect")
@@ -124,7 +136,7 @@ class TestSandboxCreate(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_create_sandbox_success(self, mock_run, mock_which):
+    def test_create_sandbox_success(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test successful sandbox creation."""
         mock_which.return_value, _ = mock_docker_available()
         mock_run.return_value = Mock(returncode=0, stdout="abc123def456", stderr="")
@@ -137,7 +149,7 @@ class TestSandboxCreate(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_create_sandbox_already_exists(self, mock_run, mock_which):
+    def test_create_sandbox_already_exists(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test error when sandbox already exists."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -149,7 +161,7 @@ class TestSandboxCreate(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_create_sandbox_with_custom_image(self, mock_run, mock_which):
+    def test_create_sandbox_with_custom_image(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test sandbox creation with custom image."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -162,13 +174,13 @@ class TestSandboxCreate(SandboxTestBase):
 class TestSandboxInstall(SandboxTestBase):
     """Tests for package installation in sandbox."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.write_metadata("test-env", packages=[])
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_install_package_success(self, mock_run, mock_which):
+    def test_install_package_success(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test successful package installation."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -179,7 +191,7 @@ class TestSandboxInstall(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_install_package_failure(self, mock_run, mock_which):
+    def test_install_package_failure(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test package installation failure."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.side_effect = [
@@ -194,7 +206,7 @@ class TestSandboxInstall(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_install_sandbox_not_found(self, mock_run, mock_which):
+    def test_install_sandbox_not_found(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test installation in non-existent sandbox."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -205,13 +217,13 @@ class TestSandboxInstall(SandboxTestBase):
 class TestSandboxTest(SandboxTestBase):
     """Tests for sandbox testing functionality."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.write_metadata("test-env", packages=["nginx"])
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_test_all_pass(self, mock_run, mock_which):
+    def test_test_all_pass(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test when all tests pass."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.side_effect = [
@@ -229,7 +241,7 @@ class TestSandboxTest(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_test_no_packages(self, mock_run, mock_which):
+    def test_test_no_packages(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test when no packages installed."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
         self.write_metadata("empty-env", packages=[])
@@ -248,19 +260,19 @@ class TestSandboxTest(SandboxTestBase):
 class TestSandboxPromote(SandboxTestBase):
     """Tests for package promotion to main system."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.write_metadata("test-env", packages=["nginx"])
 
     @patch("subprocess.run")
-    def test_promote_dry_run(self, mock_run):
+    def test_promote_dry_run(self, mock_run: Mock) -> None:
         """Test promotion in dry-run mode."""
         result = self.create_sandbox_instance().promote("test-env", "nginx", dry_run=True)
 
         self.assertTrue(result.success)
         self.assertIn("Would run", result.message)
 
-    def test_promote_package_not_in_sandbox(self):
+    def test_promote_package_not_in_sandbox(self) -> None:
         """Test promotion of package not installed in sandbox."""
         result = self.create_sandbox_instance().promote("test-env", "redis", dry_run=False)
 
@@ -268,7 +280,7 @@ class TestSandboxPromote(SandboxTestBase):
         self.assertIn("not installed in sandbox", result.message)
 
     @patch("subprocess.run")
-    def test_promote_success(self, mock_run):
+    def test_promote_success(self, mock_run: Mock) -> None:
         """Test successful promotion."""
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
@@ -282,13 +294,13 @@ class TestSandboxPromote(SandboxTestBase):
 class TestSandboxCleanup(SandboxTestBase):
     """Tests for sandbox cleanup."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.write_metadata("test-env")
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_cleanup_success(self, mock_run, mock_which):
+    def test_cleanup_success(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test successful cleanup."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -299,7 +311,7 @@ class TestSandboxCleanup(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_cleanup_force(self, mock_run, mock_which):
+    def test_cleanup_force(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test force cleanup."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -311,11 +323,11 @@ class TestSandboxCleanup(SandboxTestBase):
 class TestSandboxList(SandboxTestBase):
     """Tests for listing sandboxes."""
 
-    def test_list_empty(self):
+    def test_list_empty(self) -> None:
         """Test listing when no sandboxes exist."""
         self.assertEqual(len(self.create_sandbox_instance().list_sandboxes()), 0)
 
-    def test_list_multiple(self):
+    def test_list_multiple(self) -> None:
         """Test listing multiple sandboxes."""
         for name in ["env1", "env2", "env3"]:
             self.write_metadata(name)
@@ -329,13 +341,13 @@ class TestSandboxList(SandboxTestBase):
 class TestSandboxExec(SandboxTestBase):
     """Tests for command execution in sandbox."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.write_metadata("test-env")
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_exec_success(self, mock_run, mock_which):
+    def test_exec_success(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test successful command execution."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = Mock(returncode=0, stdout="Hello\n", stderr="")
@@ -347,7 +359,7 @@ class TestSandboxExec(SandboxTestBase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_exec_blocked_command(self, mock_run, mock_which):
+    def test_exec_blocked_command(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test blocked command is rejected."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
 
@@ -362,12 +374,12 @@ class TestSandboxExec(SandboxTestBase):
 class TestSandboxCompatibility(unittest.TestCase):
     """Tests for command compatibility checking."""
 
-    def test_allowed_commands(self):
+    def test_allowed_commands(self) -> None:
         """Test that normal commands are allowed."""
         self.assertTrue(DockerSandbox.is_sandbox_compatible("apt install nginx")[0])
         self.assertTrue(DockerSandbox.is_sandbox_compatible("nginx --version")[0])
 
-    def test_blocked_commands(self):
+    def test_blocked_commands(self) -> None:
         """Test that blocked commands are rejected."""
         is_compat, reason = DockerSandbox.is_sandbox_compatible("systemctl start nginx")
         self.assertFalse(is_compat)
@@ -380,7 +392,7 @@ class TestSandboxCompatibility(unittest.TestCase):
 class TestSandboxInfo(unittest.TestCase):
     """Tests for SandboxInfo data class."""
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         """Test conversion to dictionary."""
         info = SandboxInfo(
             name="test",
@@ -396,7 +408,7 @@ class TestSandboxInfo(unittest.TestCase):
         self.assertEqual(data["state"], "running")
         self.assertEqual(data["packages"], ["nginx", "redis"])
 
-    def test_from_dict(self):
+    def test_from_dict(self) -> None:
         """Test creation from dictionary."""
         info = SandboxInfo.from_dict(create_sandbox_metadata("test", ["nginx"]))
 
@@ -410,13 +422,13 @@ class TestDockerAvailableFunction(unittest.TestCase):
 
     @patch("shutil.which")
     @patch("subprocess.run")
-    def test_docker_available_true(self, mock_run, mock_which):
+    def test_docker_available_true(self, mock_run: Mock, mock_which: Mock) -> None:
         """Test when Docker is available."""
         mock_which.return_value, mock_run.return_value = mock_docker_available()
         self.assertTrue(docker_available())
 
     @patch("shutil.which")
-    def test_docker_available_false(self, mock_which):
+    def test_docker_available_false(self, mock_which: Mock) -> None:
         """Test when Docker is not available."""
         mock_which.return_value = None
         self.assertFalse(docker_available())
