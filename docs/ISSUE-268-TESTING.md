@@ -1,6 +1,6 @@
-# Issue 268 — End-user testing guide (semantic cache + offline)
+# Issue 268 — End-user testing guide (semantic cache)
 
-This guide covers only how to test the feature added for issue #268.
+This guide covers how to test the semantic cache feature added for issue #268.
 
 ## Prereqs
 
@@ -40,19 +40,7 @@ Expected:
 - `Misses` is >= 0
 - `Saved calls (approx)` increases when cached answers are used
 
-## Test 3: Offline mode (cached-only)
-
-Run the same request with offline mode enabled.
-
-```bash
-cortex --offline install nginx --dry-run
-```
-
-Expected:
-- If the request was warmed in Test 1, it should still print commands.
-- If the request was never cached, it should fail with an offline-cache-miss message.
-
-## Test 4: Verify cache hit (repeat request)
+## Test 3: Verify cache hit (repeat request)
 
 Run the original request again to verify cache is working:
 
@@ -64,6 +52,19 @@ cortex cache stats
 Expected:
 - The second run should be faster (no API call)
 - `cache stats` should show `Hits: 1`
+
+## Test 4: True offline mode with Ollama
+
+For completely offline operation, use a local LLM:
+
+```bash
+export CORTEX_PROVIDER=ollama
+cortex install nginx --dry-run
+```
+
+Expected:
+- Works without internet connection
+- Uses local Ollama model
 
 ## Notes
 

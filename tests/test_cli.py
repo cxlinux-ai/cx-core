@@ -60,8 +60,13 @@ class TestCortexCLI(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_install_no_api_key(self):
-        result = self.cli.install("docker")
-        self.assertEqual(result, 1)
+        # When no API key is set, the CLI falls back to Ollama.
+        # If Ollama is running, this should succeed. If not, it should fail.
+        # We'll mock Ollama to be unavailable to test the failure case.
+        with patch("cortex.llm.interpreter.CommandInterpreter.parse") as mock_parse:
+            mock_parse.side_effect = RuntimeError("Ollama not available")
+            result = self.cli.install("docker")
+            self.assertEqual(result, 1)
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-openai-key-123"}, clear=True)
     @patch("cortex.cli.CommandInterpreter")

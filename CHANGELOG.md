@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized Python version requirement to 3.10+
 - Improved documentation structure
 
+### Removed
+- **BREAKING**: Removed `--offline` flag (redundant with semantic cache and `CORTEX_PROVIDER=ollama`)
+  - The semantic cache automatically provides offline capability for cached requests
+  - For true offline operation, use `export CORTEX_PROVIDER=ollama` instead
+
 ### Fixed
 - (Pending) Shell injection vulnerability in coordinator.py
 - (Pending) CI/CD pipeline test directory path

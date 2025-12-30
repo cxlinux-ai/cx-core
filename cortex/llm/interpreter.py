@@ -27,7 +27,6 @@ class CommandInterpreter:
         api_key: str,
         provider: str = "openai",
         model: str | None = None,
-        offline: bool = False,
         cache: Optional["SemanticCache"] = None,
     ):
         """Initialize the command interpreter.
@@ -36,12 +35,10 @@ class CommandInterpreter:
             api_key: API key for the LLM provider
             provider: Provider name ("openai", "claude", or "ollama")
             model: Optional model name override
-            offline: If True, only use cached responses
             cache: Optional SemanticCache instance for response caching
         """
         self.api_key = api_key
         self.provider = APIProvider(provider.lower())
-        self.offline = offline
 
         if cache is None:
             try:
@@ -350,9 +347,6 @@ Respond with ONLY this JSON format (no explanations):
             )
             if cached is not None:
                 return cached
-
-        if self.offline:
-            raise RuntimeError("Offline mode: no cached response available for this request")
 
         if self.provider == APIProvider.OPENAI:
             commands = self._call_openai(user_input)

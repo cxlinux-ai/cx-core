@@ -24,7 +24,6 @@ This document provides a comprehensive reference for all commands available in t
 ```bash
 cortex --version, -V    # Show version
 cortex --verbose, -v    # Show detailed output
-cortex --offline        # Use cached responses only (no network calls)
 cortex --help, -h       # Show help message
 ```
 

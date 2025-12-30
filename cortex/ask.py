@@ -140,7 +140,6 @@ class AskHandler:
         api_key: str,
         provider: str = "claude",
         model: str | None = None,
-        offline: bool = False,
     ):
         """Initialize the ask handler.
 
@@ -148,11 +147,9 @@ class AskHandler:
             api_key: API key for the LLM provider
             provider: Provider name ("openai", "claude", or "ollama")
             model: Optional model name override
-            offline: If True, only use cached responses
         """
         self.api_key = api_key
         self.provider = provider.lower()
-        self.offline = offline
         self.model = model or self._default_model()
         self.info_gatherer = SystemInfoGatherer()
 
@@ -312,9 +309,6 @@ Rules:
             )
             if cached is not None and len(cached) > 0:
                 return cached[0]
-
-        if self.offline:
-            raise RuntimeError("Offline mode: no cached response available for this question")
 
         # Call LLM
         try:

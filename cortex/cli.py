@@ -8,8 +8,14 @@ from typing import Any
 
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
-from cortex.coordinator import InstallationCoordinator, StepStatus
+from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
 from cortex.demo import run_demo
+from cortex.dependency_importer import (
+    DependencyImporter,
+    PackageEcosystem,
+    ParseResult,
+    format_package_list,
+)
 from cortex.env_manager import EnvironmentManager, get_env_manager
 from cortex.first_run_wizard import FirstRunWizard
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
@@ -31,7 +37,6 @@ class CortexCLI:
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.verbose = verbose
-        self.offline = False
 
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
@@ -309,7 +314,6 @@ class CortexCLI:
             handler = AskHandler(
                 api_key=api_key,
                 provider=provider,
-                offline=self.offline,
             )
             answer = handler.ask(question)
             console.print(answer)
@@ -379,6 +383,7 @@ class CortexCLI:
                 self._print_status("🧠", "Understanding request...")
 
                 self._print_status("📦", "Planning installation...")
+            interpreter = CommandInterpreter(api_key=api_key, provider=provider)
 
                 for _ in range(10):
                     self._animate_spinner("Analyzing system requirements...")
@@ -501,7 +506,7 @@ class CortexCLI:
                             print(f"  Error: {error_msg}", file=sys.stderr)
                         if install_id:
                             print(f"\n📝 Installation recorded (ID: {install_id})")
-                            print(f"   View details: cortex history show {install_id}")
+                            print(f"   View details: cortex history {install_id}")
                         return 1
 
                     except (ValueError, OSError) as e:
@@ -560,7 +565,7 @@ class CortexCLI:
                         print(f"  Error: {result.error_message}", file=sys.stderr)
                     if install_id:
                         print(f"\n📝 Installation recorded (ID: {install_id})")
-                        print(f"   View details: cortex history show {install_id}")
+                        print(f"   View details: cortex history {install_id}")
                     return 1
             else:
                 print("\nTo execute these commands, run with --execute flag")
@@ -1086,6 +1091,243 @@ class CortexCLI:
 
         return 0
 
+    # --- Import Dependencies Command ---
+    def import_deps(self, args: argparse.Namespace) -> int:
+        """Import and install dependencies from package manager files.
+
+        Supports: requirements.txt (Python), package.json (Node),
+                  Gemfile (Ruby), Cargo.toml (Rust), go.mod (Go)
+        """
+        file_path = getattr(args, "file", None)
+        scan_all = getattr(args, "all", False)
+        execute = getattr(args, "execute", False)
+        include_dev = getattr(args, "dev", False)
+
+        importer = DependencyImporter()
+
+        # Handle --all flag: scan directory for all dependency files
+        if scan_all:
+            return self._import_all(importer, execute, include_dev)
+
+        # Handle single file import
+        if not file_path:
+            self._print_error("Please specify a dependency file or use --all to scan directory")
+            cx_print("Usage: cortex import <file> [--execute] [--dev]", "info")
+            cx_print("       cortex import --all [--execute] [--dev]", "info")
+            return 1
+
+        return self._import_single_file(importer, file_path, execute, include_dev)
+
+    def _import_single_file(
+        self, importer: DependencyImporter, file_path: str, execute: bool, include_dev: bool
+    ) -> int:
+        """Import dependencies from a single file."""
+        result = importer.parse(file_path, include_dev=include_dev)
+
+        # Display parsing results
+        self._display_parse_result(result, include_dev)
+
+        if result.errors:
+            for error in result.errors:
+                self._print_error(error)
+            return 1
+
+        if not result.packages and not result.dev_packages:
+            cx_print("No packages found in file", "info")
+            return 0
+
+        # Get install command
+        install_cmd = importer.get_install_command(result.ecosystem, file_path)
+        if not install_cmd:
+            self._print_error(f"Unknown ecosystem: {result.ecosystem.value}")
+            return 1
+
+        # Dry run mode (default)
+        if not execute:
+            console.print(f"\n[bold]Install command:[/bold] {install_cmd}")
+            cx_print("\nTo install these packages, run with --execute flag", "info")
+            cx_print(f"Example: cortex import {file_path} --execute", "info")
+            return 0
+
+        # Execute mode - run the install command
+        return self._execute_install(install_cmd, result.ecosystem)
+
+    def _import_all(self, importer: DependencyImporter, execute: bool, include_dev: bool) -> int:
+        """Scan directory and import all dependency files."""
+        cx_print("Scanning directory...", "info")
+
+        results = importer.scan_directory(include_dev=include_dev)
+
+        if not results:
+            cx_print("No dependency files found in current directory", "info")
+            return 0
+
+        # Display all found files
+        total_packages = 0
+        total_dev_packages = 0
+
+        for file_path, result in results.items():
+            filename = os.path.basename(file_path)
+            if result.errors:
+                console.print(f"   [red]✗[/red]  {filename} (error: {result.errors[0]})")
+            else:
+                pkg_count = result.prod_count
+                dev_count = result.dev_count if include_dev else 0
+                total_packages += pkg_count
+                total_dev_packages += dev_count
+                dev_str = f" + {dev_count} dev" if dev_count > 0 else ""
+                console.print(f"   [green]✓[/green]  {filename} ({pkg_count} packages{dev_str})")
+
+        console.print()
+
+        if total_packages == 0 and total_dev_packages == 0:
+            cx_print("No packages found in dependency files", "info")
+            return 0
+
+        # Generate install commands
+        commands = importer.get_install_commands_for_results(results)
+
+        if not commands:
+            cx_print("No install commands generated", "info")
+            return 0
+
+        # Dry run mode (default)
+        if not execute:
+            console.print("[bold]Install commands:[/bold]")
+            for cmd_info in commands:
+                console.print(f"  • {cmd_info['command']}")
+            console.print()
+            cx_print("To install all packages, run with --execute flag", "info")
+            cx_print("Example: cortex import --all --execute", "info")
+            return 0
+
+        # Execute mode - confirm before installing
+        total = total_packages + total_dev_packages
+        confirm = input(f"\nInstall all {total} packages? [Y/n]: ")
+        if confirm.lower() not in ["", "y", "yes"]:
+            cx_print("Installation cancelled", "info")
+            return 0
+
+        # Execute all install commands
+        return self._execute_multi_install(commands)
+
+    def _display_parse_result(self, result: ParseResult, include_dev: bool) -> None:
+        """Display the parsed packages from a dependency file."""
+        ecosystem_names = {
+            PackageEcosystem.PYTHON: "Python",
+            PackageEcosystem.NODE: "Node",
+            PackageEcosystem.RUBY: "Ruby",
+            PackageEcosystem.RUST: "Rust",
+            PackageEcosystem.GO: "Go",
+        }
+
+        ecosystem_name = ecosystem_names.get(result.ecosystem, "Unknown")
+        filename = os.path.basename(result.file_path)
+
+        cx_print(f"\n📋 Found {result.prod_count} {ecosystem_name} packages", "info")
+
+        if result.packages:
+            console.print("\n[bold]Packages:[/bold]")
+            for pkg in result.packages[:15]:  # Show first 15
+                version_str = f" ({pkg.version})" if pkg.version else ""
+                console.print(f"  • {pkg.name}{version_str}")
+            if len(result.packages) > 15:
+                console.print(f"  [dim]... and {len(result.packages) - 15} more[/dim]")
+
+        if include_dev and result.dev_packages:
+            console.print(f"\n[bold]Dev packages:[/bold] ({result.dev_count})")
+            for pkg in result.dev_packages[:10]:
+                version_str = f" ({pkg.version})" if pkg.version else ""
+                console.print(f"  • {pkg.name}{version_str}")
+            if len(result.dev_packages) > 10:
+                console.print(f"  [dim]... and {len(result.dev_packages) - 10} more[/dim]")
+
+        if result.warnings:
+            console.print()
+            for warning in result.warnings:
+                cx_print(f"⚠ {warning}", "warning")
+
+    def _execute_install(self, command: str, ecosystem: PackageEcosystem) -> int:
+        """Execute a single install command."""
+        ecosystem_names = {
+            PackageEcosystem.PYTHON: "Python",
+            PackageEcosystem.NODE: "Node",
+            PackageEcosystem.RUBY: "Ruby",
+            PackageEcosystem.RUST: "Rust",
+            PackageEcosystem.GO: "Go",
+        }
+
+        ecosystem_name = ecosystem_names.get(ecosystem, "")
+        cx_print(f"\n✓ Installing {ecosystem_name} packages...", "success")
+
+        def progress_callback(current: int, total: int, step: InstallationStep) -> None:
+            status_emoji = "⏳"
+            if step.status == StepStatus.SUCCESS:
+                status_emoji = "✅"
+            elif step.status == StepStatus.FAILED:
+                status_emoji = "❌"
+            console.print(f"[{current}/{total}] {status_emoji} {step.description}")
+
+        coordinator = InstallationCoordinator(
+            commands=[command],
+            descriptions=[f"Install {ecosystem_name} packages"],
+            timeout=600,  # 10 minutes for package installation
+            stop_on_error=True,
+            progress_callback=progress_callback,
+        )
+
+        result = coordinator.execute()
+
+        if result.success:
+            self._print_success(f"{ecosystem_name} packages installed successfully!")
+            console.print(f"Completed in {result.total_duration:.2f} seconds")
+            return 0
+        else:
+            self._print_error("Installation failed")
+            if result.error_message:
+                console.print(f"Error: {result.error_message}", style="red")
+            return 1
+
+    def _execute_multi_install(self, commands: list[dict[str, str]]) -> int:
+        """Execute multiple install commands."""
+        all_commands = [cmd["command"] for cmd in commands]
+        all_descriptions = [cmd["description"] for cmd in commands]
+
+        def progress_callback(current: int, total: int, step: InstallationStep) -> None:
+            status_emoji = "⏳"
+            if step.status == StepStatus.SUCCESS:
+                status_emoji = "✅"
+            elif step.status == StepStatus.FAILED:
+                status_emoji = "❌"
+            console.print(f"\n[{current}/{total}] {status_emoji} {step.description}")
+            console.print(f"  Command: {step.command}")
+
+        coordinator = InstallationCoordinator(
+            commands=all_commands,
+            descriptions=all_descriptions,
+            timeout=600,
+            stop_on_error=True,
+            progress_callback=progress_callback,
+        )
+
+        console.print("\n[bold]Installing packages...[/bold]")
+        result = coordinator.execute()
+
+        if result.success:
+            self._print_success("\nAll packages installed successfully!")
+            console.print(f"Completed in {result.total_duration:.2f} seconds")
+            return 0
+        else:
+            if result.failed_step is not None:
+                self._print_error(f"\nInstallation failed at step {result.failed_step + 1}")
+            else:
+                self._print_error("\nInstallation failed")
+            if result.error_message:
+                console.print(f"Error: {result.error_message}", style="red")
+            return 1
+
+    # --------------------------
+
 
 def show_rich_help():
     """Display beautifully formatted help using Rich"""
@@ -1108,6 +1350,7 @@ def show_rich_help():
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
     table.add_row("install <pkg>", "Install software")
+    table.add_row("import <file>", "Import deps from package files")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
     table.add_row("notify", "Manage desktop notifications")
@@ -1177,9 +1420,6 @@ def main():
     # Global flags
     parser.add_argument("--version", "-V", action="version", version=f"cortex {VERSION}")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output")
-    parser.add_argument(
-        "--offline", action="store_true", help="Use cached responses only (no network calls)"
-    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -1205,6 +1445,35 @@ def main():
         "--parallel",
         action="store_true",
         help="Enable parallel execution for multi-step installs",
+    )
+
+    # Import command - import dependencies from package manager files
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import and install dependencies from package files",
+    )
+    import_parser.add_argument(
+        "file",
+        nargs="?",
+        help="Dependency file (requirements.txt, package.json, Gemfile, Cargo.toml, go.mod)",
+    )
+    import_parser.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Scan directory for all dependency files",
+    )
+    import_parser.add_argument(
+        "--execute",
+        "-e",
+        action="store_true",
+        help="Execute install commands (default: dry-run)",
+    )
+    import_parser.add_argument(
+        "--dev",
+        "-d",
+        action="store_true",
+        help="Include dev dependencies",
     )
 
     # History command
@@ -1352,7 +1621,6 @@ def main():
         return 0
 
     cli = CortexCLI(verbose=args.verbose)
-    cli.offline = bool(getattr(args, "offline", False))
 
     try:
         if args.command == "demo":
@@ -1370,6 +1638,8 @@ def main():
                 dry_run=args.dry_run,
                 parallel=args.parallel,
             )
+        elif args.command == "import":
+            return cli.import_deps(args)
         elif args.command == "history":
             return cli.history(limit=args.limit, status=args.status, show_id=args.show_id)
         elif args.command == "rollback":

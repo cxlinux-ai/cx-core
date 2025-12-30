@@ -174,14 +174,6 @@ class TestAskHandler(unittest.TestCase):
         self.assertEqual(answer, "TensorFlow is compatible with your system.")
         mock_openai.assert_called_once()
 
-    def test_ask_offline_no_cache(self):
-        """Test that offline mode raises error when no cache hit."""
-        handler = AskHandler(api_key="fake-key", provider="fake", offline=True)
-        handler.cache = None
-        with self.assertRaises(RuntimeError) as ctx:
-            handler.ask("Random question that's not cached")
-        self.assertIn("Offline mode", str(ctx.exception))
-
     def test_ask_caches_response(self):
         """Test that responses are cached after successful API call."""
         from cortex.semantic_cache import SemanticCache
