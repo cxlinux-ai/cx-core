@@ -95,7 +95,11 @@ class TestVoiceInputHandler:
     def test_check_microphone_available(self, handler):
         """Test microphone check when device is available."""
         mock_sd = MagicMock()
-        mock_sd.query_devices.return_value = [{"max_input_channels": 2, "name": "Test Mic"}]
+        mock_devices = [{"max_input_channels": 2, "name": "Test Mic"}]
+        mock_sd.query_devices.return_value = mock_devices
+        mock_sd.query_devices.side_effect = lambda kind=None: (
+            {"name": "Test Mic", "max_input_channels": 2} if kind == "input" else mock_devices
+        )
 
         with patch.dict("sys.modules", {"sounddevice": mock_sd}):
             with patch("cortex.voice.cx_print"):
