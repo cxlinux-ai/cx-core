@@ -73,7 +73,7 @@ class InstallationCoordinator:
 
         self.steps = [
             InstallationStep(
-                command=cmd, description=descriptions[i] if descriptions else f"Step {i+1}"
+                command=cmd, description=descriptions[i] if descriptions else f"Step {i + 1}"
             )
             for i, cmd in enumerate(commands)
         ]
@@ -250,7 +250,7 @@ class InstallationCoordinator:
                         self._rollback()
 
                     total_duration = time.time() - start_time
-                    self._log(f"Installation failed at step {i+1}")
+                    self._log(f"Installation failed at step {i + 1}")
 
                     return InstallationResult(
                         success=False,

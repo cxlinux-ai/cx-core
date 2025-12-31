@@ -488,7 +488,7 @@ class TestIntegration:
 
         # Add 3 stages
         for i in range(3):
-            idx = tracker.add_stage(f"Stage {i+1}")
+            idx = tracker.add_stage(f"Stage {i + 1}")
 
         # Complete first stage in 0.2s
         tracker.start_stage(0)

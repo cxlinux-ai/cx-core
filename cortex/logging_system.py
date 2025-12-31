@@ -179,7 +179,9 @@ class CortexLogger:
         error_file = self.log_dir / f"{self.name}.error.log"
 
         error_handler = RotatingFileHandler(
-            error_file, maxBytes=5 * 1024 * 1024, backupCount=3  # 5MB
+            error_file,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,  # 5MB
         )
         error_handler.setLevel(logging.ERROR)
 

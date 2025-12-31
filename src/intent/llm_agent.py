@@ -25,7 +25,6 @@ class LLMIntentAgent:
     """
 
     def __init__(self, api_key: str | None = None, model: str = "claude-3-5-sonnet-20240620"):
-
         # LLM is enabled ONLY if SDK + API key is available
         if Anthropic is None or api_key is None:
             self.llm = None
@@ -91,7 +90,6 @@ class LLMIntentAgent:
     # LLM enhancement of intents
     # ----------------------------------------------
     def enhance_intents_with_llm(self, text: str, intents: list[Intent]) -> list[Intent]:
-
         prompt = f"""
 You are an installation-intent expert. Convert the user request into structured intents.
 
@@ -139,7 +137,6 @@ Format: "install: package" or "configure: component"
     # LLM optimization suggestions
     # ----------------------------------------------
     def suggest_optimizations(self, text: str) -> list[str]:
-
         prompt = f"""
 User request: "{text}"
 

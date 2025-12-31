@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -46,6 +47,7 @@ class LLMProvider(Enum):
 
     CLAUDE = "claude"
     KIMI_K2 = "kimi_k2"
+    OLLAMA = "ollama"
 
 
 @dataclass
@@ -94,6 +96,10 @@ class LLMRouter:
             "input": 1.0,  # Estimated lower cost
             "output": 5.0,  # Estimated lower cost
         },
+        LLMProvider.OLLAMA: {
+            "input": 0.0,  # Free - local inference
+            "output": 0.0,  # Free - local inference
+        },
     }
 
     # Routing rules: TaskType → Preferred LLM
@@ -112,6 +118,8 @@ class LLMRouter:
         self,
         claude_api_key: str | None = None,
         kimi_api_key: str | None = None,
+        ollama_base_url: str | None = None,
+        ollama_model: str | None = None,
         default_provider: LLMProvider = LLMProvider.CLAUDE,
         enable_fallback: bool = True,
         track_costs: bool = True,
@@ -122,6 +130,8 @@ class LLMRouter:
         Args:
             claude_api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env)
             kimi_api_key: Moonshot API key (defaults to MOONSHOT_API_KEY env)
+            ollama_base_url: Ollama API base URL (defaults to http://localhost:11434)
+            ollama_model: Ollama model to use (defaults to llama3.2)
             default_provider: Fallback provider if routing fails
             enable_fallback: Try alternate LLM if primary fails
             track_costs: Track token usage and costs
@@ -158,15 +168,39 @@ class LLMRouter:
         else:
             logger.warning("⚠️  No Kimi K2 API key provided")
 
+        # Initialize Ollama client (local inference)
+        self.ollama_base_url = ollama_base_url or os.getenv(
+            "OLLAMA_BASE_URL", "http://localhost:11434"
+        )
+        self.ollama_model = ollama_model or os.getenv("OLLAMA_MODEL", "llama3.2")
+        self.ollama_client = None
+        self.ollama_client_async = None
+
+        # Try to initialize Ollama client
+        try:
+            self.ollama_client = OpenAI(
+                api_key="ollama",  # Ollama doesn't need a real key
+                base_url=f"{self.ollama_base_url}/v1",
+            )
+            self.ollama_client_async = AsyncOpenAI(
+                api_key="ollama",
+                base_url=f"{self.ollama_base_url}/v1",
+            )
+            logger.info(f"✅ Ollama client initialized ({self.ollama_model})")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not initialize Ollama client: {e}")
+
         # Rate limiting for parallel calls
         self._rate_limit_semaphore: asyncio.Semaphore | None = None
 
-        # Cost tracking
+        # Cost tracking (protected by lock for thread-safety)
+        self._stats_lock = threading.Lock()
         self.total_cost_usd = 0.0
         self.request_count = 0
         self.provider_stats = {
             LLMProvider.CLAUDE: {"requests": 0, "tokens": 0, "cost": 0.0},
             LLMProvider.KIMI_K2: {"requests": 0, "tokens": 0, "cost": 0.0},
+            LLMProvider.OLLAMA: {"requests": 0, "tokens": 0, "cost": 0.0},
         }
 
     def route_task(
@@ -208,6 +242,16 @@ class LLMRouter:
             else:
                 raise RuntimeError("Kimi K2 API not configured and no fallback available")
 
+        if provider == LLMProvider.OLLAMA and not self.ollama_client:
+            if self.claude_client and self.enable_fallback:
+                logger.warning("Ollama unavailable, falling back to Claude")
+                provider = LLMProvider.CLAUDE
+            elif self.kimi_client and self.enable_fallback:
+                logger.warning("Ollama unavailable, falling back to Kimi K2")
+                provider = LLMProvider.KIMI_K2
+            else:
+                raise RuntimeError("Ollama not available and no fallback configured")
+
         reasoning = f"{task_type.value} → {provider.value} (optimal for this task)"
 
         return RoutingDecision(
@@ -246,8 +290,10 @@ class LLMRouter:
         try:
             if routing.provider == LLMProvider.CLAUDE:
                 response = self._complete_claude(messages, temperature, max_tokens, tools)
-            else:  # KIMI_K2
+            elif routing.provider == LLMProvider.KIMI_K2:
                 response = self._complete_kimi(messages, temperature, max_tokens, tools)
+            else:  # OLLAMA
+                response = self._complete_ollama(messages, temperature, max_tokens, tools)
 
             response.latency_seconds = time.time() - start_time
 
@@ -379,6 +425,55 @@ class LLMRouter:
             raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
         )
 
+    def _complete_ollama(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> LLMResponse:
+        """Generate completion using Ollama (local LLM)."""
+        kwargs = {
+            "model": self.ollama_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        if tools:
+            # Ollama supports OpenAI-compatible tool calling
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = self.ollama_client.chat.completions.create(**kwargs)
+
+            # Extract content
+            content = response.choices[0].message.content or ""
+
+            # Get token counts (Ollama provides these)
+            input_tokens = getattr(response.usage, "prompt_tokens", 0)
+            output_tokens = getattr(response.usage, "completion_tokens", 0)
+
+            # Ollama is free (local inference)
+            cost = 0.0
+
+            return LLMResponse(
+                content=content,
+                provider=LLMProvider.OLLAMA,
+                model=self.ollama_model,
+                tokens_used=input_tokens + output_tokens,
+                cost_usd=cost,
+                latency_seconds=0.0,  # Set by caller
+                raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+            )
+
+        except Exception as e:
+            logger.error(f"Ollama error: {e}")
+            raise RuntimeError(
+                f"Ollama request failed. Is Ollama running? (ollama serve) Error: {e}"
+            )
+
     def _calculate_cost(
         self, provider: LLMProvider, input_tokens: int, output_tokens: int
     ) -> float:
@@ -389,38 +484,45 @@ class LLMRouter:
         return input_cost + output_cost
 
     def _update_stats(self, response: LLMResponse):
-        """Update usage statistics."""
-        self.total_cost_usd += response.cost_usd
-        self.request_count += 1
+        """Update usage statistics (thread-safe)."""
+        with self._stats_lock:
+            self.total_cost_usd += response.cost_usd
+            self.request_count += 1
 
-        stats = self.provider_stats[response.provider]
-        stats["requests"] += 1
-        stats["tokens"] += response.tokens_used
-        stats["cost"] += response.cost_usd
+            stats = self.provider_stats[response.provider]
+            stats["requests"] += 1
+            stats["tokens"] += response.tokens_used
+            stats["cost"] += response.cost_usd
 
     def get_stats(self) -> dict[str, Any]:
         """
-        Get usage statistics.
+        Get usage statistics (thread-safe).
 
         Returns:
             Dictionary with request counts, tokens, costs per provider
         """
-        return {
-            "total_requests": self.request_count,
-            "total_cost_usd": round(self.total_cost_usd, 4),
-            "providers": {
-                "claude": {
-                    "requests": self.provider_stats[LLMProvider.CLAUDE]["requests"],
-                    "tokens": self.provider_stats[LLMProvider.CLAUDE]["tokens"],
-                    "cost_usd": round(self.provider_stats[LLMProvider.CLAUDE]["cost"], 4),
+        with self._stats_lock:
+            return {
+                "total_requests": self.request_count,
+                "total_cost_usd": round(self.total_cost_usd, 4),
+                "providers": {
+                    "claude": {
+                        "requests": self.provider_stats[LLMProvider.CLAUDE]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.CLAUDE]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.CLAUDE]["cost"], 4),
+                    },
+                    "kimi_k2": {
+                        "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
+                    },
+                    "ollama": {
+                        "requests": self.provider_stats[LLMProvider.OLLAMA]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.OLLAMA]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.OLLAMA]["cost"], 4),
+                    },
                 },
-                "kimi_k2": {
-                    "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
-                    "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
-                    "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
-                },
-            },
-        }
+            }
 
     def reset_stats(self):
         """Reset all usage statistics."""
@@ -470,8 +572,10 @@ class LLMRouter:
         try:
             if routing.provider == LLMProvider.CLAUDE:
                 response = await self._acomplete_claude(messages, temperature, max_tokens, tools)
-            else:  # KIMI_K2
+            elif routing.provider == LLMProvider.KIMI_K2:
                 response = await self._acomplete_kimi(messages, temperature, max_tokens, tools)
+            else:  # OLLAMA
+                response = await self._acomplete_ollama(messages, temperature, max_tokens, tools)
 
             response.latency_seconds = time.time() - start_time
 
@@ -606,6 +710,57 @@ class LLMRouter:
             latency_seconds=0.0,  # Set by caller
             raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
         )
+
+    async def _acomplete_ollama(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> LLMResponse:
+        """Async: Generate completion using Ollama (local LLM)."""
+        if not self.ollama_client_async:
+            raise RuntimeError("Ollama async client not initialized")
+
+        kwargs = {
+            "model": self.ollama_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = await self.ollama_client_async.chat.completions.create(**kwargs)
+
+            # Extract content
+            content = response.choices[0].message.content or ""
+
+            # Get token counts
+            input_tokens = getattr(response.usage, "prompt_tokens", 0)
+            output_tokens = getattr(response.usage, "completion_tokens", 0)
+
+            # Ollama is free (local inference)
+            cost = 0.0
+
+            return LLMResponse(
+                content=content,
+                provider=LLMProvider.OLLAMA,
+                model=self.ollama_model,
+                tokens_used=input_tokens + output_tokens,
+                cost_usd=cost,
+                latency_seconds=0.0,  # Set by caller
+                raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+            )
+
+        except Exception as e:
+            logger.error(f"Ollama async error: {e}")
+            raise RuntimeError(
+                f"Ollama request failed. Is Ollama running? (ollama serve) Error: {e}"
+            )
 
     async def complete_batch(
         self,
@@ -801,7 +956,7 @@ async def diagnose_errors_parallel(
             print(f"{error}: {diagnosis.content}")
     """
     system_prompt = (
-        "You are a Linux system debugging expert. " "Analyze error messages and provide solutions."
+        "You are a Linux system debugging expert. Analyze error messages and provide solutions."
     )
     if context:
         system_prompt += f"\n\nSystem context: {context}"

@@ -1,5 +1,6 @@
 # Auto-assign reviewers
 * @mikejmorgan-ai
+* @Suyashd999
 cortex/*.py @mikejmorgan-ai
 tests/*.py @mikejmorgan-ai
 docs/*.md @mikejmorgan-ai

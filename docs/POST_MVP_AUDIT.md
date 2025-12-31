@@ -397,7 +397,6 @@ EOF
 **Code Review:**
 - ✅ Good: Interactive conflict UI
 - ✅ Good: Saved preferences system
-- ✅ Good: Integration with PreferencesManager
 - ⚠️ Issue: Merge conflicts
 
 **Verdict:** REQUEST CHANGES - Rebase needed

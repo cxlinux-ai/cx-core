@@ -10,15 +10,12 @@ This document provides a comprehensive reference for all commands available in t
 | `cortex install <pkg>` | Install software |
 | `cortex demo` | See Cortex in action |
 | `cortex wizard` | Configure API key |
-| `cortex status` | Show system status |
-| `cortex doctor` | Run system health check |
+| `cortex status` | Show comprehensive system status and health checks |
 | `cortex history` | View installation history |
 | `cortex rollback <id>` | Undo an installation |
 | `cortex stack <name>` | Install a pre-built package stack |
 | `cortex cache stats` | Show LLM cache statistics |
 | `cortex notify` | Manage desktop notifications |
-| `cortex check-pref` | Check user preferences |
-| `cortex edit-pref` | Edit user preferences |
 
 ---
 
@@ -27,7 +24,6 @@ This document provides a comprehensive reference for all commands available in t
 ```bash
 cortex --version, -V    # Show version
 cortex --verbose, -v    # Show detailed output
-cortex --offline        # Use cached responses only (no network calls)
 cortex --help, -h       # Show help message
 ```
 
@@ -102,7 +98,7 @@ cortex wizard
 
 ### `cortex status`
 
-Show current system status including API provider configuration and security features.
+Show comprehensive system status and run health checks to diagnose potential issues.
 
 **Usage:**
 ```bash
@@ -110,27 +106,30 @@ cortex status
 ```
 
 **Output includes:**
-- Configured API provider
-- Firejail availability (sandboxing)
-- Environment configuration status
 
----
+**System Configuration:**
+- Configured API provider (Claude, OpenAI, or Ollama)
+- Security features (Firejail availability)
 
-### `cortex doctor`
+**Python & Dependencies:**
+- Python version compatibility
+- Required package installation status
 
-Run comprehensive system health checks to diagnose potential issues.
+**GPU & Acceleration:**
+- GPU driver detection (NVIDIA/AMD)
+- CUDA/ROCm availability
 
-**Usage:**
-```bash
-cortex doctor
-```
+**AI & Services:**
+- Ollama installation and running status
 
-**Checks performed:**
-- API key validation
-- Network connectivity
-- Package manager availability
-- Security tool status (Firejail)
-- Python environment health
+**System Resources:**
+- Available disk space
+- System memory (RAM)
+
+**Exit codes:**
+- `0`: All checks passed, system is healthy
+- `1`: Warnings found, system can operate but has recommendations
+- `2`: Critical failures found, system may not work properly
 
 ---
 
@@ -297,58 +296,6 @@ cortex notify send "Test message" --title "Test" --level normal
 
 ---
 
-### `cortex check-pref`
-
-View user preferences and configuration.
-
-**Usage:**
-```bash
-cortex check-pref [key]
-```
-
-**Examples:**
-```bash
-# Show all preferences
-cortex check-pref
-
-# Show specific preference
-cortex check-pref default_provider
-```
-
----
-
-### `cortex edit-pref`
-
-Modify user preferences.
-
-**Usage:**
-```bash
-cortex edit-pref <action> [key] [value]
-```
-
-**Actions:**
-| Action | Description |
-|--------|-------------|
-| `set` | Set a preference value |
-| `add` | Add/update a preference |
-| `delete` | Remove a preference |
-| `list` | List all preferences |
-| `validate` | Validate current preferences |
-
-**Examples:**
-```bash
-# Set a preference
-cortex edit-pref set default_provider openai
-
-# List all preferences
-cortex edit-pref list
-
-# Validate preferences
-cortex edit-pref validate
-```
-
----
-
 ## Environment Variables
 
 | Variable | Description |
@@ -381,13 +328,10 @@ cortex install nginx --dry-run
 # 1. Run the setup wizard
 cortex wizard
 
-# 2. Check system status
+# 2. Check system status and run health checks
 cortex status
 
-# 3. Run health check
-cortex doctor
-
-# 4. Try a dry-run installation
+# 3. Try a dry-run installation
 cortex install nginx --dry-run
 ```
 

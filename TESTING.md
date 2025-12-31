@@ -76,13 +76,6 @@ export ANTHROPIC_API_KEY='your-key-here'
 - [ ] `cortex rollback <id>` - Attempts rollback
 - [ ] `cortex rollback <id> --dry-run` - Shows what would be rolled back
 
-### Preferences Commands
-
-- [ ] `cortex check-pref` - Shows all preferences
-- [ ] `cortex check-pref ai.model` - Shows specific preference
-- [ ] `cortex edit-pref set ai.model gpt-4` - Sets preference
-- [ ] `cortex edit-pref validate` - Validates configuration
-
 ## Provider Tests
 
 ### Anthropic Claude

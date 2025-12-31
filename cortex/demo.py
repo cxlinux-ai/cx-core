@@ -14,18 +14,18 @@ def run_demo() -> int:
 
     hw = detect_hardware()
 
-    print(f"✔ CPU: {hw.get('cpu', 'Unknown')}")
-    print(f"✔ RAM: {hw.get('memory_gb', 'Unknown')} GB")
+    print(f"✔ CPU: {hw.cpu.model}")
+    print(f"✔ RAM: {hw.memory.total_gb} GB")
 
-    gpu = hw.get("gpu")
-    if gpu:
-        print(f"✔ GPU: {gpu}")
+    gpu = hw.gpu
+    if gpu and len(gpu) > 0:
+        print(f"✔ GPU: {gpu[0].model}")
     else:
         print("⚠️ GPU: Not detected (CPU mode enabled)")
 
     # 2️⃣ Model Recommendations
     print("\n🤖 Model Recommendations:")
-    if gpu:
+    if gpu and len(gpu) > 0:
         print("• LLaMA-3-8B → Optimized for your GPU")
         print("• Mistral-7B → High performance inference")
     else:

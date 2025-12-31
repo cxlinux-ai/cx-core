@@ -79,7 +79,7 @@ cortex install "tools for video compression"
 
 - **OS:** Ubuntu 22.04+ / Debian 12+
 - **Python:** 3.10 or higher
-- **API Key:** [Anthropic](https://console.anthropic.com) or [OpenAI](https://platform.openai.com)
+- **API Key:** [Anthropic](https://console.anthropic.com) or [OpenAI](https://platform.openai.com) *(optional - use Ollama for free local inference)*
 
 ### Installation
 
@@ -95,8 +95,16 @@ source venv/bin/activate
 # 3. Install Cortex
 pip install -e .
 
-# 4. Configure API key
+# 4. Configure AI Provider (choose one):
+
+## Option A: Ollama (FREE - Local LLM, no API key needed)
+python scripts/setup_ollama.py
+
+## Option B: Claude (Cloud API - Best quality)
 echo 'ANTHROPIC_API_KEY=your-key-here' > .env
+
+## Option C: OpenAI (Cloud API - Alternative)
+echo 'OPENAI_API_KEY=your-key-here' > .env
 
 # 5. Verify installation
 cortex --version
@@ -128,9 +136,6 @@ cortex history
 
 # Rollback an installation
 cortex rollback <installation-id>
-
-# Check system preferences
-cortex check-pref
 ```
 
 ### Command Reference
@@ -142,7 +147,6 @@ cortex check-pref
 | `cortex install <query> --execute` | Execute the installation |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
-| `cortex check-pref` | Display current preferences |
 | `cortex --version` | Show version information |
 | `cortex --help` | Display help message |
 

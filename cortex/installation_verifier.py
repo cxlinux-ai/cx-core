@@ -309,8 +309,7 @@ class InstallationVerifier:
         elif passed_tests > 0:
             status = VerificationStatus.PARTIAL
             message = (
-                f"⚠️ {package_name} partially verified "
-                f"({passed_tests}/{total_tests} tests passed)"
+                f"⚠️ {package_name} partially verified ({passed_tests}/{total_tests} tests passed)"
             )
         else:
             status = VerificationStatus.UNKNOWN
