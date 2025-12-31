@@ -1,5 +1,7 @@
 import unittest
+
 from cortex.resolver import DependencyResolver
+
 
 class TestDependencyResolver(unittest.TestCase):
     def setUp(self):
@@ -9,13 +11,13 @@ class TestDependencyResolver(unittest.TestCase):
         conflict = {
             "dependency": "lib-x",
             "package_a": {"name": "pkg-a", "requires": "^2.0.0"},
-            "package_b": {"name": "pkg-b", "requires": "~1.9.0"}
+            "package_b": {"name": "pkg-b", "requires": "~1.9.0"},
         }
         strategies = self.resolver.resolve(conflict)
-        
+
         self.assertEqual(len(strategies), 2)
-        self.assertEqual(strategies[0]['type'], "Recommended")
-        self.assertIn("Update pkg-b", strategies[0]['action'])
+        self.assertEqual(strategies[0]["type"], "Recommended")
+        self.assertIn("Update pkg-b", strategies[0]["action"])
 
     def test_complex_constraint_formats(self):
         """Test various semver constraint syntaxes to hit >80% coverage."""
@@ -28,7 +30,7 @@ class TestDependencyResolver(unittest.TestCase):
             conflict = {
                 "dependency": "lib-y",
                 "package_a": {"name": "pkg-a", "requires": case["req_a"]},
-                "package_b": {"name": "pkg-b", "requires": case["req_b"]}
+                "package_b": {"name": "pkg-b", "requires": case["req_b"]},
             }
             strategies = self.resolver.resolve(conflict)
             self.assertIsInstance(strategies, list)
@@ -39,14 +41,14 @@ class TestDependencyResolver(unittest.TestCase):
         conflict = {
             "dependency": "lib-x",
             "package_a": {"name": "pkg-a", "requires": "^2.0.0"},
-            "package_b": {"name": "pkg-b", "requires": "~1.9.0"}
+            "package_b": {"name": "pkg-b", "requires": "~1.9.0"},
         }
         strategies = self.resolver.resolve(conflict)
         for strategy in strategies:
-            self.assertIn('id', strategy)
-            self.assertIn('type', strategy)
-            self.assertIn('action', strategy)
-            self.assertIn('risk', strategy)
+            self.assertIn("id", strategy)
+            self.assertIn("type", strategy)
+            self.assertIn("action", strategy)
+            self.assertIn("risk", strategy)
 
     def test_missing_keys_raises_error(self):
         bad_data = {"package_a": {}}
@@ -57,11 +59,12 @@ class TestDependencyResolver(unittest.TestCase):
         conflict = {
             "dependency": "lib-x",
             "package_a": {"name": "pkg-a", "requires": "invalid-version"},
-            "package_b": {"name": "pkg-b", "requires": "1.0.0"}
+            "package_b": {"name": "pkg-b", "requires": "1.0.0"},
         }
         strategies = self.resolver.resolve(conflict)
-        self.assertEqual(strategies[0]['type'], "Error")
-        self.assertIn("Manual resolution required", strategies[0]['action'])
+        self.assertEqual(strategies[0]["type"], "Error")
+        self.assertIn("Manual resolution required", strategies[0]["action"])
+
 
 if __name__ == "__main__":
     unittest.main()

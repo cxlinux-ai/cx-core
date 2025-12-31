@@ -12,15 +12,6 @@ class DependencyResolver:
     """
     AI-powered semantic version conflict resolver.
     Analyzes dependency trees and suggests upgrade/downgrade paths.
-
-    Example:
-        >>> resolver = DependencyResolver()
-        >>> conflict = {
-        ...     "dependency": "lib-x",
-        ...     "package_a": {"name": "pkg-a", "requires": "^2.0.0"},
-        ...     "package_b": {"name": "pkg-b", "requires": "~1.9.0"}
-        ... }
-        >>> strategies = resolver.resolve(conflict)
     """
 
     def resolve(self, conflict_data: dict) -> list[dict]:
@@ -28,13 +19,10 @@ class DependencyResolver:
         Resolve semantic version conflicts between packages.
 
         Args:
-            conflict_data: Dict containing 'package_a', 'package_b', and 'dependency' keys
+            conflict_data: dict containing 'package_a', 'package_b', and 'dependency' keys
 
         Returns:
-            List of resolution strategy dictionaries
-
-        Raises:
-            KeyError: If required keys are missing from conflict_data
+            list[dict]: List of resolution strategy dictionaries
         """
         # Validate Input
         required_keys = ["package_a", "package_b", "dependency"]
@@ -50,28 +38,25 @@ class DependencyResolver:
 
         # Strategy 1: Smart Upgrade
         try:
-            # 1. strip operators like ^, ~, >= to get raw version string
             raw_a = pkg_a["requires"].lstrip("^~>=<")
             raw_b = pkg_b["requires"].lstrip("^~>=<")
 
-            # 2. coerce into proper Version objects
             ver_a = semantic_version.Version.coerce(raw_a)
             ver_b = semantic_version.Version.coerce(raw_b)
 
             target_ver = str(ver_a)
 
-            # 3. Calculate Risk
+            # Calculate Risk
             risk_level = "Low (no breaking changes detected)"
             if ver_b.major < ver_a.major:
                 risk_level = "Medium (breaking changes detected)"
 
-        except ValueError as e:
-            # IF parsing fails, return the ERROR strategy the test expects
+        except (ValueError, KeyError) as e:
             return [
                 {
                     "id": 0,
                     "type": "Error",
-                    "action": f"Manual resolution required. Invalid SemVer: {e}",
+                    "action": f"Manual resolution required. Invalid input: {e}",
                     "risk": "High",
                 }
             ]
@@ -85,7 +70,6 @@ class DependencyResolver:
             }
         )
 
-        # Strategy 2: Conservative Downgrade
         strategies.append(
             {
                 "id": 2,
@@ -96,20 +80,3 @@ class DependencyResolver:
         )
 
         return strategies
-
-
-if __name__ == "__main__":
-    # Simple CLI demo
-    CONFLICT = {
-        "dependency": "lib-x",
-        "package_a": {"name": "package-a", "requires": "^2.0.0"},
-        "package_b": {"name": "package-b", "requires": "~1.9.0"},
-    }
-
-    resolver = DependencyResolver()
-    solutions = resolver.resolve(CONFLICT)
-
-    for s in solutions:
-        print(f"Strategy {s['id']} ({s['type']}):")
-        print(f"   {s['action']}")
-        print(f"   Risk: {s['risk']}\n")
