@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2024-12-29",
+  "last_updated": "2025-12-31",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -30,6 +30,15 @@
         "anshgrover938@gmail.com"
       ],
       "signed_date": "2025-12-30",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Kesavaraja M",
+      "github_username": "Kesavaraja67",
+      "emails": [
+        "krkesavaraja67@gmail.com"
+      ],
+      "signed_date": "2025-12-31",
       "cla_version": "1.0"
     }
   ],
