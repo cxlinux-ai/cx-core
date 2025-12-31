@@ -17,7 +17,7 @@ class DependencyResolver:
         Resolve semantic version conflicts between packages.
 
         Args:
-            conflict_data: dict containing 'package_a', 'package_b',
+            conflict_data: dict containing 'package_a', 'package_b', 
             and 'dependency' keys
 
         Returns:
@@ -64,7 +64,10 @@ class DependencyResolver:
             {
                 "id": 1,
                 "type": "Recommended",
-                "action": (f"Update {pkg_b['name']} to {target_ver} (compatible with {dep})"),
+                "action": (
+                    f"Update {pkg_b['name']} to {target_ver} "
+                    f"(compatible with {dep})"
+                ),
                 "risk": risk_level,
             }
         )
@@ -74,7 +77,8 @@ class DependencyResolver:
                 "id": 2,
                 "type": "Alternative",
                 "action": (
-                    f"Keep {pkg_b['name']}, downgrade {pkg_a['name']} to compatible version"
+                    f"Keep {pkg_b['name']}, downgrade {pkg_a['name']} "
+                    f"to compatible version"
                 ),
                 "risk": f"Medium (potential feature loss in {pkg_a['name']})",
             }
