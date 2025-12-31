@@ -835,8 +835,6 @@ class CortexCLI:
         if not api_key:
             return 1
 
-        provider = self._get_provider()
-
         def process_voice_command(text: str) -> None:
             """Process transcribed voice command."""
             if not text:
@@ -4154,7 +4152,7 @@ def main():
             # Handle --mic flag for voice input
             if getattr(args, "mic", False):
                 try:
-                    from cortex.voice import VoiceInputHandler
+                    from cortex.voice import VoiceInputError, VoiceInputHandler
 
                     handler = VoiceInputHandler()
                     cx_print("Press F9 to speak what you want to install...", "info")
@@ -4166,6 +4164,9 @@ def main():
                 except ImportError:
                     cli._print_error("Voice dependencies not installed.")
                     cx_print("Install with: pip install cortex-linux[voice]", "info")
+                    return 1
+                except VoiceInputError as e:
+                    cli._print_error(f"Voice input error: {e}")
                     return 1
             else:
                 software = args.software

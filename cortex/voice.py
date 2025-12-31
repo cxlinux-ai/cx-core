@@ -486,8 +486,8 @@ class VoiceInputHandler:
         if self._hotkey_listener:
             try:
                 self._hotkey_listener.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("Error stopping hotkey listener: %s", e)
             self._hotkey_listener = None
 
         if hasattr(self, "_stream") and self._stream:
