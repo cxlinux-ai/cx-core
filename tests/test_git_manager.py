@@ -1,5 +1,5 @@
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
 
 from cortex.config.git_manager import GitManager
 

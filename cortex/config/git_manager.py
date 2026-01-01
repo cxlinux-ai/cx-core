@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+
 class GitManager:
     def __init__(self, config_path: str):
         self.config_path = Path(config_path)
