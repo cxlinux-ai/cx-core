@@ -18,8 +18,6 @@ import yaml
 class PreferencesError(Exception):
     """Custom exception for preferences-related errors"""
 
-    pass
-
 
 class VerbosityLevel(str, Enum):
     """Verbosity levels for output"""
@@ -132,6 +130,59 @@ class PreferencesManager:
         self.preferences: UserPreferences = UserPreferences()
         self.load()
 
+    def _to_dict(self, include_metadata: bool = False) -> dict[str, Any]:
+        """Convert preferences to dictionary representation.
+
+        Args:
+            include_metadata: Whether to include export metadata like timestamp
+
+        Returns:
+            Dictionary representation of preferences
+        """
+        data = {
+            "verbosity": self.preferences.verbosity.value,
+            "confirmations": asdict(self.preferences.confirmations),
+            "auto_update": asdict(self.preferences.auto_update),
+            "ai": {
+                **asdict(self.preferences.ai),
+                "creativity": self.preferences.ai.creativity.value,
+            },
+            "packages": asdict(self.preferences.packages),
+            "llm": asdict(self.preferences.llm),
+            "conflicts": asdict(self.preferences.conflicts),
+            "theme": self.preferences.theme,
+            "language": self.preferences.language,
+            "timezone": self.preferences.timezone,
+        }
+        if include_metadata:
+            data["exported_at"] = datetime.now().isoformat()
+        return data
+
+    def _from_dict(self, data: dict[str, Any]) -> UserPreferences:
+        """Create UserPreferences from dictionary representation.
+
+        Args:
+            data: Dictionary containing preferences data
+
+        Returns:
+            UserPreferences instance
+        """
+        return UserPreferences(
+            verbosity=VerbosityLevel(data.get("verbosity", "normal")),
+            confirmations=ConfirmationSettings(**data.get("confirmations", {})),
+            auto_update=AutoUpdateSettings(**data.get("auto_update", {})),
+            ai=AISettings(
+                creativity=AICreativity(data.get("ai", {}).get("creativity", "balanced")),
+                **{k: v for k, v in data.get("ai", {}).items() if k != "creativity"},
+            ),
+            packages=PackageSettings(**data.get("packages", {})),
+            llm=LLMSettings(**data.get("llm", {})),
+            conflicts=ConflictSettings(**data.get("conflicts", {})),
+            theme=data.get("theme", "default"),
+            language=data.get("language", "en"),
+            timezone=data.get("timezone", "UTC"),
+        )
+
     def load(self) -> UserPreferences:
         """Load preferences from YAML file"""
         if not self.config_path.exists():
@@ -140,26 +191,10 @@ class PreferencesManager:
             return self.preferences
 
         try:
-            with open(self.config_path) as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
-            # Parse nested structures
-            self.preferences = UserPreferences(
-                verbosity=VerbosityLevel(data.get("verbosity", "normal")),
-                confirmations=ConfirmationSettings(**data.get("confirmations", {})),
-                auto_update=AutoUpdateSettings(**data.get("auto_update", {})),
-                ai=AISettings(
-                    creativity=AICreativity(data.get("ai", {}).get("creativity", "balanced")),
-                    **{k: v for k, v in data.get("ai", {}).items() if k != "creativity"},
-                ),
-                packages=PackageSettings(**data.get("packages", {})),
-                llm=LLMSettings(**data.get("llm", {})),
-                conflicts=ConflictSettings(**data.get("conflicts", {})),
-                theme=data.get("theme", "default"),
-                language=data.get("language", "en"),
-                timezone=data.get("timezone", "UTC"),
-            )
-
+            self.preferences = self._from_dict(data)
             return self.preferences
 
         except Exception as e:
@@ -177,27 +212,12 @@ class PreferencesManager:
         # Ensure directory exists
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Convert to dict
-        data = {
-            "verbosity": self.preferences.verbosity.value,
-            "confirmations": asdict(self.preferences.confirmations),
-            "auto_update": asdict(self.preferences.auto_update),
-            "ai": {
-                **asdict(self.preferences.ai),
-                "creativity": self.preferences.ai.creativity.value,
-            },
-            "packages": asdict(self.preferences.packages),
-            "llm": asdict(self.preferences.llm),
-            "conflicts": asdict(self.preferences.conflicts),
-            "theme": self.preferences.theme,
-            "language": self.preferences.language,
-            "timezone": self.preferences.timezone,
-        }
+        data = self._to_dict()
 
         # Write atomically (write to temp, then rename)
         temp_path = self.config_path.with_suffix(".yaml.tmp")
         try:
-            with open(temp_path, "w") as f:
+            with open(temp_path, "w", encoding="utf-8") as f:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
             # Atomic rename
@@ -298,73 +318,28 @@ class PreferencesManager:
 
     def export_json(self, filepath: Path) -> None:
         """Export preferences to JSON file"""
-        data = {
-            "verbosity": self.preferences.verbosity.value,
-            "confirmations": asdict(self.preferences.confirmations),
-            "auto_update": asdict(self.preferences.auto_update),
-            "ai": {
-                **asdict(self.preferences.ai),
-                "creativity": self.preferences.ai.creativity.value,
-            },
-            "packages": asdict(self.preferences.packages),
-            "llm": asdict(self.preferences.llm),
-            "conflicts": asdict(self.preferences.conflicts),
-            "theme": self.preferences.theme,
-            "language": self.preferences.language,
-            "timezone": self.preferences.timezone,
-            "exported_at": datetime.now().isoformat(),
-        }
+        data = self._to_dict(include_metadata=True)
 
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
         print(f"[SUCCESS] Configuration exported to {filepath}")
 
     def import_json(self, filepath: Path) -> None:
         """Import preferences from JSON file"""
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8") as f:
             data = json.load(f)
 
         # Remove metadata
         data.pop("exported_at", None)
 
-        # Update preferences
-        self.preferences = UserPreferences(
-            verbosity=VerbosityLevel(data.get("verbosity", "normal")),
-            confirmations=ConfirmationSettings(**data.get("confirmations", {})),
-            auto_update=AutoUpdateSettings(**data.get("auto_update", {})),
-            ai=AISettings(
-                creativity=AICreativity(data.get("ai", {}).get("creativity", "balanced")),
-                **{k: v for k, v in data.get("ai", {}).items() if k != "creativity"},
-            ),
-            packages=PackageSettings(**data.get("packages", {})),
-            llm=LLMSettings(**data.get("llm", {})),
-            conflicts=ConflictSettings(**data.get("conflicts", {})),
-            theme=data.get("theme", "default"),
-            language=data.get("language", "en"),
-            timezone=data.get("timezone", "UTC"),
-        )
-
+        self.preferences = self._from_dict(data)
         self.save()
         print(f"[SUCCESS] Configuration imported from {filepath}")
 
     def get_all_settings(self) -> dict[str, Any]:
         """Get all settings as a flat dictionary"""
-        return {
-            "verbosity": self.preferences.verbosity.value,
-            "confirmations": asdict(self.preferences.confirmations),
-            "auto_update": asdict(self.preferences.auto_update),
-            "ai": {
-                **asdict(self.preferences.ai),
-                "creativity": self.preferences.ai.creativity.value,
-            },
-            "packages": asdict(self.preferences.packages),
-            "llm": asdict(self.preferences.llm),
-            "conflicts": asdict(self.preferences.conflicts),
-            "theme": self.preferences.theme,
-            "language": self.preferences.language,
-            "timezone": self.preferences.timezone,
-        }
+        return self._to_dict()
 
     def get_config_info(self) -> dict[str, Any]:
         """Get configuration metadata"""
@@ -387,14 +362,13 @@ def format_preference_value(value: Any) -> str:
     """Format preference value for display"""
     if isinstance(value, bool):
         return "true" if value else "false"
-    elif isinstance(value, Enum):
+    if isinstance(value, Enum):
         return value.value
-    elif isinstance(value, list):
+    if isinstance(value, list):
         return ", ".join(str(v) for v in value)
-    elif isinstance(value, dict):
+    if isinstance(value, dict):
         return yaml.dump(value, default_flow_style=False).strip()
-    else:
-        return str(value)
+    return str(value)
 
 
 def print_all_preferences(manager: PreferencesManager) -> None:
