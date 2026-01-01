@@ -1,4 +1,3 @@
-from typing import Dict, List
 
 
 def fetch_changelog(package: str) -> list[dict]:

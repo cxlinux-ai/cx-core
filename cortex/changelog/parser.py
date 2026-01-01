@@ -1,4 +1,3 @@
-from typing import Dict, List
 
 
 def parse_changelog(entry: dict) -> dict:
