@@ -302,32 +302,38 @@ WantedBy=timers.target
 """
 
         try:
-            # Write service file
-            service_path = Path(f"/etc/systemd/system/cortex-security-{schedule_id}.service")
-            if service_path.parent.exists() or self._check_sudo():
-                with open(service_path, "w") as f:
-                    f.write(service_content)
-
-                # Write timer file
-                timer_path = Path(f"/etc/systemd/system/cortex-security-{schedule_id}.timer")
-                with open(timer_path, "w") as f:
-                    f.write(timer_content)
-
-                # Reload systemd and enable timer
-                subprocess.run(["systemctl", "daemon-reload"], check=True)
-                subprocess.run(
-                    ["systemctl", "enable", f"cortex-security-{schedule_id}.timer"], check=True
-                )
-                subprocess.run(
-                    ["systemctl", "start", f"cortex-security-{schedule_id}.timer"], check=True
-                )
-
-                logger.info(f"✅ Installed systemd timer for {schedule_id}")
-                return True
-            else:
-                logger.warning("Cannot install systemd timer without sudo")
+            # Check for root privileges first (required to write to /etc/systemd/system)
+            if not self._has_root_privileges():
+                logger.warning("Cannot install systemd timer: root privileges required")
+                logger.info("Try running with sudo: sudo cortex security schedule install-timer " + schedule_id)
                 return False
 
+            # Write service file
+            service_path = Path(f"/etc/systemd/system/cortex-security-{schedule_id}.service")
+            with open(service_path, "w") as f:
+                f.write(service_content)
+
+            # Write timer file
+            timer_path = Path(f"/etc/systemd/system/cortex-security-{schedule_id}.timer")
+            with open(timer_path, "w") as f:
+                f.write(timer_content)
+
+            # Reload systemd and enable timer
+            subprocess.run(["systemctl", "daemon-reload"], check=True)
+            subprocess.run(
+                ["systemctl", "enable", f"cortex-security-{schedule_id}.timer"], check=True
+            )
+            subprocess.run(
+                ["systemctl", "start", f"cortex-security-{schedule_id}.timer"], check=True
+            )
+
+            logger.info(f"✅ Installed systemd timer for {schedule_id}")
+            return True
+
+        except PermissionError as e:
+            logger.error(f"Permission denied: {e}")
+            logger.info("Try running with sudo: sudo cortex security schedule install-timer " + schedule_id)
+            return False
         except Exception as e:
             logger.error(f"Failed to install systemd timer: {e}")
             return False
@@ -343,8 +349,15 @@ WantedBy=timers.target
         else:
             return "monthly"  # Default
 
-    def _check_sudo(self) -> bool:
-        """Check if we have sudo access"""
+    def _has_root_privileges(self) -> bool:
+        """Check if we have root privileges (running as root or have passwordless sudo)"""
+        import os
+        
+        # Check if running as root
+        if os.geteuid() == 0:
+            return True
+        
+        # Check if we have passwordless sudo access
         try:
             result = subprocess.run(
                 ["sudo", "-n", "true"], capture_output=True, timeout=2
