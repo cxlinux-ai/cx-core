@@ -12,6 +12,7 @@ Expected speedup: 2-3x compared to sequential calls
 
 import asyncio
 import time
+
 from cortex.llm_router import (
     LLMRouter,
     TaskType,
@@ -35,14 +36,12 @@ async def demo_multi_package_queries():
     print(f"\nQuerying {len(packages)} packages in parallel...")
     start_time = time.time()
 
-    responses = await query_multiple_packages(
-        router, packages, max_concurrent=5
-    )
+    responses = await query_multiple_packages(router, packages, max_concurrent=5)
 
     elapsed = time.time() - start_time
 
     print(f"\n✅ Completed in {elapsed:.2f} seconds")
-    print(f"   Average time per package: {elapsed/len(packages):.2f}s\n")
+    print(f"   Average time per package: {elapsed / len(packages):.2f}s\n")
 
     for pkg, response in responses.items():
         print(f"📦 {pkg}:")
@@ -82,7 +81,7 @@ async def demo_parallel_error_diagnosis():
     elapsed = time.time() - start_time
 
     print(f"\n✅ Completed in {elapsed:.2f} seconds")
-    print(f"   Average time per error: {elapsed/len(errors):.2f}s\n")
+    print(f"   Average time per error: {elapsed / len(errors):.2f}s\n")
 
     for error, diagnosis in zip(errors, diagnoses):
         print(f"🔍 Error: {error[:60]}...")
@@ -116,7 +115,7 @@ async def demo_hardware_config_checks():
     elapsed = time.time() - start_time
 
     print(f"\n✅ Completed in {elapsed:.2f} seconds")
-    print(f"   Average time per component: {elapsed/len(components):.2f}s\n")
+    print(f"   Average time per component: {elapsed / len(components):.2f}s\n")
 
     for component, config in configs.items():
         print(f"🖥️  {component}:")
@@ -162,7 +161,7 @@ async def demo_batch_completion():
     elapsed = time.time() - start_time
 
     print(f"\n✅ Completed in {elapsed:.2f} seconds")
-    print(f"   Average time per request: {elapsed/len(requests):.2f}s\n")
+    print(f"   Average time per request: {elapsed / len(requests):.2f}s\n")
 
     task_names = ["Chat", "System Op", "Error Debug", "Code Gen"]
     for i, (task_name, response) in enumerate(zip(task_names, responses)):
@@ -211,7 +210,9 @@ async def demo_sequential_vs_parallel():
 
     speedup = elapsed_seq / elapsed_par if elapsed_par > 0 else 1.0
     print(f"\n⚡ Speedup: {speedup:.2f}x")
-    print(f"   Time saved: {elapsed_seq - elapsed_par:.2f}s ({((elapsed_seq - elapsed_par)/elapsed_seq*100):.1f}%)")
+    print(
+        f"   Time saved: {elapsed_seq - elapsed_par:.2f}s ({((elapsed_seq - elapsed_par) / elapsed_seq * 100):.1f}%)"
+    )
 
 
 async def main():
@@ -251,4 +252,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

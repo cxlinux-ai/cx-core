@@ -92,7 +92,9 @@ class TestFallbackBehavior(unittest.TestCase):
     def test_fallback_to_kimi_when_claude_unavailable(self):
         """Should fallback to Kimi K2 if Claude unavailable."""
         router = LLMRouter(
-            claude_api_key=None, kimi_api_key="test-kimi-key", enable_fallback=True  # No Claude
+            claude_api_key=None,
+            kimi_api_key="test-kimi-key",
+            enable_fallback=True,  # No Claude
         )
 
         # User chat normally goes to Claude, should fallback to Kimi
@@ -103,7 +105,9 @@ class TestFallbackBehavior(unittest.TestCase):
     def test_fallback_to_claude_when_kimi_unavailable(self):
         """Should fallback to Claude if Kimi K2 unavailable."""
         router = LLMRouter(
-            claude_api_key="test-claude-key", kimi_api_key=None, enable_fallback=True  # No Kimi
+            claude_api_key="test-claude-key",
+            kimi_api_key=None,
+            enable_fallback=True,  # No Kimi
         )
 
         # System ops normally go to Kimi, should fallback to Claude
@@ -707,9 +711,7 @@ class TestParallelProcessing(unittest.TestCase):
 
         async def run_test():
             components = ["nvidia_gpu", "intel_cpu"]
-            configs = await check_hardware_configs_parallel(
-                router, components, max_concurrent=2
-            )
+            configs = await check_hardware_configs_parallel(router, components, max_concurrent=2)
             self.assertEqual(len(configs), 2)
             self.assertIn("nvidia_gpu", configs)
             self.assertIn("intel_cpu", configs)

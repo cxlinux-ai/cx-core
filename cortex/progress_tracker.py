@@ -582,7 +582,9 @@ class RichProgressTracker(ProgressTracker):
         # Add tasks for each stage
         for i, stage in enumerate(self.stages):
             task_id = self.progress_obj.add_task(
-                stage.name, total=100, visible=(i == 0)  # Only show first stage initially
+                stage.name,
+                total=100,
+                visible=(i == 0),  # Only show first stage initially
             )
             self.task_ids[i] = task_id
 

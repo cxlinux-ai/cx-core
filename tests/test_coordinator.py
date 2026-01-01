@@ -16,7 +16,6 @@ from cortex.coordinator import (
 
 
 class TestInstallationStep(unittest.TestCase):
-
     def test_step_creation(self):
         step = InstallationStep(command="echo test", description="Test step")
         self.assertEqual(step.command, "echo test")
@@ -33,7 +32,6 @@ class TestInstallationStep(unittest.TestCase):
 
 
 class TestInstallationCoordinator(unittest.TestCase):
-
     def test_initialization(self):
         commands = ["echo 1", "echo 2"]
         coordinator = InstallationCoordinator(commands)
@@ -320,7 +318,6 @@ class TestInstallationCoordinator(unittest.TestCase):
 
 
 class TestInstallDocker(unittest.TestCase):
-
     @patch("subprocess.run")
     def test_install_docker_success(self, mock_run):
         mock_result = Mock()
@@ -349,7 +346,6 @@ class TestInstallDocker(unittest.TestCase):
 
 
 class TestInstallationPlans(unittest.TestCase):
-
     def test_example_cuda_install_plan_structure(self):
         plan = example_cuda_install_plan()
 

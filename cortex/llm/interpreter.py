@@ -12,6 +12,7 @@ class APIProvider(Enum):
     CLAUDE = "claude"
     OPENAI = "openai"
     OLLAMA = "ollama"
+    FAKE = "fake"
 
 
 class CommandInterpreter:
@@ -26,7 +27,6 @@ class CommandInterpreter:
         api_key: str,
         provider: str = "openai",
         model: str | None = None,
-        offline: bool = False,
         cache: Optional["SemanticCache"] = None,
     ):
         """Initialize the command interpreter.
@@ -35,12 +35,10 @@ class CommandInterpreter:
             api_key: API key for the LLM provider
             provider: Provider name ("openai", "claude", or "ollama")
             model: Optional model name override
-            offline: If True, only use cached responses
             cache: Optional SemanticCache instance for response caching
         """
         self.api_key = api_key
         self.provider = APIProvider(provider.lower())
-        self.offline = offline
 
         if cache is None:
             try:
@@ -61,9 +59,36 @@ class CommandInterpreter:
             elif self.provider == APIProvider.CLAUDE:
                 self.model = "claude-sonnet-4-20250514"
             elif self.provider == APIProvider.OLLAMA:
-                self.model = "llama3.2"  # Default Ollama model
+                # Try to load model from config or environment
+                self.model = self._get_ollama_model()
+            elif self.provider == APIProvider.FAKE:
+                self.model = "fake"  # Fake provider doesn't use a real model
 
         self._initialize_client()
+
+    def _get_ollama_model(self) -> str:
+        """Get Ollama model from config file or environment."""
+        # Try environment variable first
+        env_model = os.environ.get("OLLAMA_MODEL")
+        if env_model:
+            return env_model
+
+        # Try config file
+        try:
+            from pathlib import Path
+
+            config_file = Path.home() / ".cortex" / "config.json"
+            if config_file.exists():
+                with open(config_file) as f:
+                    config = json.load(f)
+                    model = config.get("ollama_model")
+                    if model:
+                        return model
+        except Exception:
+            pass  # Ignore errors reading config
+
+        # Default to llama3.2
+        return "llama3.2"
 
     def _initialize_client(self):
         if self.provider == APIProvider.OPENAI:
@@ -81,11 +106,39 @@ class CommandInterpreter:
             except ImportError:
                 raise ImportError("Anthropic package not installed. Run: pip install anthropic")
         elif self.provider == APIProvider.OLLAMA:
-            # Ollama uses local HTTP API, no special client needed
-            self.ollama_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-            self.client = None  # Will use requests
+            # Ollama uses OpenAI-compatible API
+            try:
+                from openai import OpenAI
 
-    def _get_system_prompt(self) -> str:
+                ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+                self.client = OpenAI(
+                    api_key="ollama", base_url=f"{ollama_base_url}/v1"  # Dummy key, not used
+                )
+            except ImportError:
+                raise ImportError("OpenAI package not installed. Run: pip install openai")
+        elif self.provider == APIProvider.FAKE:
+            # Fake provider uses predefined commands from environment
+            self.client = None  # No client needed for fake provider
+
+    def _get_system_prompt(self, simplified: bool = False) -> str:
+        """Get system prompt for command interpretation.
+
+        Args:
+            simplified: If True, return a shorter prompt optimized for local models
+        """
+        if simplified:
+            return """You must respond with ONLY a JSON object. No explanations, no markdown, no code blocks.
+
+Format: {"commands": ["command1", "command2"]}
+
+Example input: install nginx
+Example output: {"commands": ["sudo apt update", "sudo apt install -y nginx"]}
+
+Rules:
+- Use apt for Ubuntu packages
+- Add sudo for system commands
+- Return ONLY the JSON object"""
+
         return """You are a Linux system command expert. Convert natural language requests into safe, validated bash commands.
 
 Rules:
@@ -136,43 +189,84 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
             raise RuntimeError(f"Claude API call failed: {str(e)}")
 
     def _call_ollama(self, user_input: str) -> list[str]:
-        """Call local Ollama instance for offline/local inference"""
-        import urllib.error
-        import urllib.request
-
+        """Call local Ollama instance using OpenAI-compatible API."""
         try:
-            url = f"{self.ollama_url}/api/generate"
-            prompt = f"{self._get_system_prompt()}\n\nUser request: {user_input}"
+            # For local models, be extremely explicit in the user message
+            enhanced_input = f"""{user_input}
 
-            data = json.dumps(
-                {
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.3},
-                }
-            ).encode("utf-8")
+Respond with ONLY this JSON format (no explanations):
+{{\"commands\": [\"command1\", \"command2\"]}}"""
 
-            req = urllib.request.Request(
-                url, data=data, headers={"Content-Type": "application/json"}
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self._get_system_prompt(simplified=True)},
+                    {"role": "user", "content": enhanced_input},
+                ],
+                temperature=0.1,  # Lower temperature for more focused responses
+                max_tokens=300,  # Reduced tokens for faster response
             )
 
-            with urllib.request.urlopen(req, timeout=60) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                content = result.get("response", "").strip()
-                return self._parse_commands(content)
-
-        except urllib.error.URLError as e:
-            raise RuntimeError(f"Ollama not available at {self.ollama_url}: {str(e)}")
+            content = response.choices[0].message.content.strip()
+            return self._parse_commands(content)
         except Exception as e:
-            raise RuntimeError(f"Ollama API call failed: {str(e)}")
+            # Provide helpful error message
+            ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            raise RuntimeError(
+                f"Ollama API call failed. Is Ollama running? (ollama serve)\n"
+                f"URL: {ollama_base_url}, Model: {self.model}\n"
+                f"Error: {str(e)}"
+            )
+
+    def _call_fake(self, user_input: str) -> list[str]:
+        """Return predefined fake commands from environment for testing."""
+        fake_commands_env = os.environ.get("CORTEX_FAKE_COMMANDS")
+        if not fake_commands_env:
+            raise RuntimeError("CORTEX_FAKE_COMMANDS environment variable not set")
+
+        try:
+            data = json.loads(fake_commands_env)
+            commands = data.get("commands", [])
+            if not isinstance(commands, list):
+                raise ValueError("Commands must be a list in CORTEX_FAKE_COMMANDS")
+            return [cmd for cmd in commands if cmd and isinstance(cmd, str)]
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse CORTEX_FAKE_COMMANDS: {str(e)}")
+
+    def _repair_json(self, content: str) -> str:
+        """Attempt to repair common JSON formatting issues."""
+        # Remove extra whitespace between braces and brackets
+        import re
+
+        content = re.sub(r"\{\s+", "{", content)
+        content = re.sub(r"\s+\}", "}", content)
+        content = re.sub(r"\[\s+", "[", content)
+        content = re.sub(r"\s+\]", "]", content)
+        content = re.sub(r",\s*([}\]])", r"\1", content)  # Remove trailing commas
+        return content.strip()
 
     def _parse_commands(self, content: str) -> list[str]:
         try:
-            if content.startswith("```json"):
+            # Strip markdown code blocks
+            if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
-            elif content.startswith("```"):
-                content = content.split("```")[1].split("```")[0].strip()
+            elif "```" in content:
+                parts = content.split("```")
+                if len(parts) >= 3:
+                    content = parts[1].strip()
+
+            # Try to find JSON object in the content
+            import re
+
+            # Look for {"commands": [...]} pattern
+            json_match = re.search(
+                r'\{\s*["\']commands["\']\s*:\s*\[.*?\]\s*\}', content, re.DOTALL
+            )
+            if json_match:
+                content = json_match.group(0)
+
+            # Try to repair common JSON issues
+            content = self._repair_json(content)
 
             data = json.loads(content)
             commands = data.get("commands", [])
@@ -180,8 +274,27 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
             if not isinstance(commands, list):
                 raise ValueError("Commands must be a list")
 
-            return [cmd for cmd in commands if cmd and isinstance(cmd, str)]
+            # Handle both formats:
+            # 1. ["cmd1", "cmd2"] - direct string array
+            # 2. [{"command": "cmd1"}, {"command": "cmd2"}] - object array
+            result = []
+            for cmd in commands:
+                if isinstance(cmd, str):
+                    # Direct string
+                    if cmd:
+                        result.append(cmd)
+                elif isinstance(cmd, dict):
+                    # Object with "command" key
+                    cmd_str = cmd.get("command", "")
+                    if cmd_str:
+                        result.append(cmd_str)
+
+            return result
         except (json.JSONDecodeError, ValueError) as e:
+            # Log the problematic content for debugging
+            import sys
+
+            print(f"\nDebug: Failed to parse JSON. Raw content:\n{content[:500]}", file=sys.stderr)
             raise ValueError(f"Failed to parse LLM response: {str(e)}")
 
     def _validate_commands(self, commands: list[str]) -> list[str]:
@@ -234,15 +347,14 @@ Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.i
             if cached is not None:
                 return cached
 
-        if self.offline:
-            raise RuntimeError("Offline mode: no cached response available for this request")
-
         if self.provider == APIProvider.OPENAI:
             commands = self._call_openai(user_input)
         elif self.provider == APIProvider.CLAUDE:
             commands = self._call_claude(user_input)
         elif self.provider == APIProvider.OLLAMA:
             commands = self._call_ollama(user_input)
+        elif self.provider == APIProvider.FAKE:
+            commands = self._call_fake(user_input)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 

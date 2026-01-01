@@ -1,0 +1,107 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-31",
+  "individuals": [
+    {
+      "name": "Mike Morgan",
+      "github_username": "mikejmorgan-ai",
+      "emails": [
+        "mike@aiventureholdings.com",
+        "mike@cortexlinux.com",
+        "allbots@llents.io",
+        "allbots@allbots.io"
+      ],
+      "signed_date": "2024-12-29",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "pavani manchala",
+      "github_username": "pavanimanchala53",
+      "emails": [
+        "pavanimanchala53@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "swaroop manchala",
+      "github_username": "SWAROOP323",
+      "emails": [
+        "swaroopmanchala323@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Sahil Bhatane",
+      "github_username": "Sahilbhatane",
+      "emails": [
+        "Sahilbhatane@gmail.com",
+        "Sahilbhatane6@gmail.com"
+      ],
+      "signed_date": "2024-12-29",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Sujay Dongre",
+      "github_username": "sujay-d07",
+      "emails": [
+        "sujaydongre07@gmail.com"
+      ],
+      "signed_date": "2024-12-29",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Ansh Grover",
+      "github_username": "Anshgrover23",
+      "emails": [
+        "anshgrover938@gmail.com"
+      ],
+      "signed_date": "2025-12-30",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Kesavaraja M",
+      "github_username": "Kesavaraja67",
+      "emails": [
+        "krkesavaraja67@gmail.com"
+      ],
+      "signed_date": "2025-12-31",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Krishna",
+      "github_username": "lu11y0",
+      "emails": [
+        "bijjurkrishna@gmail.com"
+      ],
+      "signed_date": "2025-12-31",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Suyash",
+      "github_username": "Suyashd999",
+      "emails": [
+        "suyashd999@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
+    }
+  ],
+  "corporations": {
+    "AI Venture Holdings LLC": {
+      "contact_name": "Mike Morgan",
+      "contact_email": "legal@aiventureholdings.com",
+      "signed_date": "2024-12-29",
+      "cla_version": "1.0",
+      "domains": [
+        "aiventureholdings.com",
+        "cortexlinux.com"
+      ],
+      "github_usernames": [
+        "mikejmorgan-ai"
+      ],
+      "emails": []
+    }
+  }
+}

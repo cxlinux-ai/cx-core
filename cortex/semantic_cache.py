@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from cortex.utils.db_pool import SQLiteConnectionPool, get_connection_pool
+
 
 @dataclass(frozen=True)
 class CacheStats:
@@ -71,6 +73,7 @@ class SemanticCache:
             else float(os.environ.get("CORTEX_CACHE_SIMILARITY_THRESHOLD", "0.86"))
         )
         self._ensure_db_directory()
+        self._pool: SQLiteConnectionPool | None = None
         self._init_database()
 
     def _ensure_db_directory(self) -> None:
@@ -83,8 +86,10 @@ class SemanticCache:
             self.db_path = str(user_dir / "cache.db")
 
     def _init_database(self) -> None:
-        conn = sqlite3.connect(self.db_path)
-        try:
+        # Initialize connection pool (thread-safe singleton)
+        self._pool = get_connection_pool(self.db_path, pool_size=5)
+
+        with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -126,8 +131,6 @@ class SemanticCache:
             )
             cur.execute("INSERT OR IGNORE INTO llm_cache_stats(id, hits, misses) VALUES (1, 0, 0)")
             conn.commit()
-        finally:
-            conn.close()
 
     @staticmethod
     def _utcnow_iso() -> str:
@@ -223,8 +226,7 @@ class SemanticCache:
         prompt_hash = self._hash_text(prompt)
         now = self._utcnow_iso()
 
-        conn = sqlite3.connect(self.db_path)
-        try:
+        with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -286,8 +288,6 @@ class SemanticCache:
             self._record_miss(conn)
             conn.commit()
             return None
-        finally:
-            conn.close()
 
     def put_commands(
         self,
@@ -312,8 +312,7 @@ class SemanticCache:
         vec = self._embed(prompt)
         embedding_blob = self._pack_embedding(vec)
 
-        conn = sqlite3.connect(self.db_path)
-        try:
+        with self._pool.get_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO llm_cache_entries(
@@ -342,8 +341,6 @@ class SemanticCache:
             )
             self._evict_if_needed(conn)
             conn.commit()
-        finally:
-            conn.close()
 
     def _evict_if_needed(self, conn: sqlite3.Connection) -> None:
         cur = conn.cursor()
@@ -371,13 +368,10 @@ class SemanticCache:
         Returns:
             CacheStats object with hits, misses, and computed metrics
         """
-        conn = sqlite3.connect(self.db_path)
-        try:
+        with self._pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT hits, misses FROM llm_cache_stats WHERE id = 1")
             row = cur.fetchone()
             if row is None:
                 return CacheStats(hits=0, misses=0)
             return CacheStats(hits=int(row[0]), misses=int(row[1]))
-        finally:
-            conn.close()

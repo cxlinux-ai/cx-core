@@ -4,7 +4,6 @@ from intent.detector import Intent
 
 
 class InstallationPlanner:
-
     GPU_PACKAGES = ["cuda", "cudnn", "pytorch", "tensorflow"]
 
     def build_plan(self, intents: list[Intent]) -> list[str]:
@@ -19,7 +18,6 @@ class InstallationPlanner:
         # 2. Add installation steps based on intent order
         for intent in intents:
             if intent.action == "install" and intent.target not in installed:
-
                 if intent.target == "cuda":
                     plan.append("Install CUDA 12.3 + drivers")
 
