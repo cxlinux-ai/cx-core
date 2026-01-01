@@ -3,13 +3,13 @@ import logging
 import os
 import sys
 import time
-from pathlib import Path
-from cortex.config.git_manager import GitManager
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
+from cortex.config.git_manager import GitManager
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
 from cortex.demo import run_demo
 from cortex.dependency_importer import (
@@ -1657,7 +1657,6 @@ def main():
             return cli.wizard()
         elif args.command == "status":
             return cli.status()
-        config-git-integration
         elif args.command == "config":
             config_dir = Path.home() / ".cortex" / "configs"
             config_dir.mkdir(parents=True, exist_ok=True)
@@ -1698,7 +1697,6 @@ def main():
 
         elif args.command == "ask":
             return cli.ask(args.question)
-        main
         elif args.command == "install":
             return cli.install(
                 args.software,
