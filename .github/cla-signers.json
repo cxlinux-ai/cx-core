@@ -86,6 +86,15 @@
       ],
       "signed_date": "2026-01-01",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Dhruv",
+      "github_username": "Dhruv-89",
+      "emails": [
+        "dhruvborkar21@gmail.com"
+      ],
+      "signed_date": "2026-01-02",
+      "cla_version": "1.0"
     }
   ],
   "corporations": {
