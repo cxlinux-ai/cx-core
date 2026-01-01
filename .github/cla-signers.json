@@ -68,6 +68,15 @@
       ],
       "signed_date": "2025-12-31",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Sujay Dongre",
+      "github_username": "sujay-d07",
+      "emails": [
+        "sujaydongre07@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
     }
   ],
   "corporations": {
