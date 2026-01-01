@@ -360,10 +360,9 @@ class AutonomousPatcher:
 
         # Record installation start
         packages_list = list(plan.packages_to_update.keys())
-        commands = [
-            f"apt-get update",
-            f"apt-get install -y {' '.join(packages_list)}",
-        ]
+        commands = ["apt-get update"]
+        if packages_list:
+            commands.append("apt-get install -y " + " ".join(packages_list))
 
         install_id = self.history.record_installation(
             InstallationType.UPGRADE,
