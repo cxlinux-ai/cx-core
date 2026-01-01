@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for Cortex Logging System"""
+
 import json
 import os
 import sys

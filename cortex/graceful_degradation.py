@@ -11,6 +11,7 @@ import hashlib
 import logging
 import os
 import sqlite3
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from cortex.utils.db_pool import SQLiteConnectionPool, get_connection_pool
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +74,13 @@ class ResponseCache:
     def __init__(self, db_path: Path | None = None):
         self.db_path = db_path or Path.home() / ".cortex" / "response_cache.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._pool: SQLiteConnectionPool | None = None
         self._init_db()
 
     def _init_db(self):
         """Initialize the cache database."""
-        with sqlite3.connect(self.db_path) as conn:
+        self._pool = get_connection_pool(str(self.db_path), pool_size=5)
+        with self._pool.get_connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS response_cache (
@@ -105,7 +110,7 @@ class ResponseCache:
         """Retrieve a cached response."""
         query_hash = self._hash_query(query)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM response_cache WHERE query_hash = ?", (query_hash,)
@@ -139,7 +144,7 @@ class ResponseCache:
         """Store a response in the cache."""
         query_hash = self._hash_query(query)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO response_cache
@@ -159,7 +164,7 @@ class ResponseCache:
         keywords = set(query.lower().split())
         results = []
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM response_cache ORDER BY hit_count DESC LIMIT 100")
 
@@ -188,7 +193,7 @@ class ResponseCache:
         """Remove entries older than specified days."""
         cutoff = datetime.now() - timedelta(days=days)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             cursor = conn.execute(
                 "DELETE FROM response_cache WHERE created_at < ?", (cutoff.isoformat(),)
             )
@@ -197,7 +202,7 @@ class ResponseCache:
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             conn.row_factory = sqlite3.Row
 
             total = conn.execute("SELECT COUNT(*) as count FROM response_cache").fetchone()["count"]
@@ -499,11 +504,21 @@ class GracefulDegradation:
 
 
 # CLI Integration
+# Global instance for degradation manager (thread-safe)
+_degradation_instance = None
+_degradation_lock = threading.Lock()
+
+
 def get_degradation_manager() -> GracefulDegradation:
-    """Get or create the global degradation manager."""
-    if not hasattr(get_degradation_manager, "_instance"):
-        get_degradation_manager._instance = GracefulDegradation()
-    return get_degradation_manager._instance
+    """Get or create the global degradation manager (thread-safe)."""
+    global _degradation_instance
+    # Fast path: avoid lock if already initialized
+    if _degradation_instance is None:
+        with _degradation_lock:
+            # Double-checked locking pattern
+            if _degradation_instance is None:
+                _degradation_instance = GracefulDegradation()
+    return _degradation_instance
 
 
 def process_with_fallback(query: str, llm_fn: Callable | None = None) -> dict[str, Any]:

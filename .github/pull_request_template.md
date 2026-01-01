@@ -6,5 +6,5 @@ Closes #<!-- REQUIRED: Issue number -->
 
 ## Checklist
 - [ ] Tests pass (`pytest tests/`)
-- [ ] PR title format: `[#XX] Description`
 - [ ] MVP label added if closing MVP issue
+- [ ] Update "Cortex -h" (if needed)

@@ -8,6 +8,7 @@ Usage:
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -21,20 +22,27 @@ class StackManager:
         # stacks.json is in the same directory as this file (cortex/)
         self.stacks_file = Path(__file__).parent / "stacks.json"
         self._stacks = None
+        self._stacks_lock = threading.Lock()  # Protect _stacks cache
 
     def load_stacks(self) -> dict[str, Any]:
-        """Load stacks from JSON file"""
+        """Load stacks from JSON file (thread-safe)"""
+        # Fast path: check without lock
         if self._stacks is not None:
             return self._stacks
 
-        try:
-            with open(self.stacks_file) as f:
-                self._stacks = json.load(f)
-            return self._stacks
-        except FileNotFoundError as e:
-            raise FileNotFoundError(f"Stacks config not found at {self.stacks_file}") from e
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in {self.stacks_file}") from e
+        # Slow path: acquire lock and recheck
+        with self._stacks_lock:
+            if self._stacks is not None:
+                return self._stacks
+
+            try:
+                with open(self.stacks_file) as f:
+                    self._stacks = json.load(f)
+                return self._stacks
+            except FileNotFoundError as e:
+                raise FileNotFoundError(f"Stacks config not found at {self.stacks_file}") from e
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in {self.stacks_file}") from e
 
     def list_stacks(self) -> list[dict[str, Any]]:
         """Get all available stacks"""

@@ -130,6 +130,8 @@ def get_api_key_sources() -> dict[str, str | None]:
         "OPENAI_API_KEY",
         "MOONSHOT_API_KEY",
         "CORTEX_PROVIDER",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
     ]
 
     for key in api_keys:

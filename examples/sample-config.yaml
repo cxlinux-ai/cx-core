@@ -67,6 +67,15 @@ preferences:
   confirmations: minimal
   verbosity: normal
 
+# API Provider Configuration
+# Options: claude, openai, ollama
+api_provider: ollama
+
+# Ollama Configuration (for local LLM)
+ollama:
+  base_url: http://localhost:11434
+  model: llama3.2
+
 environment_variables:
   LANG: en_US.UTF-8
   LANGUAGE: en_US:en

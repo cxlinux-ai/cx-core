@@ -1,5 +1,6 @@
 """
 Unit tests for cortex/doctor.py - System Health Check
+This tests the SystemDoctor class used by 'cortex status' command.
 """
 
 import sys
@@ -84,6 +85,20 @@ class TestGPUDriverCheck:
         assert "CPU-only mode" in doctor.warnings[0]
 
 
+class TestSecurityToolsCheck:
+    def test_firejail_available(self):
+        doctor = SystemDoctor()
+        with patch("shutil.which", return_value="/usr/bin/firejail"):
+            doctor._check_security_tools()
+        assert any("Firejail available" in msg for msg in doctor.passes)
+
+    def test_firejail_not_installed(self):
+        doctor = SystemDoctor()
+        with patch("shutil.which", return_value=None):
+            doctor._check_security_tools()
+        assert any("Firejail not installed" in msg for msg in doctor.warnings)
+
+
 class TestExitCodes:
     """
     IMPORTANT: run_checks() calls all checks; without patching, your real system
@@ -97,6 +112,7 @@ class TestExitCodes:
     @patch.object(SystemDoctor, "_check_cuda")
     @patch.object(SystemDoctor, "_check_ollama")
     @patch.object(SystemDoctor, "_check_api_keys")
+    @patch.object(SystemDoctor, "_check_security_tools")
     @patch.object(SystemDoctor, "_check_disk_space")
     @patch.object(SystemDoctor, "_check_memory")
     @patch.object(SystemDoctor, "_print_summary")

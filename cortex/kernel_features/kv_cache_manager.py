@@ -14,6 +14,8 @@ from enum import Enum
 from multiprocessing import shared_memory
 from pathlib import Path
 
+from cortex.utils.db_pool import get_connection_pool
+
 CORTEX_DB = Path.home() / ".cortex/kv_cache.db"
 SHM_PREFIX = "cortex_kv_"
 
@@ -46,7 +48,8 @@ class CacheEntry:
 class CacheDatabase:
     def __init__(self):
         CORTEX_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(CORTEX_DB) as conn:
+        self._pool = get_connection_pool(str(CORTEX_DB), pool_size=5)
+        with self._pool.get_connection() as conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS pools (name TEXT PRIMARY KEY, config TEXT, shm_name TEXT);
@@ -57,7 +60,7 @@ class CacheDatabase:
             )
 
     def save_pool(self, cfg: CacheConfig, shm: str):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self._pool.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO pools VALUES (?,?,?)",
                 (cfg.name, json.dumps(asdict(cfg)), shm),
@@ -65,14 +68,14 @@ class CacheDatabase:
             conn.execute("INSERT OR IGNORE INTO stats (pool) VALUES (?)", (cfg.name,))
 
     def get_pool(self, name: str):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self._pool.get_connection() as conn:
             row = conn.execute(
                 "SELECT config, shm_name FROM pools WHERE name=?", (name,)
             ).fetchone()
             return (CacheConfig(**json.loads(row[0])), row[1]) if row else None
 
     def list_pools(self):
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self._pool.get_connection() as conn:
             return [
                 CacheConfig(**json.loads(r[0]))
                 for r in conn.execute("SELECT config FROM pools").fetchall()
@@ -119,7 +122,7 @@ class KVCacheManager:
         if name in self.pools:
             self.pools[name].destroy()
             del self.pools[name]
-        with sqlite3.connect(CORTEX_DB) as conn:
+        with self.db._pool.get_connection() as conn:
             conn.execute("DELETE FROM pools WHERE name=?", (name,))
         print(f"✅ Destroyed pool '{name}'")
         return True
@@ -131,7 +134,7 @@ class KVCacheManager:
         for item in pools:
             if item:
                 cfg = item[0] if isinstance(item, tuple) else item
-                print(f"{cfg.name:<20} {cfg.size_bytes/1e9:.1f}G{'':<6} {cfg.policy:<10}")
+                print(f"{cfg.name:<20} {cfg.size_bytes / 1e9:.1f}G{'':<6} {cfg.policy:<10}")
 
 
 def main():
