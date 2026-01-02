@@ -282,11 +282,13 @@ class TestAutonomousPatcher(unittest.TestCase):
         self.assertEqual(plan.estimated_duration_minutes, 0.0)
 
     @patch.object(AutonomousPatcher, "_check_package_update_available")
+    @patch.object(AutonomousPatcher, "_update_fixes_vulnerability")
     @patch.object(AutonomousPatcher, "ensure_apt_updated")
-    def test_create_patch_plan_with_updates(self, mock_apt, mock_check):
+    def test_create_patch_plan_with_updates(self, mock_apt, mock_fixes, mock_check):
         """Test creating patch plan with available updates"""
         mock_apt.return_value = True
         mock_check.return_value = "1.20.0"
+        mock_fixes.return_value = True
 
         vuln = Vulnerability(
             cve_id="CVE-2023-12345",
@@ -295,6 +297,7 @@ class TestAutonomousPatcher(unittest.TestCase):
             affected_versions="< 1.20.0",
             severity=Severity.CRITICAL,
             description="Test vulnerability",
+            fixed_version="1.20.0",
         )
 
         plan = self.patcher.create_patch_plan(vulnerabilities=[vuln])
@@ -303,11 +306,13 @@ class TestAutonomousPatcher(unittest.TestCase):
         self.assertIn("nginx", plan.packages_to_update)
 
     @patch.object(AutonomousPatcher, "_check_package_update_available")
+    @patch.object(AutonomousPatcher, "_update_fixes_vulnerability")
     @patch.object(AutonomousPatcher, "ensure_apt_updated")
-    def test_create_patch_plan_detects_kernel_reboot(self, mock_apt, mock_check):
+    def test_create_patch_plan_detects_kernel_reboot(self, mock_apt, mock_fixes, mock_check):
         """Test patch plan detects kernel updates require reboot"""
         mock_apt.return_value = True
         mock_check.return_value = "5.15.0-100"
+        mock_fixes.return_value = True
 
         vuln = Vulnerability(
             cve_id="CVE-2023-KERNEL",
@@ -316,11 +321,37 @@ class TestAutonomousPatcher(unittest.TestCase):
             affected_versions="< 5.15.0-100",
             severity=Severity.CRITICAL,
             description="Kernel vulnerability",
+            fixed_version="5.15.0-100",
         )
 
         plan = self.patcher.create_patch_plan(vulnerabilities=[vuln])
 
         self.assertTrue(plan.requires_reboot)
+
+    @patch.object(AutonomousPatcher, "_check_package_update_available")
+    @patch.object(AutonomousPatcher, "_update_fixes_vulnerability")
+    @patch.object(AutonomousPatcher, "ensure_apt_updated")
+    def test_create_patch_plan_skips_unfixed_vulns(self, mock_apt, mock_fixes, mock_check):
+        """Test patch plan skips vulnerabilities not fixed by available update"""
+        mock_apt.return_value = True
+        mock_check.return_value = "1.19.0"  # Available version
+        mock_fixes.return_value = False  # Doesn't fix
+
+        vuln = Vulnerability(
+            cve_id="CVE-2023-12345",
+            package_name="nginx",
+            installed_version="1.18.0",
+            affected_versions="< 1.20.0",
+            severity=Severity.CRITICAL,
+            description="Test vulnerability",
+            fixed_version="1.20.0",  # Requires 1.20.0, but only 1.19.0 available
+        )
+
+        plan = self.patcher.create_patch_plan(vulnerabilities=[vuln])
+
+        # Should not include this package since update doesn't fix the vulnerability
+        self.assertEqual(len(plan.vulnerabilities), 0)
+        self.assertNotIn("nginx", plan.packages_to_update)
 
     def test_apply_patch_plan_empty(self):
         """Test applying empty patch plan"""
@@ -454,6 +485,98 @@ class TestAutonomousPatcherConfig(unittest.TestCase):
         # Config operations are tested implicitly through add_to_whitelist etc.
         patcher.add_to_whitelist("curl")
         self.assertIn("curl", patcher.whitelist)
+
+
+class TestVersionComparison(unittest.TestCase):
+    """Test version comparison and vulnerability fix verification"""
+
+    def setUp(self):
+        self.patcher = AutonomousPatcher(dry_run=True)
+
+    @patch("subprocess.run")
+    def test_compare_versions_greater(self, mock_run):
+        """Test version comparison with greater version"""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = self.patcher._compare_versions("1.20.0", "gt", "1.18.0")
+        self.assertTrue(result)
+
+    @patch("subprocess.run")
+    def test_compare_versions_less(self, mock_run):
+        """Test version comparison with lesser version"""
+        mock_run.return_value = MagicMock(returncode=1)  # dpkg returns 1 if comparison fails
+
+        result = self.patcher._compare_versions("1.18.0", "gt", "1.20.0")
+        self.assertFalse(result)
+
+    @patch("subprocess.run")
+    def test_compare_versions_equal(self, mock_run):
+        """Test version comparison with equal versions"""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = self.patcher._compare_versions("1.20.0", "eq", "1.20.0")
+        self.assertTrue(result)
+
+    @patch("subprocess.run")
+    def test_compare_versions_ge(self, mock_run):
+        """Test version comparison with greater or equal"""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = self.patcher._compare_versions("1.20.0", "ge", "1.18.0")
+        self.assertTrue(result)
+
+    @patch.object(AutonomousPatcher, "_compare_versions")
+    def test_update_fixes_vulnerability_yes(self, mock_compare):
+        """Test update fixes vulnerability when version is sufficient"""
+        mock_compare.return_value = True
+
+        vuln = Vulnerability(
+            cve_id="CVE-2023-12345",
+            package_name="nginx",
+            installed_version="1.18.0",
+            affected_versions="< 1.20.0",
+            severity=Severity.HIGH,
+            description="Test vulnerability",
+            fixed_version="1.20.0",
+        )
+
+        result = self.patcher._update_fixes_vulnerability("1.20.0", vuln)
+        self.assertTrue(result)
+        mock_compare.assert_called_with("1.20.0", "ge", "1.20.0")
+
+    @patch.object(AutonomousPatcher, "_compare_versions")
+    def test_update_fixes_vulnerability_no(self, mock_compare):
+        """Test update does not fix vulnerability when version is insufficient"""
+        mock_compare.return_value = False
+
+        vuln = Vulnerability(
+            cve_id="CVE-2023-12345",
+            package_name="nginx",
+            installed_version="1.18.0",
+            affected_versions="< 1.20.0",
+            severity=Severity.HIGH,
+            description="Test vulnerability",
+            fixed_version="1.20.0",
+        )
+
+        result = self.patcher._update_fixes_vulnerability("1.19.0", vuln)
+        self.assertFalse(result)
+
+    def test_update_fixes_vulnerability_no_fixed_version(self):
+        """Test update verification when no fixed_version is specified"""
+        vuln = Vulnerability(
+            cve_id="CVE-2023-12345",
+            package_name="nginx",
+            installed_version="1.18.0",
+            affected_versions="< 1.20.0",
+            severity=Severity.HIGH,
+            description="Test vulnerability",
+            fixed_version=None,  # No fixed version specified
+        )
+
+        # Should return True when fixed_version is unknown (allow the update)
+        result = self.patcher._update_fixes_vulnerability("1.20.0", vuln)
+        self.assertTrue(result)
 
 
 if __name__ == "__main__":

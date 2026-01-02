@@ -210,6 +210,64 @@ class AutonomousPatcher:
 
         return None
 
+    def _compare_versions(self, version1: str, operator: str, version2: str) -> bool:
+        """
+        Compare two Debian package versions using dpkg --compare-versions.
+        
+        Args:
+            version1: First version string
+            operator: Comparison operator (lt, le, eq, ne, ge, gt)
+            version2: Second version string
+            
+        Returns:
+            True if the comparison holds, False otherwise
+        """
+        try:
+            success, _, _ = self._run_command(
+                ["dpkg", "--compare-versions", version1, operator, version2]
+            )
+            return success
+        except Exception as e:
+            logger.warning(f"Version comparison failed: {e}")
+            return False
+
+    def _update_fixes_vulnerability(
+        self, candidate_version: str, vulnerability: Vulnerability
+    ) -> bool:
+        """
+        Check if the candidate version fixes the vulnerability.
+        
+        Args:
+            candidate_version: The version available for update
+            vulnerability: The vulnerability to check
+            
+        Returns:
+            True if the update will fix the vulnerability
+        """
+        fixed_version = vulnerability.fixed_version
+        
+        # If no fixed version is specified, we can't verify - log warning but allow
+        if not fixed_version:
+            logger.debug(
+                f"No fixed_version specified for {vulnerability.cve_id} on "
+                f"{vulnerability.package_name}, cannot verify fix"
+            )
+            return True  # Allow update when fixed_version is unknown
+        
+        # Check if candidate version >= fixed version
+        if self._compare_versions(candidate_version, "ge", fixed_version):
+            logger.debug(
+                f"Candidate {candidate_version} >= fixed {fixed_version} for "
+                f"{vulnerability.package_name} ({vulnerability.cve_id})"
+            )
+            return True
+        
+        logger.warning(
+            f"Update for {vulnerability.package_name} to {candidate_version} does NOT fix "
+            f"{vulnerability.cve_id} (requires >= {fixed_version})"
+        )
+        return False
+
     def _should_patch(self, vulnerability: Vulnerability) -> bool:
         """
         Determine if a vulnerability should be patched based on strategy and filters.
@@ -296,24 +354,52 @@ class AutonomousPatcher:
         # Update apt package list once before checking all packages
         self.ensure_apt_updated()
 
-        # Check for available updates
+        # Check for available updates and verify they fix vulnerabilities
         requires_reboot = False
+        verified_vulns: list[Vulnerability] = []
+        skipped_vulns: list[tuple[Vulnerability, str]] = []  # (vuln, reason)
+
         for package_name, vulns in package_vulns.items():
             # Check if update is available
             update_version = self._check_package_update_available(package_name)
 
-            if update_version:
+            if not update_version:
+                for vuln in vulns:
+                    skipped_vulns.append((vuln, "no update available"))
+                continue
+
+            # Verify the update fixes each vulnerability for this package
+            fixes_any = False
+            for vuln in vulns:
+                if self._update_fixes_vulnerability(update_version, vuln):
+                    verified_vulns.append(vuln)
+                    fixes_any = True
+                else:
+                    skipped_vulns.append(
+                        (vuln, f"update to {update_version} does not fix (requires >= {vuln.fixed_version})")
+                    )
+
+            # Only include the package if it fixes at least one vulnerability
+            if fixes_any:
                 packages_to_update[package_name] = update_version
 
                 # Check if this is a kernel package (requires reboot)
                 if "linux-image" in package_name or "linux-headers" in package_name:
                     requires_reboot = True
 
+        # Log skipped vulnerabilities
+        if skipped_vulns:
+            logger.info(f"Skipped {len(skipped_vulns)} vulnerabilities that cannot be fixed by available updates:")
+            for vuln, reason in skipped_vulns[:5]:  # Log first 5
+                logger.info(f"  - {vuln.cve_id} ({vuln.package_name}): {reason}")
+            if len(skipped_vulns) > 5:
+                logger.info(f"  ... and {len(skipped_vulns) - 5} more")
+
         # Estimate duration (rough: 1 minute per package)
         estimated_duration = len(packages_to_update) * 1.0
 
         return PatchPlan(
-            vulnerabilities=to_patch,
+            vulnerabilities=verified_vulns,
             packages_to_update=packages_to_update,
             estimated_duration_minutes=estimated_duration,
             requires_reboot=requires_reboot,
