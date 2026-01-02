@@ -1004,7 +1004,12 @@ class CortexCLI:
 
     def _security_scan(self, args: argparse.Namespace) -> int:
         """Handle vulnerability scanning."""
+        import logging
+
         from cortex.vulnerability_scanner import Severity, VulnerabilityScanner
+
+        # Suppress verbose logging for cleaner output
+        logging.getLogger("cortex.vulnerability_scanner").setLevel(logging.WARNING)
 
         scanner = VulnerabilityScanner()
 
@@ -1101,33 +1106,84 @@ class CortexCLI:
 
     def _security_patch(self, args: argparse.Namespace) -> int:
         """Handle autonomous patching."""
+        import logging
+
         from cortex.autonomous_patcher import AutonomousPatcher, PatchStrategy
+        from cortex.progress_indicators import get_progress_indicator
+
+        # Suppress verbose logging for cleaner output
+        logging.getLogger("cortex.vulnerability_scanner").setLevel(logging.WARNING)
+        logging.getLogger("cortex.autonomous_patcher").setLevel(logging.WARNING)
+
+        progress = get_progress_indicator()
 
         # Dry run is the default; only disabled when --apply is explicitly specified
         dry_run = not getattr(args, "apply", False)
         strategy = PatchStrategy(getattr(args, "strategy", "critical_only"))
+        package_filter = getattr(args, "package", None)
 
         patcher = AutonomousPatcher(strategy=strategy, dry_run=dry_run)
 
-        if getattr(args, "scan_and_patch", False):
+        if getattr(args, "scan_and_patch", False) or package_filter:
+            # Show header
+            console.print()
             if dry_run:
-                cx_print("🔍 DRY RUN MODE - No packages will be updated\n", "warning")
-
-            result = patcher.patch_vulnerabilities()
-
-            if result.success:
-                cx_print("\n✅ Patch complete!", "success")
-                console.print(f"  Packages updated: {len(result.packages_updated)}")
-                console.print(f"  Vulnerabilities patched: {result.vulnerabilities_patched}")
-                if result.duration_seconds:
-                    console.print(f"  Duration: {result.duration_seconds:.2f}s")
+                console.print("[yellow]🔍 DRY RUN MODE[/yellow] - No packages will be updated")
             else:
-                self._print_error("\n❌ Patch failed!")
+                console.print("[green]🔧 APPLY MODE[/green] - Patches will be installed")
+            console.print(f"[dim]Strategy: {strategy.value}[/dim]")
+            console.print()
+
+            vulnerabilities = None
+            if package_filter:
+                # Scan specific package first
+                from cortex.vulnerability_scanner import VulnerabilityScanner
+
+                scanner = VulnerabilityScanner()
+                scan_result = scanner.scan_all_packages(
+                    package_filter=[package_filter], progress=progress
+                )
+                vulnerabilities = scan_result.vulnerabilities
+
+                if not vulnerabilities:
+                    console.print()
+                    progress.print_success(f"No vulnerabilities found in {package_filter}")
+                    return 0
+
+                console.print()
+
+            result = patcher.patch_vulnerabilities(vulnerabilities, progress=progress)
+
+            # Show summary
+            console.print()
+            if result.success:
+                if result.packages_updated:
+                    console.print(
+                        "[green]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/green]"
+                    )
+                    console.print("[green]✅ Patch complete![/green]")
+                    console.print(
+                        f"   Packages updated: [cyan]{len(result.packages_updated)}[/cyan]"
+                    )
+                    console.print(
+                        f"   Vulnerabilities patched: [cyan]{result.vulnerabilities_patched}[/cyan]"
+                    )
+                    if result.duration_seconds:
+                        console.print(f"   Duration: [dim]{result.duration_seconds:.2f}s[/dim]")
+                    console.print(
+                        "[green]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/green]"
+                    )
+                else:
+                    console.print("[dim]No updates were applied.[/dim]")
+            else:
+                console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/red]")
+                console.print("[red]❌ Patch failed![/red]")
                 for error in result.errors:
-                    console.print(f"  - {error}")
+                    console.print(f"   [red]•[/red] {error}")
+                console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/red]")
                 return 1
         else:
-            self._print_error("Use --scan-and-patch to scan and patch vulnerabilities")
+            self._print_error("Use --scan-and-patch or --package to patch vulnerabilities")
             return 1
 
         return 0
@@ -2012,6 +2068,7 @@ def main():
     sec_patch_parser.add_argument(
         "--scan-and-patch", action="store_true", help="Scan and patch automatically"
     )
+    sec_patch_parser.add_argument("--package", help="Patch specific package only")
     sec_patch_parser.add_argument(
         "--dry-run", action="store_true", default=True, help="Dry run mode (default)"
     )

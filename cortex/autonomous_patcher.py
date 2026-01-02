@@ -20,10 +20,23 @@ from enum import Enum
 from pathlib import Path
 
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
+from cortex.progress_indicators import ProgressIndicator, get_progress_indicator
 from cortex.vulnerability_scanner import Severity, Vulnerability, VulnerabilityScanner
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _get_severity_color(severity: Severity) -> str:
+    """Get color for severity level."""
+    return {
+        Severity.CRITICAL: "red",
+        Severity.HIGH: "bright_red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "blue",
+        Severity.UNKNOWN: "dim",
+    }.get(severity, "white")
+
 
 # Module-level apt update tracking (shared across all instances)
 _apt_update_lock = threading.Lock()
@@ -325,19 +338,27 @@ class AutonomousPatcher:
 
         return False
 
-    def create_patch_plan(self, vulnerabilities: list[Vulnerability] | None = None) -> PatchPlan:
+    def create_patch_plan(
+        self,
+        vulnerabilities: list[Vulnerability] | None = None,
+        progress: ProgressIndicator | None = None,
+    ) -> PatchPlan:
         """
         Create a plan for patching vulnerabilities.
 
         Args:
             vulnerabilities: List of vulnerabilities to patch (if None, scans all)
+            progress: Optional progress indicator for UI output
 
         Returns:
             PatchPlan with packages to update
         """
+        if progress is None:
+            progress = get_progress_indicator()
+
         if vulnerabilities is None:
             # Scan for vulnerabilities
-            scan_result = self.scanner.scan_all_packages()
+            scan_result = self.scanner.scan_all_packages(progress=progress)
             vulnerabilities = scan_result.vulnerabilities
 
         # Filter vulnerabilities based on strategy
@@ -362,12 +383,17 @@ class AutonomousPatcher:
             package_vulns[vuln.package_name].append(vuln)
 
         # Update apt package list once before checking all packages
-        self.ensure_apt_updated()
+        progress.print_info("Updating package list...")
+        apt_ok = self.ensure_apt_updated()
+        if not apt_ok:
+            progress.print_warning("Could not update package list (may need sudo)")
 
         # Check for available updates and verify they fix vulnerabilities
         requires_reboot = False
         verified_vulns: list[Vulnerability] = []
         skipped_vulns: list[tuple[Vulnerability, str]] = []  # (vuln, reason)
+
+        progress.print_info(f"Checking updates for {len(package_vulns)} package(s)...")
 
         for package_name, vulns in package_vulns.items():
             # Check if update is available
@@ -388,7 +414,7 @@ class AutonomousPatcher:
                     skipped_vulns.append(
                         (
                             vuln,
-                            f"update to {update_version} does not fix (requires >= {vuln.fixed_version})",
+                            f"update to {update_version} doesn't fix (needs >= {vuln.fixed_version})",
                         )
                     )
 
@@ -400,15 +426,12 @@ class AutonomousPatcher:
                 if "linux-image" in package_name or "linux-headers" in package_name:
                     requires_reboot = True
 
-        # Log skipped vulnerabilities
+        # Show skipped vulnerabilities summary
         if skipped_vulns:
-            logger.info(
-                f"Skipped {len(skipped_vulns)} vulnerabilities that cannot be fixed by available updates:"
+            progress.print_warning(
+                f"{len(skipped_vulns)} vulnerabilities cannot be fixed by available updates"
             )
-            for vuln, reason in skipped_vulns[:5]:  # Log first 5
-                logger.info(f"  - {vuln.cve_id} ({vuln.package_name}): {reason}")
-            if len(skipped_vulns) > 5:
-                logger.info(f"  ... and {len(skipped_vulns) - 5} more")
+            logger.debug(f"Skipped vulnerabilities: {skipped_vulns[:5]}")
 
         # Estimate duration (rough: 1 minute per package)
         estimated_duration = len(packages_to_update) * 1.0
@@ -421,16 +444,22 @@ class AutonomousPatcher:
             rollback_available=True,
         )
 
-    def apply_patch_plan(self, plan: PatchPlan) -> PatchResult:
+    def apply_patch_plan(
+        self, plan: PatchPlan, progress: ProgressIndicator | None = None
+    ) -> PatchResult:
         """
         Apply a patch plan.
 
         Args:
             plan: Patch plan to apply
+            progress: Optional progress indicator for UI output
 
         Returns:
             PatchResult with results
         """
+        if progress is None:
+            progress = get_progress_indicator()
+
         patch_id = f"patch_{int(time.time())}"
         start_time = datetime.now()
 
@@ -445,10 +474,9 @@ class AutonomousPatcher:
             )
 
         if self.dry_run:
-            logger.info("DRY RUN MODE - No packages will be updated")
-            logger.info(f"Would update {len(plan.packages_to_update)} packages:")
+            progress.print_info("Would update the following packages:")
             for package, version in plan.packages_to_update.items():
-                logger.info(f"  - {package} -> {version}")
+                progress.print_info(f"   {package} → {version}")
 
             return PatchResult(
                 patch_id=patch_id,
@@ -478,15 +506,17 @@ class AutonomousPatcher:
 
         try:
             # Update package list
-            logger.info("Updating package list...")
+            progress.print_info("Updating package list...")
             success, stdout, stderr = self._run_command(["apt-get", "update", "-qq"])
             if not success:
                 errors.append(f"Failed to update package list: {stderr}")
+                progress.print_warning("Could not update package list")
 
-            # Install updates
-            for package_name, target_version in plan.packages_to_update.items():
-                logger.info(f"Updating {package_name} to {target_version}...")
-
+            # Install updates with progress
+            package_items = list(plan.packages_to_update.items())
+            for package_name, target_version in progress.progress_bar(
+                package_items, description="📦 Installing updates"
+            ):
                 # Use apt-get install with specific version if available
                 if target_version:
                     cmd = ["apt-get", "install", "-y", f"{package_name}={target_version}"]
@@ -497,10 +527,11 @@ class AutonomousPatcher:
 
                 if success:
                     updated_packages.append(package_name)
-                    logger.info(f"✅ Updated {package_name}")
+                    progress.print_success(f"{package_name} → {target_version}")
                 else:
                     error_msg = f"Failed to update {package_name}: {stderr}"
                     errors.append(error_msg)
+                    progress.print_error(f"{package_name}: update failed")
                     logger.error(error_msg)
 
             # Update installation record
@@ -526,13 +557,6 @@ class AutonomousPatcher:
                 duration_seconds=duration,
             )
 
-            if success:
-                logger.info(
-                    f"✅ Patch complete: {len(updated_packages)} packages updated in {duration:.2f}s"
-                )
-            else:
-                logger.error(f"❌ Patch failed: {len(errors)} errors")
-
             return result
 
         except Exception as e:
@@ -553,22 +577,28 @@ class AutonomousPatcher:
             )
 
     def patch_vulnerabilities(
-        self, vulnerabilities: list[Vulnerability] | None = None
+        self,
+        vulnerabilities: list[Vulnerability] | None = None,
+        progress: ProgressIndicator | None = None,
     ) -> PatchResult:
         """
         Scan and patch vulnerabilities automatically.
 
         Args:
             vulnerabilities: Optional list of vulnerabilities to patch
+            progress: Optional progress indicator for UI output
 
         Returns:
             PatchResult with patching results
         """
+        if progress is None:
+            progress = get_progress_indicator()
+
         # Create patch plan
-        plan = self.create_patch_plan(vulnerabilities)
+        plan = self.create_patch_plan(vulnerabilities, progress=progress)
 
         if not plan.packages_to_update:
-            logger.info("No packages need patching")
+            progress.print_success("No packages need patching")
             return PatchResult(
                 patch_id=f"patch_{int(time.time())}",
                 timestamp=datetime.now().isoformat(),
@@ -578,16 +608,18 @@ class AutonomousPatcher:
                 errors=[],
             )
 
-        # Show plan
-        logger.info("📋 Patch Plan:")
-        logger.info(f"  Vulnerabilities to patch: {len(plan.vulnerabilities)}")
-        logger.info(f"  Packages to update: {len(plan.packages_to_update)}")
-        logger.info(f"  Estimated duration: {plan.estimated_duration_minutes:.1f} minutes")
+        # Show plan in a nice format
+        progress.print_info("─" * 50)
+        progress.print_info("📋 Patch Plan")
+        progress.print_info(f"   Vulnerabilities: {len(plan.vulnerabilities)}")
+        progress.print_info(f"   Packages: {len(plan.packages_to_update)}")
+        progress.print_info(f"   Est. time: ~{plan.estimated_duration_minutes:.0f} min")
         if plan.requires_reboot:
-            logger.warning("  ⚠️  System reboot required after patching")
+            progress.print_warning("   ⚠️  Reboot required after patching")
+        progress.print_info("─" * 50)
 
         # Apply plan
-        return self.apply_patch_plan(plan)
+        return self.apply_patch_plan(plan, progress=progress)
 
     def add_to_whitelist(self, package_name: str):
         """Add package to whitelist"""
