@@ -1,45 +1,60 @@
 """
 Cortex Dashboard - Enhanced Terminal UI with Progress Tracking
 Supports real-time monitoring, system metrics, process tracking, and installation management
+
+Design Principles:
+- Explicit user intent required for all system inspection
+- No automatic data collection on startup
+- Thread-safe state management
+- Platform-agnostic implementations
 """
 
+import atexit
 import logging
 import os
-import queue
+import platform
 import sys
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 try:
     from rich.box import ROUNDED
     from rich.columns import Columns
     from rich.console import Console, Group
-    from rich.layout import Layout
     from rich.live import Live
     from rich.panel import Panel
-    from rich.progress import BarColumn, DownloadColumn, Progress, TextColumn
-    from rich.table import Table
     from rich.text import Text
-except ImportError as e:
-    raise ImportError(f"rich library required: {e}. Install with: pip install rich")
+except ImportError:
+    print("Error: The 'rich' library is required but not installed.", file=sys.stderr)
+    print("Please install it with: pip install rich>=13.0.0", file=sys.stderr)
+    sys.exit(1)
 
 try:
     import psutil
-except ImportError as e:
-    raise ImportError(f"psutil library required: {e}. Install with: pip install psutil")
+except ImportError:
+    print("Error: The 'psutil' library is required but not installed.", file=sys.stderr)
+    print("Please install it with: pip install psutil>=5.0.0", file=sys.stderr)
+    sys.exit(1)
 
+# Optional GPU support - graceful degradation if unavailable
 try:
     import pynvml
 
-    GPU_AVAILABLE = True
+    GPU_LIBRARY_AVAILABLE = True
 except ImportError:
-    GPU_AVAILABLE = False
+    GPU_LIBRARY_AVAILABLE = False
+    pynvml = None
+
+# HTTP requests for Ollama API
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 # Cross-platform keyboard input
 if sys.platform == "win32":
@@ -54,16 +69,68 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# CONSTANTS - Centralized configuration values
+# =============================================================================
+
+# UI Display Constants
+BAR_WIDTH = 20  # Characters for progress/resource bars
+MAX_PROCESS_NAME_LENGTH = 20  # Max chars for process name display
+MAX_PROCESSES_DISPLAYED = 8  # Max processes shown in UI panel
+MAX_PROCESSES_TRACKED = 15  # Max processes kept in memory
+MAX_CMDLINE_LENGTH = 60  # Max chars for command line display (kept for internal use)
+MAX_HISTORY_COMMANDS = 10  # Max shell history commands to load
+MAX_HISTORY_DISPLAYED = 5  # Max history commands shown in UI
+MAX_COMMAND_DISPLAY_LENGTH = 50  # Max chars per command in display
+MAX_INPUT_LENGTH = 50  # Max chars for package name input
+MAX_LIBRARIES_DISPLAYED = 5  # Max libraries shown in progress panel
+
+# Resource Threshold Constants (percentages)
+CRITICAL_THRESHOLD = 75  # Red bar above this percentage
+WARNING_THRESHOLD = 50  # Yellow bar above this percentage
+DISK_WARNING_THRESHOLD = 90  # Disk space warning threshold
+MEMORY_WARNING_THRESHOLD = 95  # Memory warning threshold
+CPU_WARNING_THRESHOLD = 90  # CPU load warning threshold
+
+# Error/Status Messages
+CHECK_UNAVAILABLE_MSG = "Unable to check"  # Fallback message for failed checks
+
+# Timing Constants (seconds)
+CPU_SAMPLE_INTERVAL = 0.1  # psutil CPU sampling interval
+MONITOR_LOOP_INTERVAL = 1.0  # Background metrics collection interval
+UI_INPUT_CHECK_INTERVAL = 0.1  # Keyboard input check interval
+UI_REFRESH_RATE = 2  # Rich Live refresh rate (per second)
+STARTUP_DELAY = 1  # Delay before starting dashboard UI
+BENCH_STEP_DELAY = 0.8  # Delay between benchmark steps
+DOCTOR_CHECK_DELAY = 0.5  # Delay between doctor checks
+INSTALL_STEP_DELAY = 0.6  # Delay between installation steps (simulation)
+INSTALL_TOTAL_STEPS = 5  # Number of simulated installation steps
+
+# Unit Conversion Constants
+BYTES_PER_GB = 1024 ** 3  # Bytes in a gigabyte
+
+# Simulation Mode - Set to False when real CLI integration is ready
+# TODO: Replace simulated installation with actual CLI calls
+SIMULATION_MODE = False
+
+# Ollama API Configuration
+OLLAMA_API_BASE = "http://localhost:11434"
+OLLAMA_API_TIMEOUT = 2.0  # seconds
+MAX_MODELS_DISPLAYED = 5  # Max models shown in UI
+
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
 class DashboardTab(Enum):
     """Available dashboard tabs"""
-
     HOME = "home"
     PROGRESS = "progress"
 
 
 class InstallationState(Enum):
     """Installation states"""
-
     IDLE = "idle"
     WAITING_INPUT = "waiting_input"
     PROCESSING = "processing"
@@ -74,7 +141,6 @@ class InstallationState(Enum):
 
 class ActionType(Enum):
     """Action types for dashboard"""
-
     NONE = "none"
     INSTALL = "install"
     BENCH = "bench"
@@ -82,17 +148,34 @@ class ActionType(Enum):
     CANCEL = "cancel"
 
 
+# =============================================================================
+# ACTION MAP - Centralized key bindings and action configuration
+# =============================================================================
+
+# Single source of truth for all dashboard actions
+# Format: key -> (label, action_type, handler_method_name)
+ACTION_MAP = {
+    "1": ("Install", ActionType.INSTALL, "_start_installation"),
+    "2": ("Bench", ActionType.BENCH, "_start_bench"),
+    "3": ("Doctor", ActionType.DOCTOR, "_start_doctor"),
+    "4": ("Cancel", ActionType.CANCEL, "_cancel_operation"),
+}
+
+
+# =============================================================================
+# DATA CLASSES
+# =============================================================================
+
 @dataclass
 class SystemMetrics:
     """Container for system metrics"""
-
     cpu_percent: float
     ram_percent: float
     ram_used_gb: float
     ram_total_gb: float
     gpu_percent: float | None = None
     gpu_memory_percent: float | None = None
-    timestamp: datetime = None
+    timestamp: datetime | None = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -102,7 +185,6 @@ class SystemMetrics:
 @dataclass
 class InstallationProgress:
     """Tracks installation progress"""
-
     state: InstallationState = InstallationState.IDLE
     package: str = ""
     current_step: int = 0
@@ -121,8 +203,43 @@ class InstallationProgress:
             self.elapsed_time = time.time() - self.start_time
 
 
+# =============================================================================
+# PLATFORM UTILITIES
+# =============================================================================
+
+def get_root_disk_path() -> str:
+    """Get the root disk path in a platform-agnostic way."""
+    if platform.system() == "Windows":
+        return os.environ.get("SystemDrive", "C:") + "\\"
+    return "/"
+
+
+# =============================================================================
+# SYSTEM MONITOR
+# =============================================================================
+
 class SystemMonitor:
-    """Monitors CPU, RAM, GPU metrics"""
+    """
+    Monitors CPU, RAM, and GPU metrics in a thread-safe manner.
+
+    This class collects system metrics using psutil and, if available, pynvml for GPU monitoring.
+    Metrics are updated synchronously via `update_metrics()` and accessed via `get_metrics()`.
+    Thread safety is ensured using a threading.Lock to protect access to the current metrics.
+
+    IMPORTANT: GPU initialization is deferred until explicitly enabled to respect user privacy.
+    No system inspection occurs until the user explicitly requests it.
+
+    Threading Model:
+        - All access to metrics is protected by a lock.
+        - Safe to call `update_metrics()` and `get_metrics()` from multiple threads.
+
+    Example:
+        monitor = SystemMonitor()
+        monitor.enable_monitoring()  # User explicitly enables monitoring
+        monitor.update_metrics()
+        metrics = monitor.get_metrics()
+        print(f"CPU: {metrics.cpu_percent}%")
+    """
 
     def __init__(self):
         self.current_metrics = SystemMetrics(
@@ -130,11 +247,20 @@ class SystemMonitor:
         )
         self.lock = threading.Lock()
         self.gpu_initialized = False
-        self._init_gpu()
+        self._monitoring_enabled = False
+        self._cpu_initialized = False
+        # GPU initialization is deferred - not called in constructor
 
-    def _init_gpu(self):
-        """Initialize GPU monitoring if available"""
-        if not GPU_AVAILABLE:
+    def enable_monitoring(self) -> None:
+        """Enable system monitoring. Must be called before collecting metrics."""
+        self._monitoring_enabled = True
+
+    def enable_gpu(self) -> None:
+        """
+        Initialize GPU monitoring if available.
+        Called only when user explicitly requests GPU-related operations.
+        """
+        if not GPU_LIBRARY_AVAILABLE or self.gpu_initialized:
             return
         try:
             pynvml.nvmlInit()
@@ -142,15 +268,32 @@ class SystemMonitor:
         except Exception as e:
             logger.debug(f"GPU init failed: {e}")
 
+    def shutdown_gpu(self) -> None:
+        """Cleanup GPU monitoring resources."""
+        if self.gpu_initialized and GPU_LIBRARY_AVAILABLE:
+            try:
+                pynvml.nvmlShutdown()
+                self.gpu_initialized = False
+            except Exception as e:
+                logger.debug(f"GPU shutdown error: {e}")
+
     def get_metrics(self) -> SystemMetrics:
-        """Get current metrics"""
+        """Get current metrics (thread-safe)"""
         with self.lock:
             return self.current_metrics
 
-    def update_metrics(self):
-        """Update all metrics"""
+    def update_metrics(self) -> None:
+        """Update all metrics. Only collects data if monitoring is enabled."""
+        if not self._monitoring_enabled:
+            return
+
         try:
-            cpu_percent = psutil.cpu_percent(interval=0.1)
+            # Use non-blocking CPU calls after first initialization
+            if not self._cpu_initialized:
+                psutil.cpu_percent(interval=CPU_SAMPLE_INTERVAL)
+                self._cpu_initialized = True
+            cpu_percent = psutil.cpu_percent(interval=None)
+
             vm = psutil.virtual_memory()
 
             gpu_percent = None
@@ -170,8 +313,8 @@ class SystemMonitor:
             metrics = SystemMetrics(
                 cpu_percent=cpu_percent,
                 ram_percent=vm.percent,
-                ram_used_gb=vm.used / (1024**3),
-                ram_total_gb=vm.total / (1024**3),
+                ram_used_gb=vm.used / BYTES_PER_GB,
+                ram_total_gb=vm.total / BYTES_PER_GB,
                 gpu_percent=gpu_percent,
                 gpu_memory_percent=gpu_memory_percent,
             )
@@ -182,8 +325,27 @@ class SystemMonitor:
             logger.error(f"Metrics error: {e}")
 
 
+# =============================================================================
+# PROCESS LISTER
+# =============================================================================
+
 class ProcessLister:
-    """Lists running inference processes"""
+    """
+    Lists running processes related to AI/ML workloads.
+
+    Filters processes based on keywords like 'python', 'ollama', 'pytorch', etc.
+    Process information is cached and accessed in a thread-safe manner.
+
+    IMPORTANT: Process enumeration is NOT automatic. Must be explicitly triggered
+    by calling update_processes() after user consent.
+
+    Privacy: Only PID and process name are collected. Command-line arguments
+    are NOT stored or displayed to protect user privacy.
+
+    Attributes:
+        KEYWORDS: Set of keywords used to filter relevant processes.
+        processes: Cached list of process information.
+    """
 
     KEYWORDS = {
         "python",
@@ -201,53 +363,183 @@ class ProcessLister:
     }
 
     def __init__(self):
-        self.processes = []
+        self.processes: list[dict] = []
         self.lock = threading.Lock()
+        self._enabled = False
+        # No automatic process enumeration in constructor
 
-    def update_processes(self):
-        """Update process list"""
+    def enable(self) -> None:
+        """Enable process listing. Must be called before collecting process data."""
+        self._enabled = True
+
+    def update_processes(self) -> None:
+        """
+        Update process list. Only runs if enabled.
+
+        Privacy note: Only collects PID and process name.
+        Command-line arguments are NOT collected.
+        """
+        if not self._enabled:
+            return
+
         try:
             processes = []
-            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            # Only request pid and name - NOT cmdline for privacy
+            for proc in psutil.process_iter(["pid", "name"]):
                 try:
                     name = proc.info.get("name", "").lower()
-                    cmdline = " ".join(proc.info.get("cmdline") or []).lower()
-
-                    if any(kw in name for kw in self.KEYWORDS) or any(
-                        kw in cmdline for kw in self.KEYWORDS
-                    ):
-                        processes.append(
-                            {
-                                "pid": proc.info.get("pid"),
-                                "name": proc.info.get("name", "unknown"),
-                                "cmdline": " ".join(proc.info.get("cmdline") or [])[:60],
-                            }
-                        )
+                    # Only filter by process name, not command line
+                    if any(kw in name for kw in self.KEYWORDS):
+                        processes.append({
+                            "pid": proc.info.get("pid"),
+                            "name": proc.info.get("name", "unknown"),
+                            # cmdline intentionally NOT collected for privacy
+                        })
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
             with self.lock:
-                self.processes = processes[:15]
+                self.processes = processes[:MAX_PROCESSES_TRACKED]
         except Exception as e:
             logger.error(f"Process listing error: {e}")
 
     def get_processes(self) -> list[dict]:
-        """Get current processes"""
+        """Get current processes (thread-safe)"""
         with self.lock:
             return list(self.processes)
 
 
-class CommandHistory:
-    """Loads and tracks shell history"""
+# =============================================================================
+# MODEL LISTER (Ollama Integration)
+# =============================================================================
 
-    def __init__(self, max_size: int = 10):
-        self.max_size = max_size
-        self.history = deque(maxlen=max_size)
+class ModelLister:
+    """
+    Lists loaded LLM models from Ollama.
+
+    Queries the local Ollama API to discover running models.
+    This provides visibility into which AI models are currently loaded.
+
+    IMPORTANT: Only queries Ollama when explicitly enabled by user.
+    """
+
+    def __init__(self):
+        self.models: list[dict] = []
         self.lock = threading.Lock()
-        self._load_shell_history()
+        self._enabled = False
+        self.ollama_available = False
 
-    def _load_shell_history(self):
-        """Load from shell history files"""
+    def enable(self) -> None:
+        """Enable model listing."""
+        self._enabled = True
+
+    def check_ollama(self) -> bool:
+        """Check if Ollama is running."""
+        if not REQUESTS_AVAILABLE:
+            return False
+        try:
+            response = requests.get(
+                f"{OLLAMA_API_BASE}/api/tags",
+                timeout=OLLAMA_API_TIMEOUT
+            )
+            self.ollama_available = response.status_code == 200
+            return self.ollama_available
+        except Exception:
+            self.ollama_available = False
+            return False
+
+    def update_models(self) -> None:
+        """Update list of loaded models from Ollama."""
+        if not self._enabled or not REQUESTS_AVAILABLE:
+            return
+
+        try:
+            # Check running models via Ollama API
+            response = requests.get(
+                f"{OLLAMA_API_BASE}/api/ps",
+                timeout=OLLAMA_API_TIMEOUT
+            )
+            if response.status_code == 200:
+                data = response.json()
+                models = []
+                for model in data.get("models", []):
+                    models.append({
+                        "name": model.get("name", "unknown"),
+                        "size": model.get("size", 0),
+                        "digest": model.get("digest", "")[:8],
+                    })
+                with self.lock:
+                    self.models = models[:MAX_MODELS_DISPLAYED]
+                    self.ollama_available = True
+            else:
+                with self.lock:
+                    self.models = []
+        except Exception:
+            with self.lock:
+                self.models = []
+                self.ollama_available = False
+
+    def get_models(self) -> list[dict]:
+        """Get current models (thread-safe)"""
+        with self.lock:
+            return list(self.models)
+
+    def get_available_models(self) -> list[dict]:
+        """Get list of available (downloaded) models from Ollama."""
+        if not REQUESTS_AVAILABLE:
+            return []
+        try:
+            response = requests.get(
+                f"{OLLAMA_API_BASE}/api/tags",
+                timeout=OLLAMA_API_TIMEOUT
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return [
+                    {
+                        "name": m.get("name", "unknown"),
+                        "size_gb": round(m.get("size", 0) / BYTES_PER_GB, 1),
+                    }
+                    for m in data.get("models", [])[:MAX_MODELS_DISPLAYED]
+                ]
+        except Exception:
+            pass
+        return []
+
+
+# =============================================================================
+# COMMAND HISTORY
+# =============================================================================
+
+class CommandHistory:
+    """
+    Loads and tracks shell command history.
+
+    Reads command history from bash and zsh history files and maintains
+    a rolling buffer of recent commands.
+
+    IMPORTANT: History is NOT loaded automatically. Must be explicitly triggered
+    by calling load_history() after user consent.
+
+    Args:
+        max_size: Maximum number of commands to keep in history (default: 10)
+    """
+
+    def __init__(self, max_size: int = MAX_HISTORY_COMMANDS):
+        self.max_size = max_size
+        self.history: deque = deque(maxlen=max_size)
+        self.lock = threading.Lock()
+        self._loaded = False
+        # No automatic history loading in constructor
+
+    def load_history(self) -> None:
+        """
+        Load from shell history files.
+        Only called when user explicitly requests history display.
+        """
+        if self._loaded:
+            return
+
         for history_file in [
             os.path.expanduser("~/.bash_history"),
             os.path.expanduser("~/.zsh_history"),
@@ -255,15 +547,16 @@ class CommandHistory:
             if os.path.exists(history_file):
                 try:
                     with open(history_file, encoding="utf-8", errors="ignore") as f:
-                        for line in f.readlines()[-self.max_size :]:
+                        for line in f.readlines()[-self.max_size:]:
                             cmd = line.strip()
                             if cmd and not cmd.startswith(":"):
                                 self.history.append(cmd)
+                    self._loaded = True
                     break
                 except Exception as e:
-                    logger.debug(f"History load error: {e}")
+                    logger.warning(f"Could not read history file {history_file}: {e}")
 
-    def add_command(self, command: str):
+    def add_command(self, command: str) -> None:
         """Add command to history"""
         if command.strip():
             with self.lock:
@@ -275,17 +568,32 @@ class CommandHistory:
             return list(self.history)
 
 
+# =============================================================================
+# UI RENDERER
+# =============================================================================
+
 class UIRenderer:
     """Renders the dashboard UI with multi-tab support"""
 
-    def __init__(self, monitor: SystemMonitor, lister: ProcessLister, history: CommandHistory):
+    def __init__(
+        self,
+        monitor: SystemMonitor,
+        lister: ProcessLister,
+        history: CommandHistory,
+        model_lister: "ModelLister | None" = None,
+    ):
         self.console = Console()
         self.monitor = monitor
         self.lister = lister
         self.history = history
+        self.model_lister = model_lister
         self.running = False
         self.should_quit = False
         self.current_tab = DashboardTab.HOME
+
+        # Thread synchronization
+        self.state_lock = threading.Lock()
+        self.stop_event = threading.Event()
 
         # Installation state
         self.installation_progress = InstallationProgress()
@@ -298,23 +606,26 @@ class UIRenderer:
         self.status_message = ""
 
         # Doctor results
-        self.doctor_results = []
+        self.doctor_results: list[tuple] = []
         self.doctor_running = False
 
         # Bench results
         self.bench_status = "Ready to run benchmark"
         self.bench_running = False
 
-    def _create_bar(self, label: str, percent: float, width: int = 20) -> str:
+        # Track if user has enabled monitoring
+        self._user_started_monitoring = False
+
+    def _create_bar(self, label: str, percent: float | None, width: int = BAR_WIDTH) -> str:
         """Create a resource bar"""
         if percent is None:
             return f"{label}: N/A"
 
         filled = int((percent / 100) * width)
         bar = "[green]" + "█" * filled + "[/green]" + "░" * (width - filled)
-        if percent > 75:
+        if percent > CRITICAL_THRESHOLD:
             bar = "[red]" + "█" * filled + "[/red]" + "░" * (width - filled)
-        elif percent > 50:
+        elif percent > WARNING_THRESHOLD:
             bar = "[yellow]" + "█" * filled + "[/yellow]" + "░" * (width - filled)
 
         return f"{label}: {bar} {percent:.1f}%"
@@ -337,6 +648,10 @@ class UIRenderer:
 
     def _render_resources(self) -> Panel:
         """Render resources section"""
+        if not self._user_started_monitoring:
+            content = "[dim]Press 2 (Bench) or 3 (Doctor) to start monitoring[/dim]"
+            return Panel(content, title="📊 System Resources", padding=(1, 1), box=ROUNDED)
+
         metrics = self.monitor.get_metrics()
         lines = [
             self._create_bar("CPU", metrics.cpu_percent),
@@ -353,38 +668,71 @@ class UIRenderer:
 
     def _render_processes(self) -> Panel:
         """Render processes section"""
+        if not self._user_started_monitoring:
+            content = "[dim]Monitoring not started[/dim]"
+            return Panel(content, title="⚙️ Running Processes", padding=(1, 1), box=ROUNDED)
+
         processes = self.lister.get_processes()
         if not processes:
-            content = "[dim]No processes detected[/dim]"
+            content = "[dim]No AI/ML processes detected[/dim]"
         else:
-            lines = [f"  {p['pid']} {p['name'][:20]}" for p in processes[:8]]
+            lines = [
+                f"  {p['pid']} {p['name'][:MAX_PROCESS_NAME_LENGTH]}"
+                for p in processes[:MAX_PROCESSES_DISPLAYED]
+            ]
             content = "\n".join(lines)
 
-        return Panel(content, title="⚙️  Running Processes", padding=(1, 1), box=ROUNDED)
+        return Panel(content, title="⚙️ Running Processes", padding=(1, 1), box=ROUNDED)
+
+    def _render_models(self) -> Panel:
+        """Render loaded models section (Ollama)"""
+        if not self._user_started_monitoring or self.model_lister is None:
+            content = "[dim]Press 2 (Bench) to check Ollama models[/dim]"
+            return Panel(content, title="🤖 Loaded Models", padding=(1, 1), box=ROUNDED)
+
+        if not self.model_lister.ollama_available:
+            content = "[dim]Ollama not running[/dim]\n[dim]Start with: ollama serve[/dim]"
+            return Panel(content, title="🤖 Loaded Models", padding=(1, 1), box=ROUNDED)
+
+        # Show running models (in memory)
+        running_models = self.model_lister.get_models()
+        available_models = self.model_lister.get_available_models()
+
+        lines = []
+        if running_models:
+            lines.append("[bold green]Running:[/bold green]")
+            for m in running_models:
+                lines.append(f"  [green]●[/green] {m['name']}")
+        else:
+            lines.append("[dim]No models loaded[/dim]")
+
+        if available_models and not running_models:
+            lines.append("\n[bold]Available:[/bold]")
+            for m in available_models[:3]:
+                lines.append(f"  [dim]○[/dim] {m['name']} ({m['size_gb']}GB)")
+
+        content = "\n".join(lines) if lines else "[dim]No models found[/dim]"
+        return Panel(content, title="🤖 Loaded Models", padding=(1, 1), box=ROUNDED)
 
     def _render_history(self) -> Panel:
         """Render history section"""
         cmds = self.history.get_history()
         if not cmds:
-            content = "[dim]No history[/dim]"
+            content = "[dim]No history loaded[/dim]"
         else:
-            lines = [f"  {c[:50]}" for c in reversed(list(cmds)[-5:])]
+            lines = [
+                f"  {c[:MAX_COMMAND_DISPLAY_LENGTH]}"
+                for c in reversed(list(cmds)[-MAX_HISTORY_DISPLAYED:])
+            ]
             content = "\n".join(lines)
 
         return Panel(content, title="📝 Recent Commands", padding=(1, 1), box=ROUNDED)
 
     def _render_actions(self) -> Panel:
         """Render action menu with pressed indicator"""
-        # Build action items
-        action_items = [
-            ("1", "Install", ActionType.INSTALL),
-            ("2", "Bench", ActionType.BENCH),
-            ("3", "Doctor", ActionType.DOCTOR),
-            ("4", "Cancel", ActionType.CANCEL),
-        ]
-
+        # Build action items from centralized ACTION_MAP
         actions = []
-        for key, name, action_type in action_items:
+        for key, (name, _, _) in ACTION_MAP.items():
             actions.append(f"[cyan]{key}[/cyan] {name}")
 
         content = "  ".join(actions)
@@ -404,7 +752,7 @@ class UIRenderer:
             "",
             Columns([self._render_resources(), self._render_processes()], expand=True),
             "",
-            self._render_history(),
+            Columns([self._render_models(), self._render_history()], expand=True),
             "",
             self._render_actions(),
             "",
@@ -412,8 +760,10 @@ class UIRenderer:
 
     def _render_input_dialog(self) -> Panel:
         """Render input dialog for package selection"""
-        instructions = "[cyan]Enter package name[/cyan] (e.g., nginx, docker, python)\n[dim]Press Enter to install, Esc to cancel[/dim]"
-
+        instructions = (
+            "[cyan]Enter package name[/cyan] (e.g., nginx, docker, python)\n"
+            "[dim]Press Enter to install, Esc to cancel[/dim]"
+        )
         content = f"{instructions}\n\n[bold]>[/bold] {self.input_text}[blink_fast]█[/blink_fast]"
         return Panel(
             content, title="📦 What would you like to install?", padding=(2, 2), box=ROUNDED
@@ -434,8 +784,8 @@ class UIRenderer:
 
         # Progress bar
         if progress.total_steps > 0:
-            filled = int((progress.current_step / progress.total_steps) * 20)
-            bar = "[green]" + "█" * filled + "[/green]" + "░" * (20 - filled)
+            filled = int((progress.current_step / progress.total_steps) * BAR_WIDTH)
+            bar = "[green]" + "█" * filled + "[/green]" + "░" * (BAR_WIDTH - filled)
             percentage = int((progress.current_step / progress.total_steps) * 100)
             lines.append(f"\n[cyan]Progress:[/cyan] {bar} {percentage}%")
             lines.append(f"[dim]Step {progress.current_step}/{progress.total_steps}[/dim]")
@@ -457,9 +807,12 @@ class UIRenderer:
 
         # Show installed libraries for install operations
         if progress.libraries and progress.package not in ["System Benchmark", "System Doctor"]:
-            lines.append(f"\n[dim]Libraries: {', '.join(progress.libraries[:5])}[/dim]")
-            if len(progress.libraries) > 5:
-                lines.append(f"[dim]... and {len(progress.libraries) - 5} more[/dim]")
+            lines.append(
+                f"\n[dim]Libraries: {', '.join(progress.libraries[:MAX_LIBRARIES_DISPLAYED])}[/dim]"
+            )
+            if len(progress.libraries) > MAX_LIBRARIES_DISPLAYED:
+                remaining = len(progress.libraries) - MAX_LIBRARIES_DISPLAYED
+                lines.append(f"[dim]... and {remaining} more[/dim]")
 
         # Status messages
         if progress.error_message:
@@ -474,7 +827,10 @@ class UIRenderer:
         content = (
             "\n".join(lines)
             if lines
-            else "[dim]No operation in progress\nPress 1 for Install, 2 for Bench, 3 for Doctor[/dim]"
+            else (
+                "[dim]No operation in progress\n"
+                "Press 1 for Install, 2 for Bench, 3 for Doctor[/dim]"
+            )
         )
 
         title_map = {
@@ -493,7 +849,12 @@ class UIRenderer:
     def _render_progress_tab(self) -> Group:
         """Render progress tab with actions"""
         return Group(
-            self._render_header(), "", self._render_progress_panel(), "", self._render_actions(), ""
+            self._render_header(),
+            "",
+            self._render_progress_panel(),
+            "",
+            self._render_actions(),
+            "",
         )
 
     def _render_footer(self) -> Panel:
@@ -514,9 +875,22 @@ class UIRenderer:
 
         return Group(content, self._render_footer())
 
-    def _handle_key_press(self, key: str):
-        """Handle key press"""
-        # Clear previous pressed indicator after a short time
+    def _enable_monitoring(self) -> None:
+        """Enable system monitoring with user consent."""
+        if not self._user_started_monitoring:
+            self._user_started_monitoring = True
+            self.monitor.enable_monitoring()
+            self.lister.enable()
+            self.history.load_history()
+            # Enable model listing (Ollama)
+            if self.model_lister:
+                self.model_lister.enable()
+                self.model_lister.check_ollama()
+            # GPU is enabled separately only for bench operations
+
+    def _handle_key_press(self, key: str) -> None:
+        """Handle key press using centralized action map"""
+        # Clear previous pressed indicator
         self.last_pressed_key = ""
 
         if key == "q":
@@ -539,31 +913,31 @@ class UIRenderer:
                 self._cancel_operation()
             elif key == "\b" or key == "\x7f":  # Backspace
                 self.input_text = self.input_text[:-1]
-            elif key.isprintable() and len(self.input_text) < 50:
+            elif key.isprintable() and len(self.input_text) < MAX_INPUT_LENGTH:
                 self.input_text += key
             return
 
-        # Handle action keys
-        if key == "1":
-            self.last_pressed_key = "Install"
-            self._start_installation()
-        elif key == "2":
-            self.last_pressed_key = "Bench"
-            self._start_bench()
-        elif key == "3":
-            self.last_pressed_key = "Doctor"
-            self._start_doctor()
-        elif key == "4":
-            self.last_pressed_key = "Cancel"
-            self._cancel_operation()
+        # Handle action keys using centralized ACTION_MAP
+        if key in ACTION_MAP:
+            label, _, handler_name = ACTION_MAP[key]
+            self.last_pressed_key = label
+            handler = getattr(self, handler_name, None)
+            if handler and callable(handler):
+                handler()
 
-    def _start_bench(self):
-        """Start benchmark"""
-        # Allow starting if not currently running
-        if not self.bench_running and self.installation_progress.state not in [
-            InstallationState.IN_PROGRESS,
-            InstallationState.PROCESSING,
-        ]:
+    def _start_bench(self) -> None:
+        """Start benchmark - explicitly enables monitoring"""
+        with self.state_lock:
+            if self.bench_running or self.installation_progress.state in [
+                InstallationState.IN_PROGRESS,
+                InstallationState.PROCESSING,
+            ]:
+                return
+
+            # User explicitly requested bench - enable monitoring
+            self._enable_monitoring()
+            self.monitor.enable_gpu()  # GPU only enabled for bench
+
             # Reset state for new benchmark
             self.installation_progress = InstallationProgress()
             self.doctor_results = []
@@ -573,36 +947,95 @@ class UIRenderer:
             self.installation_progress.state = InstallationState.PROCESSING
             self.installation_progress.package = "System Benchmark"
 
-            # Run benchmark in background thread
-            def run_bench():
-                steps = ["CPU Test", "Memory Test", "Disk I/O Test", "Network Test"]
-                self.installation_progress.total_steps = len(steps)
-                self.installation_progress.start_time = time.time()
-                self.installation_progress.state = InstallationState.IN_PROGRESS
+        # Run benchmark in background thread
+        def run_bench():
+            bench_results = []
+            steps = [
+                ("CPU Test", self._bench_cpu),
+                ("Memory Test", self._bench_memory),
+                ("Disk I/O Test", self._bench_disk),
+                ("System Info", self._bench_system_info),
+            ]
+            self.installation_progress.total_steps = len(steps)
+            self.installation_progress.start_time = time.time()
+            self.installation_progress.state = InstallationState.IN_PROGRESS
 
-                for i, step in enumerate(steps, 1):
-                    if not self.running or not self.bench_running:
-                        break
-                    self.installation_progress.current_step = i
-                    self.installation_progress.current_library = step
-                    self.installation_progress.update_elapsed()
-                    time.sleep(0.8)
+            for i, (step_name, bench_func) in enumerate(steps, 1):
+                if (
+                    self.stop_event.is_set()
+                    or not self.running
+                    or not self.bench_running
+                    or self.installation_progress.state == InstallationState.FAILED
+                ):
+                    break
+                self.installation_progress.current_step = i
+                self.installation_progress.current_library = f"Running {step_name}..."
+                self.installation_progress.update_elapsed()
 
+                # Run actual benchmark
+                try:
+                    result = bench_func()
+                    bench_results.append((step_name, True, result))
+                except Exception as e:
+                    bench_results.append((step_name, False, str(e)))
+
+            # Store results for display
+            self.doctor_results = bench_results
+
+            # Only mark completed if not cancelled/failed
+            if self.installation_progress.state != InstallationState.FAILED:
                 self.bench_status = "Benchmark complete - System OK"
                 self.installation_progress.state = InstallationState.COMPLETED
-                self.installation_progress.success_message = "Benchmark completed successfully!"
-                self.installation_progress.current_library = ""
-                self.bench_running = False
+                all_passed = all(r[1] for r in bench_results)
+                if all_passed:
+                    self.installation_progress.success_message = "All benchmarks passed!"
+                else:
+                    self.installation_progress.success_message = "Some benchmarks had issues."
 
-            threading.Thread(target=run_bench, daemon=True).start()
+            self.installation_progress.current_library = ""
+            self.bench_running = False
 
-    def _start_doctor(self):
-        """Start doctor system check"""
-        # Allow starting if not currently running
-        if not self.doctor_running and self.installation_progress.state not in [
-            InstallationState.IN_PROGRESS,
-            InstallationState.PROCESSING,
-        ]:
+        threading.Thread(target=run_bench, daemon=True).start()
+
+    def _bench_cpu(self) -> str:
+        """Lightweight CPU benchmark"""
+        cpu_count = psutil.cpu_count(logical=True)
+        cpu_freq = psutil.cpu_freq()
+        freq_str = f"{cpu_freq.current:.0f}MHz" if cpu_freq else "N/A"
+        cpu_percent = psutil.cpu_percent(interval=0.5)
+        return f"{cpu_count} cores @ {freq_str}, {cpu_percent:.1f}% load"
+
+    def _bench_memory(self) -> str:
+        """Lightweight memory benchmark"""
+        mem = psutil.virtual_memory()
+        total_gb = mem.total / BYTES_PER_GB
+        avail_gb = mem.available / BYTES_PER_GB
+        return f"{avail_gb:.1f}GB free / {total_gb:.1f}GB total ({mem.percent:.1f}% used)"
+
+    def _bench_disk(self) -> str:
+        """Lightweight disk benchmark"""
+        disk_path = get_root_disk_path()
+        disk = psutil.disk_usage(disk_path)
+        total_gb = disk.total / BYTES_PER_GB
+        free_gb = disk.free / BYTES_PER_GB
+        return f"{free_gb:.1f}GB free / {total_gb:.1f}GB total ({disk.percent:.1f}% used)"
+
+    def _bench_system_info(self) -> str:
+        """Get system info"""
+        return f"Python {sys.version_info.major}.{sys.version_info.minor}, {platform.system()} {platform.release()}"
+
+    def _start_doctor(self) -> None:
+        """Start doctor system check - explicitly enables monitoring"""
+        with self.state_lock:
+            if self.doctor_running or self.installation_progress.state in [
+                InstallationState.IN_PROGRESS,
+                InstallationState.PROCESSING,
+            ]:
+                return
+
+            # User explicitly requested doctor - enable monitoring
+            self._enable_monitoring()
+
             # Reset state for new doctor check
             self.installation_progress = InstallationProgress()
             self.doctor_running = True
@@ -611,42 +1044,67 @@ class UIRenderer:
             self.installation_progress.state = InstallationState.PROCESSING
             self.installation_progress.package = "System Doctor"
 
-            # Run doctor in background thread
-            def run_doctor():
-                checks = [
-                    (
-                        "Python version",
-                        True,
-                        f"Python {sys.version_info.major}.{sys.version_info.minor}",
-                    ),
-                    ("psutil module", True, "Installed"),
-                    ("rich module", True, "Installed"),
-                    (
-                        "Disk space",
-                        psutil.disk_usage("/").percent < 90,
-                        f"{psutil.disk_usage('/').percent:.1f}% used",
-                    ),
-                    (
-                        "Memory available",
-                        psutil.virtual_memory().percent < 95,
-                        f"{psutil.virtual_memory().percent:.1f}% used",
-                    ),
-                    ("CPU load", psutil.cpu_percent() < 90, f"{psutil.cpu_percent():.1f}% load"),
-                ]
+        # Run doctor in background thread
+        def run_doctor():
+            # Use platform-agnostic disk path
+            disk_path = get_root_disk_path()
+            try:
+                disk_percent = psutil.disk_usage(disk_path).percent
+                disk_ok = disk_percent < DISK_WARNING_THRESHOLD
+                disk_detail = f"{disk_percent:.1f}% used"
+            except Exception:
+                disk_ok = True
+                disk_detail = CHECK_UNAVAILABLE_MSG
 
-                self.installation_progress.total_steps = len(checks)
-                self.installation_progress.start_time = time.time()
-                self.installation_progress.state = InstallationState.IN_PROGRESS
+            try:
+                mem_percent = psutil.virtual_memory().percent
+                mem_ok = mem_percent < MEMORY_WARNING_THRESHOLD
+                mem_detail = f"{mem_percent:.1f}% used"
+            except Exception:
+                mem_ok = True
+                mem_detail = CHECK_UNAVAILABLE_MSG
 
-                for i, (name, passed, detail) in enumerate(checks, 1):
-                    if not self.running or not self.doctor_running:
-                        break
-                    self.installation_progress.current_step = i
-                    self.installation_progress.current_library = f"Checking {name}..."
-                    self.doctor_results.append((name, passed, detail))
-                    self.installation_progress.update_elapsed()
-                    time.sleep(0.5)
+            try:
+                cpu_load = psutil.cpu_percent()
+                cpu_ok = cpu_load < CPU_WARNING_THRESHOLD
+                cpu_detail = f"{cpu_load:.1f}% load"
+            except Exception:
+                cpu_ok = True
+                cpu_detail = CHECK_UNAVAILABLE_MSG
 
+            checks = [
+                (
+                    "Python version",
+                    True,
+                    f"Python {sys.version_info.major}.{sys.version_info.minor}",
+                ),
+                ("psutil module", True, "Installed"),
+                ("rich module", True, "Installed"),
+                ("Disk space", disk_ok, disk_detail),
+                ("Memory available", mem_ok, mem_detail),
+                ("CPU load", cpu_ok, cpu_detail),
+            ]
+
+            self.installation_progress.total_steps = len(checks)
+            self.installation_progress.start_time = time.time()
+            self.installation_progress.state = InstallationState.IN_PROGRESS
+
+            for i, (name, passed, detail) in enumerate(checks, 1):
+                if (
+                    self.stop_event.is_set()
+                    or not self.running
+                    or not self.doctor_running
+                    or self.installation_progress.state == InstallationState.FAILED
+                ):
+                    break
+                self.installation_progress.current_step = i
+                self.installation_progress.current_library = f"Checking {name}..."
+                self.doctor_results.append((name, passed, detail))
+                self.installation_progress.update_elapsed()
+                time.sleep(DOCTOR_CHECK_DELAY)
+
+            # Only mark completed if not cancelled/failed
+            if self.installation_progress.state != InstallationState.FAILED:
                 all_passed = all(r[1] for r in self.doctor_results)
                 self.installation_progress.state = InstallationState.COMPLETED
                 if all_passed:
@@ -657,78 +1115,224 @@ class UIRenderer:
                     self.installation_progress.success_message = (
                         "Some checks failed. Review results above."
                     )
-                self.installation_progress.current_library = ""
-                self.doctor_running = False
 
-            threading.Thread(target=run_doctor, daemon=True).start()
-
-    def _cancel_operation(self):
-        """Cancel any ongoing operation"""
-        # Cancel installation
-        if self.installation_progress.state in [
-            InstallationState.IN_PROGRESS,
-            InstallationState.PROCESSING,
-            InstallationState.WAITING_INPUT,
-        ]:
-            self.installation_progress.state = InstallationState.FAILED
-            self.installation_progress.error_message = "Operation cancelled by user"
             self.installation_progress.current_library = ""
-
-        # Cancel bench
-        if self.bench_running:
-            self.bench_running = False
-            self.bench_status = "Benchmark cancelled"
-
-        # Cancel doctor
-        if self.doctor_running:
             self.doctor_running = False
 
-        # Reset input
-        self.input_active = False
-        self.input_text = ""
+        threading.Thread(target=run_doctor, daemon=True).start()
 
-        # Return to home after a moment
+    def _cancel_operation(self) -> None:
+        """Cancel any ongoing operation"""
+        with self.state_lock:
+            # Cancel installation
+            if self.installation_progress.state in [
+                InstallationState.IN_PROGRESS,
+                InstallationState.PROCESSING,
+                InstallationState.WAITING_INPUT,
+            ]:
+                self.installation_progress.state = InstallationState.FAILED
+                self.installation_progress.error_message = "Operation cancelled by user"
+                self.installation_progress.current_library = ""
+
+            # Cancel bench
+            if self.bench_running:
+                self.bench_running = False
+                self.bench_status = "Benchmark cancelled"
+
+            # Cancel doctor
+            if self.doctor_running:
+                self.doctor_running = False
+
+            # Reset input
+            self.input_active = False
+            self.input_text = ""
+
+            # Signal stop to threads
+            self.stop_event.set()
+
         self.status_message = "Operation cancelled"
 
-    def _start_installation(self):
+    def _start_installation(self) -> None:
         """Start installation process"""
-        # Allow starting new installation if not currently in progress
-        if self.installation_progress.state not in [
-            InstallationState.IN_PROGRESS,
-            InstallationState.PROCESSING,
-            InstallationState.WAITING_INPUT,
-        ]:
+        with self.state_lock:
+            if self.installation_progress.state in [
+                InstallationState.IN_PROGRESS,
+                InstallationState.PROCESSING,
+                InstallationState.WAITING_INPUT,
+            ]:
+                return
+
+            # User explicitly requested install - enable monitoring
+            self._enable_monitoring()
+
             # Reset progress state for new installation
             self.installation_progress = InstallationProgress()
             self.installation_progress.state = InstallationState.WAITING_INPUT
             self.input_active = True
             self.input_text = ""
             self.current_tab = DashboardTab.PROGRESS
-            self.doctor_results = []  # Clear previous results
+            self.doctor_results = []
+            self.stop_event.clear()
 
-    def _submit_installation_input(self):
+    def _submit_installation_input(self) -> None:
         """Submit installation input"""
         if self.input_text.strip():
             package = self.input_text.strip()
             self.installation_progress.package = package
             self.installation_progress.state = InstallationState.PROCESSING
-            self.installation_progress.input_active = False
             self.input_active = False
 
-            # Simulate processing - in real implementation, this would call CLI
-            self._simulate_installation()
+            if SIMULATION_MODE:
+                # TODO: Replace with actual CLI integration
+                # This simulation will be replaced with:
+                # from cortex.cli import CortexCLI
+                # cli = CortexCLI()
+                # cli.install(package, dry_run=False)
+                self._simulate_installation()
+            else:
+                # TODO: Implement real CLI call here
+                self._run_real_installation()
 
-    def _run_installation(self):
-        """Run installation in background thread"""
+    def _run_real_installation(self) -> None:
+        """
+        Run real installation using Cortex CLI.
+        Executes in background thread with progress feedback.
+        """
+        self.stop_event.clear()
+        threading.Thread(target=self._execute_cli_install, daemon=True).start()
+
+    def _execute_cli_install(self) -> None:
+        """Execute actual CLI installation in background thread"""
+        import contextlib
+        import io
+
         progress = self.installation_progress
         package_name = progress.package
 
         progress.state = InstallationState.IN_PROGRESS
         progress.start_time = time.time()
-        progress.total_steps = 5
+        progress.total_steps = 4  # Check, Parse, Plan, Complete
         progress.libraries = []
 
-        # Simulate library installation steps (will be replaced with actual CLI call)
+        try:
+            # Step 1: Check prerequisites
+            progress.current_step = 1
+            progress.current_library = "Checking prerequisites..."
+            progress.update_elapsed()
+
+            # Check for API key first
+            api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                progress.state = InstallationState.FAILED
+                progress.error_message = (
+                    "No API key found!\n"
+                    "Set ANTHROPIC_API_KEY or OPENAI_API_KEY in your environment.\n"
+                    "Run 'cortex wizard' to configure."
+                )
+                return
+
+            if self.stop_event.is_set() or progress.state == InstallationState.FAILED:
+                return
+
+            # Step 2: Initialize CLI
+            progress.current_step = 2
+            progress.current_library = "Initializing Cortex CLI..."
+            progress.update_elapsed()
+
+            from cortex.cli import CortexCLI
+            cli = CortexCLI()
+
+            if self.stop_event.is_set() or progress.state == InstallationState.FAILED:
+                return
+
+            # Step 3: Run installation (capture output)
+            progress.current_step = 3
+            progress.current_library = f"Planning install for: {package_name}"
+            progress.libraries.append(f"Package: {package_name}")
+            progress.update_elapsed()
+
+            # Capture CLI output
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+
+            try:
+                with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
+                    result = cli.install(package_name, dry_run=True, execute=False)
+            except Exception as e:
+                result = 1
+                stderr_capture.write(str(e))
+
+            stdout_output = stdout_capture.getvalue()
+            stderr_output = stderr_capture.getvalue()
+
+            if self.stop_event.is_set() or progress.state == InstallationState.FAILED:
+                return
+
+            # Step 4: Complete
+            progress.current_step = 4
+            progress.current_library = "Finalizing..."
+            progress.update_elapsed()
+
+            if result == 0:
+                progress.state = InstallationState.COMPLETED
+                # Extract generated commands if available
+                if "Generated commands:" in stdout_output:
+                    progress.success_message = (
+                        f"✓ Plan ready for '{package_name}'!\n"
+                        "Run in terminal: cortex install " + package_name + " --execute"
+                    )
+                else:
+                    progress.success_message = (
+                        f"Dry-run complete for '{package_name}'!\n"
+                        "Run 'cortex install <pkg> --execute' in terminal to apply."
+                    )
+            else:
+                progress.state = InstallationState.FAILED
+                # Try to extract meaningful error from output
+                error_msg = stderr_output.strip() or stdout_output.strip()
+                # Remove Rich formatting characters for cleaner display
+                import re
+                clean_msg = re.sub(r'\[.*?\]', '', error_msg)  # Remove [color] tags
+                clean_msg = re.sub(r' CX.*?[│✗✓⠋]', '', clean_msg)  # Remove CX prefix
+                clean_msg = clean_msg.strip()
+
+                if "doesn't look valid" in clean_msg or "wizard" in clean_msg.lower():
+                    progress.error_message = "API key invalid. Run 'cortex wizard' to configure."
+                elif "not installed" in clean_msg.lower() and "openai" in clean_msg.lower():
+                    progress.error_message = "OpenAI not installed. Run: pip install openai"
+                elif "not installed" in clean_msg.lower() and "anthropic" in clean_msg.lower():
+                    progress.error_message = "Anthropic not installed. Run: pip install anthropic"
+                elif "API key" in error_msg or "api_key" in error_msg.lower():
+                    progress.error_message = "API key not configured. Run 'cortex wizard'"
+                elif clean_msg:
+                    # Show cleaned error, truncated
+                    lines = clean_msg.split('\n')
+                    first_line = lines[0].strip()[:80]
+                    progress.error_message = first_line or f"Failed to install '{package_name}'"
+                else:
+                    progress.error_message = f"Failed to plan install for '{package_name}'"
+
+        except ImportError as e:
+            progress.state = InstallationState.FAILED
+            progress.error_message = f"Missing package: {e}"
+        except Exception as e:
+            progress.state = InstallationState.FAILED
+            progress.error_message = f"Error: {str(e)[:80]}"
+        finally:
+            progress.current_library = ""
+
+    def _run_installation(self) -> None:
+        """Run simulated installation in background thread (for testing)"""
+        progress = self.installation_progress
+        package_name = progress.package
+
+        progress.state = InstallationState.IN_PROGRESS
+        progress.start_time = time.time()
+        progress.total_steps = INSTALL_TOTAL_STEPS
+        progress.libraries = []
+
+        # TODO: Replace simulation with actual CLI call
+        # Simulated installation steps
         install_steps = [
             f"Preparing {package_name}",
             "Resolving dependencies",
@@ -738,51 +1342,68 @@ class UIRenderer:
         ]
 
         for i, step in enumerate(install_steps, 1):
-            if not self.running or progress.state == InstallationState.FAILED:
+            if (
+                self.stop_event.is_set()
+                or not self.running
+                or progress.state == InstallationState.FAILED
+            ):
                 break
             progress.current_step = i
             progress.current_library = step
             progress.libraries.append(step)
             progress.update_elapsed()
-            time.sleep(0.6)  # Simulate work
+            time.sleep(INSTALL_STEP_DELAY)
 
         if progress.state != InstallationState.FAILED:
             progress.state = InstallationState.COMPLETED
-            progress.success_message = f"Successfully installed {package_name}!"
+            if SIMULATION_MODE:
+                progress.success_message = f"[SIMULATED] Successfully installed {package_name}!"
+            else:
+                progress.success_message = f"Successfully installed {package_name}!"
         progress.current_library = ""
 
-    def _simulate_installation(self):
-        """Start installation in background thread"""
+    def _simulate_installation(self) -> None:
+        """Start simulated installation in background thread"""
+        self.stop_event.clear()
         threading.Thread(target=self._run_installation, daemon=True).start()
 
-    def _reset_to_home(self):
+    def _reset_to_home(self) -> None:
         """Reset state and go to home tab"""
-        self.installation_progress = InstallationProgress()
-        self.input_text = ""
-        self.input_active = False
-        self.current_tab = DashboardTab.HOME
-        self.doctor_results = []
-        self.bench_status = "Ready to run benchmark"
+        with self.state_lock:
+            self.installation_progress = InstallationProgress()
+            self.input_text = ""
+            self.input_active = False
+            self.current_tab = DashboardTab.HOME
+            self.doctor_results = []
+            self.bench_status = "Ready to run benchmark"
+            self.stop_event.clear()
 
-    def _check_keyboard_input(self):
+    def _check_keyboard_input(self) -> str | None:
         """Check for keyboard input (cross-platform)"""
         try:
             if sys.platform == "win32":
                 if msvcrt.kbhit():
-                    key = msvcrt.getch().decode("utf-8", errors="ignore")
-                    return key
+                    try:
+                        key = msvcrt.getch().decode("utf-8", errors="ignore")
+                        return key
+                    except UnicodeDecodeError:
+                        logger.debug("Failed to decode keyboard input")
+                        return None
             else:
                 if select.select([sys.stdin], [], [], 0)[0]:
                     key = sys.stdin.read(1)
                     return key
+        except OSError as e:
+            logger.warning(f"Keyboard check error: {e}")
         except Exception as e:
-            logger.debug(f"Keyboard check error: {e}")
+            logger.error(f"Unexpected keyboard error: {e}")
         return None
 
-    def run(self):
-        """Run dashboard"""
+    def run(self) -> None:
+        """Run dashboard with proper terminal state management"""
         self.running = True
         self.should_quit = False
+        self.stop_event.clear()
 
         # Save terminal settings on Unix
         old_settings = None
@@ -790,14 +1411,31 @@ class UIRenderer:
             try:
                 old_settings = termios.tcgetattr(sys.stdin)
                 tty.setcbreak(sys.stdin.fileno())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to set terminal attributes: {e}")
+
+        def restore_terminal():
+            """Restore terminal settings - registered with atexit for safety"""
+            if old_settings is not None:
+                try:
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                except Exception as e:
+                    logger.warning(f"Failed to restore terminal settings: {e}")
+
+        # Register cleanup with atexit for safety
+        if old_settings is not None:
+            atexit.register(restore_terminal)
 
         def monitor_loop():
-            while self.running:
+            while self.running and not self.stop_event.is_set():
                 try:
-                    self.monitor.update_metrics()
-                    self.lister.update_processes()
+                    # Only update if monitoring has been enabled
+                    if self._user_started_monitoring:
+                        self.monitor.update_metrics()
+                        self.lister.update_processes()
+                        # Update model list (Ollama)
+                        if self.model_lister:
+                            self.model_lister.update_models()
 
                     # Update progress if in progress tab
                     if self.current_tab == DashboardTab.PROGRESS:
@@ -805,14 +1443,17 @@ class UIRenderer:
 
                 except Exception as e:
                     logger.error(f"Monitor error: {e}")
-                time.sleep(1.0)
+                time.sleep(MONITOR_LOOP_INTERVAL)
 
         monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         monitor_thread.start()
 
         try:
             with Live(
-                self._render_screen(), console=self.console, refresh_per_second=2, screen=True
+                self._render_screen(),
+                console=self.console,
+                refresh_per_second=UI_REFRESH_RATE,
+                screen=True,
             ) as live:
                 while self.running and not self.should_quit:
                     # Check for keyboard input
@@ -822,52 +1463,85 @@ class UIRenderer:
 
                     # Update display
                     live.update(self._render_screen())
-                    time.sleep(0.1)  # More frequent updates for responsiveness
+                    time.sleep(UI_INPUT_CHECK_INTERVAL)
 
         except KeyboardInterrupt:
+            self.console.print("\n[yellow]Keyboard interrupt received. Shutting down...[/yellow]")
             self.should_quit = True
 
         finally:
             self.running = False
-            # Restore terminal settings on Unix
+            self.stop_event.set()
+            # Restore terminal settings
+            restore_terminal()
+            # Unregister atexit handler since we've already cleaned up
             if old_settings is not None:
                 try:
-                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                    atexit.unregister(restore_terminal)
                 except Exception:
                     pass
 
 
+# =============================================================================
+# DASHBOARD APP
+# =============================================================================
+
 class DashboardApp:
-    """Main dashboard application"""
+    """
+    Main dashboard application orchestrator.
+
+    Coordinates all dashboard components including system monitoring,
+    process listing, command history, model listing, and UI rendering.
+    Provides the main entry point for running the dashboard.
+
+    Example:
+        app = DashboardApp()
+        app.run()
+    """
 
     def __init__(self):
         self.monitor = SystemMonitor()
         self.lister = ProcessLister()
         self.history = CommandHistory()
-        self.ui = UIRenderer(self.monitor, self.lister, self.history)
+        self.model_lister = ModelLister()
+        self.ui = UIRenderer(
+            self.monitor,
+            self.lister,
+            self.history,
+            self.model_lister,
+        )
 
-    def run(self):
-        """Run the app"""
+    def run(self) -> int:
+        """Run the app and return exit code"""
         console = Console()
         try:
             console.print("[bold cyan]Starting Cortex Dashboard...[/bold cyan]")
-            console.print("[dim]Press [cyan]q[/cyan] to quit[/dim]\n")
-            time.sleep(1)
+            console.print("[dim]Press [cyan]q[/cyan] to quit[/dim]")
+            console.print(
+                "[dim]System monitoring starts when you run Bench or Doctor[/dim]\n"
+            )
+            time.sleep(STARTUP_DELAY)
             self.ui.run()
+            return 0
         except KeyboardInterrupt:
-            pass
+            console.print("\n[yellow]Keyboard interrupt received.[/yellow]")
+            return 0
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
+            return 1
         finally:
             self.ui.running = False
+            self.ui.stop_event.set()
+            # Cleanup GPU resources
+            self.monitor.shutdown_gpu()
             console.print("\n[yellow]Dashboard shutdown[/yellow]")
 
 
-def main():
+def main() -> int:
     """Entry point"""
     app = DashboardApp()
-    app.run()
+    return app.run()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
