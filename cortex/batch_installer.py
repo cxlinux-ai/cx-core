@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class PackageStatus(Enum):
     """Status of a package in batch installation"""
+
     PENDING = "pending"
     ANALYZING = "analyzing"
     RESOLVING = "resolving"
@@ -38,6 +39,7 @@ class PackageStatus(Enum):
 @dataclass
 class PackageInstallation:
     """Represents a single package installation in a batch"""
+
     name: str
     status: PackageStatus = PackageStatus.PENDING
     dependency_graph: DependencyGraph | None = None
@@ -58,6 +60,7 @@ class PackageInstallation:
 @dataclass
 class BatchInstallationResult:
     """Result of a batch installation operation"""
+
     packages: list[PackageInstallation]
     total_duration: float
     successful: list[str]
@@ -321,9 +324,7 @@ class BatchInstaller:
         skipped = [name for name, pkg in packages.items() if pkg.status == PackageStatus.SKIPPED]
 
         # Estimate sequential time (sum of individual package durations)
-        sequential_time = sum(
-            pkg.duration() if pkg.duration() else 0 for pkg in packages.values()
-        )
+        sequential_time = sum(pkg.duration() if pkg.duration() else 0 for pkg in packages.values())
         time_saved = sequential_time - total_duration if sequential_time > total_duration else None
 
         result = BatchInstallationResult(
@@ -360,7 +361,9 @@ class BatchInstaller:
             try:
                 coordinator = InstallationCoordinator(
                     commands=shared_commands,
-                    descriptions=[f"Shared dependencies - step {i+1}" for i in range(len(shared_commands))],
+                    descriptions=[
+                        f"Shared dependencies - step {i+1}" for i in range(len(shared_commands))
+                    ],
                     timeout=300,
                     stop_on_error=True,
                 )
@@ -395,7 +398,9 @@ class BatchInstaller:
             try:
                 coordinator = InstallationCoordinator(
                     commands=commands,
-                    descriptions=[f"Installing {package_name} - step {i+1}" for i in range(len(commands))],
+                    descriptions=[
+                        f"Installing {package_name} - step {i+1}" for i in range(len(commands))
+                    ],
                     timeout=300,
                     stop_on_error=True,
                     enable_rollback=self.enable_rollback,
@@ -477,6 +482,7 @@ class BatchInstaller:
                         logger.info(f"Rolling back {pkg.name}: {cmd}")
                         # Execute rollback command
                         import subprocess
+
                         subprocess.run(cmd, shell=True, capture_output=True, timeout=60)
                     success_count += 1
                 except Exception as e:
@@ -484,4 +490,3 @@ class BatchInstaller:
 
         logger.info(f"Rollback completed: {success_count}/{len(result.successful)} packages")
         return success_count == len(result.successful)
-

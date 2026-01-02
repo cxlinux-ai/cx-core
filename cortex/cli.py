@@ -529,14 +529,14 @@ class CortexCLI:
     def install(self, software: str, execute: bool = False, dry_run: bool = False):
         # Check if multiple packages are provided (space-separated)
         package_names = [pkg.strip() for pkg in software.split() if pkg.strip()]
-        
+
         # If multiple packages, use batch installer
         if len(package_names) > 1:
             return self._install_batch(package_names, execute=execute, dry_run=dry_run)
-        
+
         # Single package - use existing flow
         software = package_names[0] if package_names else software
-        
+
         try:
             handler = AskHandler(
                 api_key=api_key,
@@ -850,9 +850,7 @@ class CortexCLI:
 
         try:
             # Execute batch installation
-            result = installer.install_batch(
-                package_names, execute=execute, dry_run=dry_run
-            )
+            result = installer.install_batch(package_names, execute=execute, dry_run=dry_run)
 
             # Display results
             print(f"\n📦 Total dependencies: {result.total_dependencies}")
@@ -898,13 +896,17 @@ class CortexCLI:
                         datetime.now(),
                     )
 
-                    if result.success_rate == 100.0 or (dry_run and len(result.skipped) == len(package_names)):
+                    if result.success_rate == 100.0 or (
+                        dry_run and len(result.skipped) == len(package_names)
+                    ):
                         history.update_installation(install_id, InstallationStatus.SUCCESS)
                         if not dry_run:
                             print(f"\n📝 Installation recorded (ID: {install_id})")
                     else:
                         error_msg = f"{len(result.failed)} packages failed"
-                        history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
                         if not dry_run:
                             print(f"\n📝 Installation recorded (ID: {install_id})")
                             print(f"   {len(result.failed)} packages failed")
@@ -1769,8 +1771,12 @@ def main():
     ask_parser.add_argument("question", type=str, help="Natural language question")
 
     # Install command
-    install_parser = subparsers.add_parser("install", help="Install software (supports multiple packages)")
-    install_parser.add_argument("software", nargs="+", help="Software to install (can specify multiple packages)")
+    install_parser = subparsers.add_parser(
+        "install", help="Install software (supports multiple packages)"
+    )
+    install_parser.add_argument(
+        "software", nargs="+", help="Software to install (can specify multiple packages)"
+    )
     install_parser.add_argument("--execute", action="store_true", help="Execute commands")
     install_parser.add_argument("--dry-run", action="store_true", help="Show commands only")
     install_parser.add_argument(
