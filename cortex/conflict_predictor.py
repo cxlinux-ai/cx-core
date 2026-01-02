@@ -351,8 +351,9 @@ Respond with JSON only."""
                 except (KeyError, ValueError):
                     continue
 
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logging.warning("Failed to decode JSON from LLM response: %s", exc)
+            return []
 
         # Sort by safety score
         strategies.sort(key=lambda s: s.safety_score, reverse=True)
