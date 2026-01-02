@@ -20,6 +20,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from cortex.cli import CortexCLI
 
 try:
     from rich.box import ROUNDED
@@ -1247,8 +1248,6 @@ class UIRenderer:
             progress.current_step = 2
             progress.current_library = "Initializing Cortex CLI..."
             progress.update_elapsed()
-
-            from cortex.cli import CortexCLI
 
             cli = CortexCLI()
 
