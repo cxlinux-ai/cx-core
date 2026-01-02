@@ -168,7 +168,13 @@ class LLMRouter:
         else:
             logger.warning("⚠️  No Kimi K2 API key provided")
 
-        # Initialize Ollama client (local inference)
+        # 1. NEW GUARDRAIL: Only enable if explicitly configured
+        self.ollama_enabled = (
+            os.getenv("CORTEX_PROVIDER") == "ollama"
+            or os.getenv("OLLAMA_BASE_URL") is not None
+            or ollama_base_url is not None
+        )
+
         self.ollama_base_url = ollama_base_url or os.getenv(
             "OLLAMA_BASE_URL", "http://localhost:11434"
         )
@@ -176,19 +182,24 @@ class LLMRouter:
         self.ollama_client = None
         self.ollama_client_async = None
 
-        # Try to initialize Ollama client
-        try:
-            self.ollama_client = OpenAI(
-                api_key="ollama",  # Ollama doesn't need a real key
-                base_url=f"{self.ollama_base_url}/v1",
-            )
-            self.ollama_client_async = AsyncOpenAI(
-                api_key="ollama",
-                base_url=f"{self.ollama_base_url}/v1",
-            )
-            logger.info(f"✅ Ollama client initialized ({self.ollama_model})")
-        except Exception as e:
-            logger.warning(f"⚠️  Could not initialize Ollama client: {e}")
+        # 2. Only attempt to initialize if enabled
+        if self.ollama_enabled:
+            try:
+                self.ollama_client = OpenAI(
+                    api_key="ollama",
+                    base_url=f"{self.ollama_base_url}/v1",
+                )
+                self.ollama_client_async = AsyncOpenAI(
+                    api_key="ollama",
+                    base_url=f"{self.ollama_base_url}/v1",
+                )
+                logger.info("✅ Ollama client initialized (%s)", self.ollama_model)
+            except Exception as e:
+                # Only show a warning if the user actually TRIED to use it
+                logger.warning(f"⚠️  Ollama enabled but connection failed: {e}")
+        else:
+            # Change logger.warning to logger.info so it doesn't clutter the user's terminal
+            logger.info("ℹ️  Ollama not configured, skipping local LLM initialization")
 
         # Rate limiting for parallel calls
         self._rate_limit_semaphore: asyncio.Semaphore | None = None

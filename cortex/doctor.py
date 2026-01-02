@@ -292,7 +292,16 @@ class SystemDoctor:
         )
 
     def _check_ollama(self) -> None:
-        """Check if Ollama is installed and running."""
+        """Check if Ollama is installed and running ONLY if configured."""
+        # BUG FIX: Determine if the user intends to use Ollama
+        ollama_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+        ollama_url = os.environ.get("OLLAMA_BASE_URL")
+
+        # If Ollama is not the chosen provider and no URL is set, skip the check
+        if ollama_provider != "ollama" and not ollama_url:
+            self._print_check("INFO", "Ollama not configured, skipping check")
+            return
+
         # Check if installed
         if not shutil.which("ollama"):
             self._print_check(
@@ -306,7 +315,9 @@ class SystemDoctor:
         try:
             import requests
 
-            response = requests.get("http://localhost:11434/api/tags", timeout=2)
+            # Use the configured URL if available, otherwise default to localhost
+            base_url = ollama_url or "http://localhost:11434"
+            response = requests.get(f"{base_url}/api/tags", timeout=2)
             if response.status_code == 200:
                 self._print_check("PASS", "Ollama installed and running")
                 return
@@ -320,7 +331,7 @@ class SystemDoctor:
 
     def _check_api_keys(self) -> None:
         """Check if API keys are configured for cloud models."""
-        is_valid, provider, error = validate_api_key()
+        is_valid, provider, _ = validate_api_key()
 
         if is_valid:
             self._print_check("PASS", f"{provider} API key configured")
