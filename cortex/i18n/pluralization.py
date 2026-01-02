@@ -90,7 +90,7 @@ class PluralRules:
     - Japanese: No plural distinction (all use 'other')
 
     - Hindi: one vs. other
-      Examples: 1 pैकेज, 2 pैकेज
+      Examples: 1 पैकेज, 2 पैकेज
     """
 
     RULES: dict[str, Callable[[int], str]] = {
