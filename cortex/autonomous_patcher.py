@@ -74,6 +74,7 @@ class AutonomousPatcher:
         dry_run: bool = True,
         auto_approve: bool = False,
         config_path: str | Path | None = None,
+        allow_unverified_patches: bool = False,
     ):
         """
         Initialize the autonomous patcher.
@@ -83,10 +84,12 @@ class AutonomousPatcher:
             dry_run: If True, only show what would be patched
             auto_approve: If True, automatically approve patches (dangerous!)
             config_path: Optional path to config file (defaults to ~/.cortex/patcher_config.json)
+            allow_unverified_patches: If True, allow patches when fixed_version is unknown
         """
         self.strategy = strategy
         self.dry_run = dry_run
         self.auto_approve = auto_approve
+        self.allow_unverified_patches = allow_unverified_patches
         self.scanner = VulnerabilityScanner()
         self.history = InstallationHistory()
 
@@ -251,13 +254,21 @@ class AutonomousPatcher:
         """
         fixed_version = vulnerability.fixed_version
 
-        # If no fixed version is specified, we can't verify - log warning but allow
+        # If no fixed version is specified, we can't verify the fix
         if not fixed_version:
-            logger.debug(
-                f"No fixed_version specified for {vulnerability.cve_id} on "
-                f"{vulnerability.package_name}, cannot verify fix"
-            )
-            return True  # Allow update when fixed_version is unknown
+            if self.allow_unverified_patches:
+                logger.warning(
+                    f"⚠️  Applying UNVERIFIED update for {vulnerability.cve_id} on "
+                    f"{vulnerability.package_name} - no fixed_version available to verify fix"
+                )
+                return True
+            else:
+                logger.info(
+                    f"Skipping {vulnerability.cve_id} on {vulnerability.package_name}: "
+                    f"no fixed_version specified, cannot verify update fixes vulnerability "
+                    f"(set allow_unverified_patches=True to override)"
+                )
+                return False
 
         # Check if candidate version >= fixed version
         if self._compare_versions(candidate_version, "ge", fixed_version):

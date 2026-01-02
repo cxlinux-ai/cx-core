@@ -587,8 +587,8 @@ class TestVersionComparison(unittest.TestCase):
         result = self.patcher._update_fixes_vulnerability("1.19.0", vuln)
         self.assertFalse(result)
 
-    def test_update_fixes_vulnerability_no_fixed_version(self):
-        """Test update verification when no fixed_version is specified"""
+    def test_update_fixes_vulnerability_no_fixed_version_default(self):
+        """Test update verification rejects when no fixed_version is specified (default)"""
         vuln = Vulnerability(
             cve_id="CVE-2023-12345",
             package_name="nginx",
@@ -599,8 +599,33 @@ class TestVersionComparison(unittest.TestCase):
             fixed_version=None,  # No fixed version specified
         )
 
-        # Should return True when fixed_version is unknown (allow the update)
+        # Should return False by default when fixed_version is unknown (refuse unverified)
+        self.assertFalse(self.patcher.allow_unverified_patches)
         result = self.patcher._update_fixes_vulnerability("1.20.0", vuln)
+        self.assertFalse(result)
+
+    def test_update_fixes_vulnerability_no_fixed_version_allow_unverified(self):
+        """Test update verification allows when allow_unverified_patches is True"""
+        # Create patcher with allow_unverified_patches=True
+        patcher = AutonomousPatcher(
+            dry_run=True,
+            config_path=self.config_path,
+            allow_unverified_patches=True,
+        )
+
+        vuln = Vulnerability(
+            cve_id="CVE-2023-12345",
+            package_name="nginx",
+            installed_version="1.18.0",
+            affected_versions="< 1.20.0",
+            severity=Severity.HIGH,
+            description="Test vulnerability",
+            fixed_version=None,  # No fixed version specified
+        )
+
+        # Should return True when allow_unverified_patches is enabled
+        self.assertTrue(patcher.allow_unverified_patches)
+        result = patcher._update_fixes_vulnerability("1.20.0", vuln)
         self.assertTrue(result)
 
 
