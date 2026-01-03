@@ -373,7 +373,7 @@ class TarballHelper:
                 dependencies.append(dep)
 
         # Pattern: PKG_CHECK_MODULES([VAR], [package])
-        pkg_check_pattern = r"PKG_CHECK_MODULES\s*?\(\s*?[^,]+,\s*?\[([^\]]+)\]"
+        pkg_check_pattern = r"PKG_CHECK_MODULES\s*\(\s*[^,]+,\s*\[([^\]]+)\]"
         for match in re.finditer(pkg_check_pattern, content):
             pkg_name = match.group(1).strip().strip('"\'')
             if pkg_name:
