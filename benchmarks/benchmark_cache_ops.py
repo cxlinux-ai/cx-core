@@ -18,8 +18,6 @@ def benchmark() -> float:
     return time.perf_counter() - start
 
 
-
-
 if __name__ == "__main__":
     duration = benchmark()
     print(f"Cache-like Operations Time: {duration:.4f} seconds")
