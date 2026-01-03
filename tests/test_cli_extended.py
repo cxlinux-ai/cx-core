@@ -48,7 +48,7 @@ class TestCortexCLIExtended(unittest.TestCase):
         # Force setup_api_key to report no key found
         mock_setup.return_value = (False, None, None)
 
-        # Verify that the new guardrail raises the expected error
+        # FIX: Wrap in assertRaises to catch the new guardrail error
         with self.assertRaises(ValueError) as context:
             self.cli._get_api_key()
 

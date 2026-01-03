@@ -117,11 +117,11 @@ class TestEndToEndWorkflows(unittest.TestCase):
             "CORTEX_FAKE_COMMANDS": json.dumps({"commands": ["echo plan"]}),
         }
 
-        # 1. Define effective_env here to fix the "undefined" error
+        # FIX 1: Define effective_env to fix the NameError
         effective_env = dict(BASE_ENV)
         effective_env.update(env)
 
-        # 2. Add the ignore flag to the DEV bootstrap command
+        # FIX 2: Suppress the pip root warning to prevent result.succeeded() from failing
         bootstrap_cmd = PIP_BOOTSTRAP_DEV.replace(
             "pip install", "pip install --root-user-action=ignore"
         )
