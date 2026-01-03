@@ -41,10 +41,12 @@ class TestCortexCLIExtended(unittest.TestCase):
                 self.assertEqual(api_key, "sk-ant-test-claude-key")
 
     def test_get_api_key_not_found(self) -> None:
-        # When no API key is set and user selects Ollama (choice 3), falls back to Ollama local mode
+        # When no API key is set and user selects Ollama, falls back to Ollama local mode
+        from cortex.api_key_detector import PROVIDER_MENU_CHOICES
+
         with patch.dict(os.environ, {}, clear=True):
             with patch("pathlib.Path.home", return_value=self._temp_home):
-                with patch("builtins.input", return_value="3"):
+                with patch("builtins.input", return_value=PROVIDER_MENU_CHOICES["ollama"]):
                     api_key = self.cli._get_api_key()
                     self.assertEqual(api_key, "ollama-local")
 

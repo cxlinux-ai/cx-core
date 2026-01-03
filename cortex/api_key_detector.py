@@ -43,6 +43,12 @@ ENV_VAR_PROVIDERS = {
 # JSON field names to search for API keys
 API_KEY_FIELD_NAMES = ["api_key", "apiKey", "key"]
 
+# Provider display names for brand consistency
+PROVIDER_DISPLAY_NAMES = {"anthropic": "Claude (Anthropic)", "openai": "OpenAI", "ollama": "Ollama"}
+
+# Menu choice mappings for provider selection
+PROVIDER_MENU_CHOICES = {"anthropic": "1", "openai": "2", "ollama": "3"}
+
 
 class APIKeyDetector:
     """Detects and caches API keys from multiple sources."""
@@ -498,7 +504,8 @@ def setup_api_key() -> tuple[bool, str | None, str | None]:
         # ~/.cortex/.env is our canonical location, so no need to announce it
         default_location = str(Path.home() / CORTEX_DIR / CORTEX_ENV_FILE)
         if source != default_location:
-            cx_print(f"🔑 Found {provider.upper()} API key in {source}", "success")
+            display_name = PROVIDER_DISPLAY_NAMES.get(provider, provider.upper())
+            cx_print(f"🔑 Found {display_name} API key in {source}", "success")
         detector._maybe_save_found_key(key, provider, source)
         return (True, key, provider)
 
