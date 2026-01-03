@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 from typing import Any
 
+from cortex.approval import ApprovalMode
+from cortex.approval_policy import get_approval_policy
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
@@ -22,6 +24,7 @@ from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
 from cortex.stack_manager import StackManager
+from cortex.user_preferences import UserPreferences
 from cortex.validators import validate_api_key, validate_install_request
 
 # Suppress noisy log messages in normal operation
@@ -36,6 +39,8 @@ class CortexCLI:
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.verbose = verbose
+        prefs = UserPreferences.load()
+        self.approval_policy = get_approval_policy(prefs.approval_mode)
 
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
@@ -976,6 +981,45 @@ class CortexCLI:
                 traceback.print_exc()
             return 1
 
+    def config(self, args: argparse.Namespace) -> int:
+        """Handle configuration commands."""
+        action = getattr(args, "config_action", None)
+
+        if not action:
+            self._print_error("Please specify a subcommand (set)")
+            return 1
+
+        try:
+            if action == "set":
+                return self._config_set(args)
+            else:
+                self._print_error(f"Unknown config subcommand: {action}")
+                return 1
+        except ValueError as e:
+            self._print_error(str(e))
+            return 1
+        except Exception as e:
+            self._print_error(f"Unexpected error: {e}")
+            if self.verbose:
+                import traceback
+
+                traceback.print_exc()
+            return 1
+
+    def _config_set(self, args: argparse.Namespace) -> int:
+        key = args.key
+        value = args.value
+
+        if key != "approval-mode":
+            raise ValueError(f"Unknown config key '{key}'. Supported keys: approval-mode")
+
+        prefs = UserPreferences.load()
+        prefs.approval_mode = ApprovalMode.from_string(value)
+        prefs.save()
+
+        console.print(f"[green]✔ Approval mode set to '{prefs.approval_mode.value}'[/green]")
+        return 0
+
     def _env_set(self, env_mgr: EnvironmentManager, args: argparse.Namespace) -> int:
         """Set an environment variable."""
         app = args.app
@@ -1624,6 +1668,14 @@ def main():
     # Wizard command
     wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
 
+    # Config command
+    config_parser = subparsers.add_parser("config", help="Manage Cortex configuration")
+    config_subs = config_parser.add_subparsers(dest="config_action", help="Config actions")
+
+    config_set_parser = config_subs.add_parser("set", help="Set a configuration value")
+    config_set_parser.add_argument("key", help="Configuration key")
+    config_set_parser.add_argument("value", help="Configuration value")
+
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
 
@@ -1903,6 +1955,8 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
+        elif args.command == "config":
+            return cli.config(args)
         else:
             parser.print_help()
             return 1

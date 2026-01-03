@@ -9,6 +9,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from cortex.approval import ApprovalMode
+from cortex.approval_policy import get_approval_policy
+from cortex.confirm import confirm_action
+from cortex.user_preferences import UserPreferences
 from cortex.validators import DANGEROUS_PATTERNS
 
 logger = logging.getLogger(__name__)
@@ -60,6 +64,7 @@ class InstallationCoordinator:
         enable_rollback: bool = False,
         log_file: str | None = None,
         progress_callback: Callable[[int, int, InstallationStep], None] | None = None,
+        approval_policy=None,
     ):
         """Initialize an installation run with optional logging and rollback."""
         self.timeout = timeout
@@ -79,6 +84,12 @@ class InstallationCoordinator:
         ]
 
         self.rollback_commands: list[str] = []
+        # 🔐 Load approval policy once
+        if approval_policy is not None:
+            self.approval_policy = approval_policy
+        else:
+            # Default behavior for library/tests: full-auto
+            self.approval_policy = get_approval_policy(ApprovalMode.FULL_AUTO)
 
     @classmethod
     def from_plan(
@@ -164,6 +175,19 @@ class InstallationCoordinator:
         step.start_time = time.time()
 
         self._log(f"Executing: {step.command}")
+        # 🔐 Approval check: shell command execution
+        if not self.approval_policy.allow("shell_command"):
+            step.status = StepStatus.SKIPPED
+            step.error = "Shell execution disabled by approval policy"
+            self._log("Blocked by approval policy")
+            return False
+
+        if self.approval_policy.requires_confirmation("shell_command"):
+            if not confirm_action("Execute planned shell commands?"):
+                step.status = StepStatus.SKIPPED
+                step.error = "User declined execution"
+                self._log("Execution declined by user")
+                return False
 
         # Validate command before execution
         is_valid, error = self._validate_command(step.command)
@@ -217,9 +241,19 @@ class InstallationCoordinator:
         self._log("Starting rollback...")
 
         for cmd in reversed(self.rollback_commands):
+            # 🔐 Approval check: rollback shell command
+            if not self.approval_policy.allow("shell_command"):
+                self._log("Rollback blocked by approval policy")
+                return
+
             try:
                 self._log(f"Rollback: {cmd}")
-                subprocess.run(cmd, shell=True, capture_output=True, timeout=self.timeout)
+                subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    timeout=self.timeout,
+                )
             except Exception as e:
                 self._log(f"Rollback failed: {cmd} - {str(e)}")
 
@@ -285,6 +319,10 @@ class InstallationCoordinator:
         self._log("Starting verification...")
 
         for cmd in verify_commands:
+            if not self.approval_policy.allow("shell_command"):
+                verification_results[cmd] = False
+                self._log("Verification blocked by approval policy")
+                continue
             try:
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
                 success = result.returncode == 0
