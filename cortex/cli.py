@@ -1299,19 +1299,6 @@ class CortexCLI:
 
         return 0
 
-    def _env_load(self, env_mgr: EnvironmentManager, args: argparse.Namespace) -> int:
-        """Load environment variables into current process."""
-        app = args.app
-
-        count = env_mgr.load_to_environ(app)
-
-        if count > 0:
-            cx_print(f"✓ Loaded {count} variable(s) from '{app}' into environment", "success")
-        else:
-            cx_print(f"No variables to load for '{app}'", "info")
-
-        return 0
-
     def tarball_command(self, args: argparse.Namespace) -> int:
         """Handle tarball analysis and installation commands."""
         from cortex.tarball_helper import TarballHelper, TarballAnalysis, BuildSystem, DependencyRequirement
