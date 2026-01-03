@@ -373,9 +373,12 @@ class TarballHelper:
                 dependencies.append(dep)
 
         # Pattern: PKG_CHECK_MODULES([VAR], [package])
-        pkg_check_pattern = r"PKG_CHECK_MODULES\s*\(\s*[^,]+,\s*\[([^\]]+)\]"
-        for match in re.finditer(pkg_check_pattern, content):
-            pkg_name = match.group(1).strip().strip('"\'')
+        pkg_check_pattern = re.compile(
+            r"^PKG_CHECK_MODULES\s*\(\s*[^,]+,\s*\[([A-Za-z0-9_.+-]+)\]\s*\)",
+            re.MULTILINE,
+        )
+        for match in pkg_check_pattern.finditer(content):
+            pkg_name = match.group(1)
             if pkg_name:
                 dep = DependencyRequirement(
                     name=pkg_name,
