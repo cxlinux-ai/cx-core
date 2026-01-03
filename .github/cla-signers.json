@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2025-12-31",
+  "last_updated": "2026-01-03",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -121,6 +121,15 @@
         "shreemj0407@gmail.com"
       ],
       "signed_date": "2026-01-02",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Ajay Bandaru",
+      "github_username": "aybanda",
+      "emails": [
+        "jsaj2024@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
       "cla_version": "1.0"
     }
   ],
