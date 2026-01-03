@@ -72,7 +72,6 @@ class TarballHelper:
     LIBRARY_TO_DEV_PACKAGE = {
         # SSL/TLS
         "ssl": "libssl-dev",
-        "crypto": "libssl-dev",
         "openssl": "libssl-dev",
         # Compression
         "z": "zlib1g-dev",
@@ -361,7 +360,7 @@ class TarballHelper:
             return dependencies
 
         # Pattern: AC_CHECK_LIB(library, function, ...)
-        ac_check_lib_pattern = r"AC_CHECK_LIB\s*\(\s*([^,)]+)\s*[,)]"
+        ac_check_lib_pattern = r"AC_CHECK_LIB\s*?\(\s*?([^\s,)]+?)\s*?[,)]"
         for match in re.finditer(ac_check_lib_pattern, content):
             lib_name = match.group(1).strip().strip('"\'')
             if lib_name:
@@ -374,7 +373,7 @@ class TarballHelper:
                 dependencies.append(dep)
 
         # Pattern: PKG_CHECK_MODULES([VAR], [package])
-        pkg_check_pattern = r"PKG_CHECK_MODULES\s*\(\s*[^,]+,\s*\[([^\]]+)\]"
+        pkg_check_pattern = r"PKG_CHECK_MODULES\s*?\(\s*?[^,]+?,\s*?\[([^\]]+?)\]"
         for match in re.finditer(pkg_check_pattern, content):
             pkg_name = match.group(1).strip().strip('"\'')
             if pkg_name:
@@ -388,7 +387,7 @@ class TarballHelper:
                 dependencies.append(dep)
 
         # Pattern: AC_CHECK_HEADER(header, ...)
-        ac_check_header_pattern = r"AC_CHECK_HEADER\s*\(\s*([^,)]+)\s*[,)]"
+        ac_check_header_pattern = r"AC_CHECK_HEADER\s*?\(\s*?([^\s,)]+?)\s*?[,)]"
         for match in re.finditer(ac_check_header_pattern, content):
             header = match.group(1).strip().strip('"\'')
             if header:
@@ -497,7 +496,17 @@ class TarballHelper:
                 members = tar.getmembers()
                 if members:
                     root_dir = members[0].name.split("/")[0]
-                    tar.extractall(extract_dir)
+                    # Validate all members to prevent path traversal attacks
+                    for member in members:
+                        member_path = (extract_dir / member.name).resolve()
+                        if not str(member_path).startswith(str(extract_dir.resolve())):
+                            raise ValueError(f"Tarball contains unsafe path: {member.name}")
+                    # Python 3.12+ supports filter parameter for safer extraction
+                    try:
+                        tar.extractall(extract_dir, filter="data")
+                    except TypeError:
+                        # Fallback for Python < 3.12 (already validated above)
+                        tar.extractall(extract_dir)
 
                 source_dir = extract_dir / root_dir if members else extract_dir
                 analysis.extracted_path = str(source_dir)

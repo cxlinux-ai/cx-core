@@ -267,9 +267,9 @@ pkg_check_modules(GLIB glib-2.0)
         ]
 
         mock_tar = MagicMock()
-        mock_tar.getmembers.return_value = [
-            MagicMock(name="test-project/configure")
-        ]
+        mock_member = MagicMock()
+        mock_member.name = "test-project/configure"
+        mock_tar.getmembers.return_value = [mock_member]
         mock_tarfile.open.return_value.__enter__.return_value = mock_tar
 
         tarball_path = Path(self.temp_dir) / "test.tar.gz"
