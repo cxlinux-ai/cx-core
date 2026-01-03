@@ -1299,6 +1299,79 @@ class CortexCLI:
 
         return 0
 
+    def _env_load(self, env_mgr: EnvironmentManager, args: argparse.Namespace) -> int:
+        """Load environment variables into current process."""
+        app = args.app
+
+        count = env_mgr.load_to_environ(app)
+
+        if count > 0:
+            cx_print(f"✓ Loaded {count} variable(s) from '{app}' into environment", "success")
+        else:
+            cx_print(f"No variables to load for '{app}'", "info")
+
+        return 0
+
+    def tarball_command(self, args: argparse.Namespace) -> int:
+        """Handle tarball analysis and installation commands."""
+        from cortex.tarball_helper import TarballHelper, TarballAnalysis, BuildSystem, DependencyRequirement
+
+        helper = TarballHelper(track_installations=not args.no_track)
+
+        try:
+            cx_print(f"Analyzing tarball: {args.tarball}", "info")
+            analysis = helper.analyze_tarball(args.tarball, args.extract_to)
+
+            cx_print(f"Build System: {analysis.build_system.value}", "info")
+            cx_print(f"Extracted to: {analysis.extracted_path}", "info")
+
+            if analysis.dependencies:
+                console.print("\n[bold]Dependencies found:[/bold]")
+                for dep in analysis.dependencies:
+                    status = "✓" if dep.found else "✗"
+                    console.print(f"  {status} {dep.name}")
+                    if dep.suggested_package:
+                        console.print(f"    → {dep.suggested_package}")
+
+            if analysis.missing_dependencies:
+                console.print("\n[bold]Missing dependencies:[/bold]")
+                for dep in analysis.missing_dependencies:
+                    console.print(f"  ✗ {dep.name}")
+                    if dep.suggested_package:
+                        console.print(f"    → Install: {dep.suggested_package}")
+                    if dep.alternatives:
+                        console.print(f"    → Alternatives: {', '.join(dep.alternatives)}")
+
+            if args.install_deps:
+                success, installed = helper.install_missing_dependencies(analysis, args.dry_run)
+                if success:
+                    cx_print(f"\n✓ Installed {len(installed)} packages", "success")
+                else:
+                    self._print_error("\n✗ Failed to install dependencies")
+                    return 1
+
+            if analysis.build_commands:
+                console.print("\n[bold]Build commands:[/bold]")
+                for cmd in analysis.build_commands:
+                    console.print(f"  {cmd}")
+
+            if helper.installed_packages:
+                console.print("\n[bold]Cleanup commands:[/bold]")
+                for cmd in helper.get_cleanup_commands():
+                    console.print(f"  {cmd}")
+
+            return 0
+
+        except FileNotFoundError as e:
+            self._print_error(f"Error: {e}")
+            return 1
+        except Exception as e:
+            self._print_error(f"Error analyzing tarball: {e}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
+            return 1
+
     # --- Import Dependencies Command ---
     def import_deps(self, args: argparse.Namespace) -> int:
         """Import and install dependencies from package manager files.
@@ -1784,6 +1857,20 @@ def main():
     env_parser = subparsers.add_parser("env", help="Manage environment variables")
     env_subs = env_parser.add_subparsers(dest="env_action", help="Environment actions")
 
+    # Tarball command
+    tarball_parser = subparsers.add_parser(
+        "tarball", help="Analyze and manage tarball-based software installations"
+    )
+    tarball_parser.add_argument("tarball", help="Path to tarball file")
+    tarball_parser.add_argument("--extract-to", help="Directory to extract tarball")
+    tarball_parser.add_argument(
+        "--install-deps", action="store_true", help="Install missing dependencies"
+    )
+    tarball_parser.add_argument("--dry-run", action="store_true", help="Dry run mode")
+    tarball_parser.add_argument(
+        "--no-track", action="store_true", help="Don't track installations"
+    )
+
     # env set <app> <KEY> <VALUE> [--encrypt] [--type TYPE] [--description DESC]
     env_set_parser = env_subs.add_parser("set", help="Set an environment variable")
     env_set_parser.add_argument("app", help="Application name")
@@ -1916,6 +2003,8 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
+        elif args.command == "tarball":
+            return cli.tarball_command(args)
         else:
             parser.print_help()
             return 1
