@@ -62,19 +62,29 @@ class CortexCLI:
         return api_key
 
     def _get_provider(self) -> str:
-        # Check environment variable for explicit provider choice
+        # 1. Check environment variable for explicit provider choice
         explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
             return explicit_provider
 
-        # Auto-detect based on available API keys
+        # 2. Auto-detect based on available API keys
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
         elif os.environ.get("OPENAI_API_KEY"):
             return "openai"
 
-        # Fallback to Ollama for offline mode
-        return "ollama"
+        # 3. SMART FALLBACK: Alignment with llm_router whitespace handling
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "").strip()
+        if ollama_url:
+            return "ollama"
+
+        # 4. Consolidated Error Message
+        self._print_error("No AI provider configured.")
+        cx_print(
+            "Please set ANTHROPIC_API_KEY, OPENAI_API_KEY, or configure Ollama.",
+            "info",
+        )
+        raise ValueError("No AI provider configured")
 
     def _print_status(self, emoji: str, message: str):
         """Legacy status print - maps to cx_print for Rich output"""

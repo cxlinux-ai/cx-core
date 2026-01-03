@@ -168,16 +168,26 @@ class LLMRouter:
         else:
             logger.warning("⚠️  No Kimi K2 API key provided")
 
-        # 1. NEW GUARDRAIL: Only enable if explicitly configured with a non-empty value
+        # 1. NEW GUARDRAIL: Ensure we only enable if explicitly told to
         ollama_url_env = os.getenv("OLLAMA_BASE_URL")
+        cortex_provider = os.getenv("CORTEX_PROVIDER")
+        # Normalize parameter to handle whitespace-only strings
+        clean_param = (
+            ollama_base_url.strip()
+            if ollama_base_url and isinstance(ollama_base_url, str)
+            else ollama_base_url
+        )
         self.ollama_enabled = (
-            os.getenv("CORTEX_PROVIDER") == "ollama"
-            or bool(ollama_url_env)  # Empty strings "" are now False
-            or bool(ollama_base_url)
+            cortex_provider == "ollama"
+            or bool(ollama_url_env and ollama_url_env.strip())
+            or bool(clean_param)
         )
 
         # Use the parameter, or the env var, or the default—guaranteeing no empty strings
-        self.ollama_base_url = ollama_base_url or ollama_url_env or "http://localhost:11434"
+        clean_url_env = (
+            ollama_url_env.strip() if ollama_url_env and ollama_url_env.strip() else None
+        )
+        self.ollama_base_url = clean_param or clean_url_env or "http://localhost:11434"
         self.ollama_model = ollama_model or os.getenv("OLLAMA_MODEL", "llama3.2")
         self.ollama_client = None
         self.ollama_client_async = None
@@ -303,12 +313,14 @@ class LLMRouter:
                 response = self._complete_claude(messages, temperature, max_tokens, tools)
             elif routing.provider == LLMProvider.KIMI_K2:
                 response = self._complete_kimi(messages, temperature, max_tokens, tools)
-            else:  # OLLAMA
+            elif routing.provider == LLMProvider.OLLAMA:
                 response = self._complete_ollama(messages, temperature, max_tokens, tools)
+            else:
+                raise ValueError(f"Unsupported provider: {routing.provider}")
 
             response.latency_seconds = time.time() - start_time
 
-            # Track stats
+            # Track stats if cost tracking is enabled
             if self.track_costs:
                 self._update_stats(response)
 

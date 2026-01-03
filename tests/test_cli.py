@@ -27,11 +27,12 @@ class TestCortexCLI(unittest.TestCase):
         self.assertEqual(api_key, "sk-ant-test-claude-key-123")
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("sys.stderr")
+    @patch("sys.stderr")  # Suppress error output during test
     def test_get_api_key_not_found(self, mock_stderr):
-        # When no API key is set, falls back to Ollama local mode
-        api_key = self.cli._get_api_key()
-        self.assertEqual(api_key, "ollama-local")
+        """When no AI provider is set, it should raise ValueError."""
+        with self.assertRaises(ValueError) as context:
+            self.cli._get_api_key()
+        self.assertEqual("No AI provider configured", str(context.exception))
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-openai-key-123"}, clear=True)
     def test_get_provider_openai(self):
@@ -59,14 +60,12 @@ class TestCortexCLI(unittest.TestCase):
         self.assertTrue(True)
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_install_no_api_key(self):
-        # When no API key is set, the CLI falls back to Ollama.
-        # If Ollama is running, this should succeed. If not, it should fail.
-        # We'll mock Ollama to be unavailable to test the failure case.
-        with patch("cortex.llm.interpreter.CommandInterpreter.parse") as mock_parse:
-            mock_parse.side_effect = RuntimeError("Ollama not available")
-            result = self.cli.install("docker")
-            self.assertEqual(result, 1)
+    @patch("sys.stderr")  # Suppress error output during test
+    def test_install_no_api_key(self, mock_stderr):
+        """Test that install() raises ValueError when no provider is configured."""
+        with self.assertRaises(ValueError) as context:
+            self.cli.install("docker")
+        self.assertEqual("No AI provider configured", str(context.exception))
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-openai-key-123"}, clear=True)
     @patch("cortex.cli.CommandInterpreter")
