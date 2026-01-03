@@ -424,3 +424,9 @@ Apache 2.0 - See [LICENSE](LICENSE) for details.
 <p align="center">
   <sub>Built with love by the Cortex team and contributors worldwide.</sub>
 </p>
+
+```markdown
+## Hybrid GPU Manager (Linux)
+
+A prototype tool addressing Linux hybrid GPU switching pain points.
+See `docs/hybrid_gpu_manager.md` for details.
