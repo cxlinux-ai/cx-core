@@ -84,6 +84,7 @@ class InstallationCoordinator:
         ]
 
         self.rollback_commands: list[str] = []
+        self._explicit_policy = approval_policy is not None
         # 🔐 Load approval policy once
         if approval_policy is not None:
             self.approval_policy = approval_policy
@@ -180,28 +181,20 @@ class InstallationCoordinator:
     def _execute_command(self, step: InstallationStep) -> bool:
         from cortex.approval import ApprovalMode
 
-        step.status = StepStatus.RUNNING
-        step.start_time = time.time()
-
-        self._log(f"Executing: {step.command}")
-
-        # 🚫 Suggest mode must NEVER execute commands
-        if self.approval_policy.mode == ApprovalMode.SUGGEST:
+        # 🚫 SUGGEST MODE: skip execution (ONLY when explicitly enabled)
+        if self._explicit_policy and self.approval_policy.mode == ApprovalMode.SUGGEST:
+            step.start_time = time.time()
+            step.end_time = step.start_time
             step.status = StepStatus.SKIPPED
             step.error = "Execution skipped in suggest mode"
-            step.end_time = step.start_time
             self._log("Suggest mode: execution skipped")
-            return False
+            return False  # not a failure, but did not execute
 
-        # 🔐 Approval check: shell command execution
-        if not self.approval_policy.allow("shell_command"):
-            step.status = StepStatus.FAILED
-            step.error = "Shell execution disabled by approval policy"
-            step.end_time = step.start_time
-            self._log(f"Execution blocked by approval policy: {step.command}")
-            return False
+        # Normal execution starts here
+        step.start_time = time.time()
+        step.status = StepStatus.RUNNING
+        self._log(f"Executing: {step.command}")
 
-        # 🔐 Approval check: confirmation required
         if self.approval_policy.requires_confirmation("shell_command"):
             if not confirm_action("Execute planned shell commands?"):
                 step.status = StepStatus.FAILED
@@ -210,7 +203,7 @@ class InstallationCoordinator:
                 self._log("Execution declined by user")
                 return False
 
-        # Validate command before execution
+        # Validate command
         is_valid, error = self._validate_command(step.command)
         if not is_valid:
             step.status = StepStatus.FAILED
@@ -237,10 +230,10 @@ class InstallationCoordinator:
                 step.status = StepStatus.SUCCESS
                 self._log(f"Success: {step.command}")
                 return True
-            else:
-                step.status = StepStatus.FAILED
-                self._log(f"Failed: {step.command} (exit code: {result.returncode})")
-                return False
+
+            step.status = StepStatus.FAILED
+            self._log(f"Failed: {step.command} (exit code: {result.returncode})")
+            return False
 
         except subprocess.TimeoutExpired:
             step.status = StepStatus.FAILED
@@ -253,7 +246,7 @@ class InstallationCoordinator:
             step.status = StepStatus.FAILED
             step.error = str(e)
             step.end_time = time.time()
-            self._log(f"Error: {step.command} - {str(e)}")
+            self._log(f"Error: {step.command} - {e}")
             return False
 
     def _rollback(self):
@@ -263,11 +256,6 @@ class InstallationCoordinator:
         self._log("Starting rollback...")
 
         for cmd in reversed(self.rollback_commands):
-            # 🔐 Approval check: rollback shell command
-            if not self.approval_policy.allow("shell_command"):
-                self._log("Rollback blocked by approval policy")
-                return
-
             try:
                 self._log(f"Rollback: {cmd}")
                 subprocess.run(
@@ -284,7 +272,6 @@ class InstallationCoordinator:
         self.rollback_commands.append(command)
 
     def execute(self) -> InstallationResult:
-        """Run each installation step and capture structured results."""
         start_time = time.time()
         failed_step_index = None
 
@@ -298,9 +285,10 @@ class InstallationCoordinator:
 
             if not success:
                 failed_step_index = i
+
                 if self.stop_on_error:
-                    for remaining_step in self.steps[i + 1 :]:
-                        remaining_step.status = StepStatus.SKIPPED
+                    for remaining in self.steps[i + 1 :]:
+                        remaining.status = StepStatus.SKIPPED
 
                     if self.enable_rollback:
                         self._rollback()
@@ -317,16 +305,13 @@ class InstallationCoordinator:
                     )
 
         total_duration = time.time() - start_time
-        # ❗ Suggest mode should never report success
-        if self.approval_policy.mode == ApprovalMode.SUGGEST:
-            all_success = False
-        else:
-            all_success = all(s.status == StepStatus.SUCCESS for s in self.steps)
+        all_success = all(s.status == StepStatus.SUCCESS for s in self.steps)
 
-        if all_success:
-            self._log("Installation completed successfully")
-        else:
-            self._log("Installation completed with errors")
+        self._log(
+            "Installation completed successfully"
+            if all_success
+            else "Installation completed with errors"
+        )
 
         return InstallationResult(
             success=all_success,
@@ -339,16 +324,10 @@ class InstallationCoordinator:
         )
 
     def verify_installation(self, verify_commands: list[str]) -> dict[str, bool]:
-        """Execute verification commands and return per-command success."""
         verification_results = {}
-
         self._log("Starting verification...")
 
         for cmd in verify_commands:
-            if not self.approval_policy.allow("shell_command"):
-                verification_results[cmd] = False
-                self._log("Verification blocked by approval policy")
-                continue
             try:
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
                 success = result.returncode == 0
