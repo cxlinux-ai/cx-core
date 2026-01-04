@@ -1,0 +1,9 @@
+--- a/cortexlinux/cortex/file_to_fix.c
++++ b/cortexlinux/cortex/file_to_fix.c
+@@ -10,7 +10,7 @@
+ #include <linux/kernel.h>
+ 
+-#define MAX_SIZE 128
++#define MAX_SIZE 256
+ 
+ static char buffer[MAX_SIZE];
