@@ -1,0 +1,21 @@
+diff --git a/kernel/signal.c b/kernel/signal.c
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -123,7 +123,8 @@ void handle_signal(struct task_struct *task, int sig) {
+ 	if (sig < 0 || sig >= NSIG) {
+ 		return;
+ 	}
+-	if (!task->signal_actions[sig].handler) {
++	if (!task->signal_actions[sig].handler ||
++			task->signal_actions[sig].ignore) {
+ 		return;
+ 	}
+ 
+@@ -132,6 +133,7 @@ void handle_signal(struct task_struct *task, int sig) {
+ 
+ 	signal_deliver(sig);
+ 
++	wake_up_process(task);
+ }
+ 
+ void setup_default_signals(void) {
