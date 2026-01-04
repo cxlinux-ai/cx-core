@@ -12,6 +12,8 @@ License: Modified MIT License
 """
 
 import asyncio
+import base64
+import io
 import json
 import logging
 import os
@@ -326,6 +328,76 @@ class LLMRouter:
                 )
 
             raise
+
+    def diagnose_image(self, image) -> str:
+        """
+        Diagnose an error screenshot using Claude Vision.
+        Safe fallback if Claude or vision support is unavailable.
+        """
+        try:
+            from PIL import Image
+        except ImportError:
+            logger.warning("Pillow not installed, using fallback diagnosis")
+            return (
+                "Image diagnosis unavailable (missing pillow).\n"
+                "Install Pillow to enable image-based error diagnosis:\n"
+                + "  pip install pillow\n"
+                + "  # or\n"
+                + "  cortex install pillow\n"
+            )
+
+        if not self.claude_client:
+            logger.warning("Claude Vision unavailable, using fallback diagnosis")
+            return (
+                "Claude Vision unavailable.\n"
+                "Configure Claude API key to enable image diagnosis:\n"
+                + "  export ANTHROPIC_API_KEY='your-key'\n"
+                + "  # or run:\n"
+                + "  cortex wizard\n"
+            )
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        image_bytes = buf.getvalue()
+
+        try:
+            response = self.claude_client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=500,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": base64.b64encode(image_bytes).decode(),
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": "Diagnose this error screenshot and suggest fixes.",
+                            },
+                        ],
+                    }
+                ],
+            )
+            return response.content[0].text
+
+        except Exception as e:
+            logger.warning(
+                "Claude Vision unavailable, using fallback diagnosis",
+                exc_info=True,
+            )
+            return (
+                "Claude Vision unavailable.\n"
+                "Possible reasons:\n"
+                "- Invalid or missing API key\n"
+                "- Network or rate limit error\n"
+                "- Claude service unavailable\n"
+            )
 
     def _complete_claude(
         self,
