@@ -1,0 +1,29 @@
+--- a/src/modules/manager.c
++++ b/src/modules/manager.c
+@@ -123,6 +123,7 @@ int module_manager_load(const char *mod
+         return -1;
+     }
+ 
++    const char *error_msg = NULL;
+     void *handle = dlopen(module_path, RTLD_LAZY);
+     if (!handle) {
+         error("Failed to load module %s", module_path);
+@@ -130,7 +131,9 @@ int module_manager_load(const char *mod
+         // Report the detailed error
+         error_msg = dlerror();
+         if (error_msg) {
+-            error("Reason: %s", error_msg);
++            error("Detailed error: %s", error_msg);
++        } else {
++            error("Unknown error occurred while loading module");
+         }
+ 
+         free(module_path);
+@@ -138,6 +141,7 @@ int module_manager_load(const char *mod
+     }
+ 
+     // Clear any existing error
++    dlerror();  // Reset the error state
+     *(void **)handle_ptr = handle;
+ 
+     return 0;
