@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
@@ -43,23 +44,28 @@ class CortexCLI:
             console.print(f"[dim][DEBUG] {message}[/dim]")
 
     def _get_api_key(self) -> str | None:
-        # Check if using Ollama or Fake provider (no API key needed)
-        provider = self._get_provider()
-        if provider == "ollama":
-            self._debug("Using Ollama (no API key required)")
-            return "ollama-local"  # Placeholder for Ollama
-        if provider == "fake":
+        # 1. Check explicit provider override first (fake/ollama need no key)
+        explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+        if explicit_provider == "fake":
             self._debug("Using Fake provider for testing")
-            return "fake-key"  # Placeholder for Fake provider
+            return "fake-key"
+        if explicit_provider == "ollama":
+            self._debug("Using Ollama (no API key required)")
+            return "ollama-local"
 
-        is_valid, detected_provider, error = validate_api_key()
-        if not is_valid:
-            self._print_error(error)
-            cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
-            cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
-            return None
-        api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
-        return api_key
+        # 2. Try auto-detection + prompt to save (setup_api_key handles both)
+        success, key, detected_provider = setup_api_key()
+        if success:
+            self._debug(f"Using {detected_provider} API key")
+            # Store detected provider so _get_provider can use it
+            self._detected_provider = detected_provider
+            return key
+
+        # Still no key
+        self._print_error("No API key found or provided")
+        cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
+        cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
+        return None
 
     def _get_provider(self) -> str:
         # Check environment variable for explicit provider choice
@@ -67,7 +73,14 @@ class CortexCLI:
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
             return explicit_provider
 
-        # Auto-detect based on available API keys
+        # Use provider from auto-detection (set by _get_api_key)
+        detected = getattr(self, "_detected_provider", None)
+        if detected == "anthropic":
+            return "claude"
+        elif detected == "openai":
+            return "openai"
+
+        # Check env vars (may have been set by auto-detect)
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
         elif os.environ.get("OPENAI_API_KEY"):

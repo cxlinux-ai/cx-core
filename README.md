@@ -110,6 +110,8 @@ echo 'OPENAI_API_KEY=your-key-here' > .env
 cortex --version
 ```
 
+> **💡 Zero-Config:** If you already have API keys from Claude CLI (`~/.config/anthropic/`) or OpenAI CLI (`~/.config/openai/`), Cortex will auto-detect them! Environment variables work immediately without prompting. See [Zero Config API Keys](docs/ZERO_CONFIG_API_KEYS.md).
+
 ### First Run
 
 ```bash
@@ -254,16 +256,27 @@ Found a vulnerability? Please report it responsibly:
 ## Troubleshooting
 
 <details>
-<summary><strong>"ANTHROPIC_API_KEY not set"</strong></summary>
+<summary><strong>"No API key found"</strong></summary>
+
+Cortex auto-detects API keys from multiple locations. If none are found:
 
 ```bash
-# Verify .env file exists
-cat .env
-# Should show: ANTHROPIC_API_KEY=sk-ant-...
+# Option 1: Set environment variables (used immediately, no save needed)
+export ANTHROPIC_API_KEY=sk-ant-your-key
+cortex install nginx --dry-run
 
-# If missing, create it:
-echo 'ANTHROPIC_API_KEY=your-actual-key' > .env
+# Option 2: Save directly to Cortex config
+echo 'ANTHROPIC_API_KEY=sk-ant-your-key' > ~/.cortex/.env
+
+# Option 3: Use Ollama (free, local, no key needed)
+export CORTEX_PROVIDER=ollama
+python scripts/setup_ollama.py
+
+# Option 4: If you have Claude CLI installed, Cortex will find it automatically
+# Just run: cortex install nginx --dry-run
 ```
+
+See [Zero Config API Keys](docs/ZERO_CONFIG_API_KEYS.md) for details.
 </details>
 
 <details>

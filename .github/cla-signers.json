@@ -131,6 +131,33 @@
       ],
       "signed_date": "2026-01-03",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Murat Aslan",
+      "github_username": "murataslan1",
+      "emails": [
+        "murataslan1@users.noreply.github.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Divanshu Grover",
+      "github_username": "divanshu-go",
+      "emails": [
+        "divanshugrover2009@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Rakesh Jha",
+      "github_username": "rakesh0x",
+      "emails": [
+        "rakeshjhanda9958@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
     }
   ],
   "corporations": {

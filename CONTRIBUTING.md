@@ -24,6 +24,7 @@ We are committed to providing a welcoming and inclusive environment. Please:
 
 - Be respectful and considerate
 - Use welcoming and inclusive language
+- Write in clear, professional English in all communications (issues, PRs, comments, and documentation)
 - Accept constructive criticism gracefully
 - Focus on what's best for the community
 - Show empathy towards other community members
@@ -179,7 +180,8 @@ pip install pytest pytest-cov pytest-mock black pylint mypy bandit
    - `bounty` - Has cash reward
    - `priority:high` - Important issues
 3. Comment "I'd like to work on this" to claim an issue
-4. Wait for assignment before starting (prevents duplicate work)
+4. **Wait for assignment before starting work** (prevents duplicate effort)
+5. Once assigned, please raise your PR within approximately one week. If there's no progress or update within this timeframe, we may unassign the issue to give others a chance to contribute. If you need more time, just let us know in the issue comments.
 
 ---
 
@@ -216,6 +218,13 @@ Closes #123
 - [ ] Breaking change
 - [ ] Documentation update
 
+## AI Disclosure
+Please indicate if you used AI tools during development:
+- [ ] No AI used
+- [ ] AI/IDE/Agents used (please describe below)
+
+If AI was used, briefly explain which tools and how they assisted (e.g., "Used GitHub Copilot for autocomplete suggestions" or "Used ChatGPT to help debug a regex pattern").
+
 ## Testing
 How did you test these changes?
 
@@ -224,6 +233,22 @@ How did you test these changes?
 - [ ] Code follows style guide
 - [ ] Documentation updated
 ```
+
+### Git Workflow
+
+**Please do not force push to your branch.** Always use merge commits to incorporate upstream changes:
+
+```bash
+# Keep your branch up to date with main
+git fetch upstream
+git merge upstream/main
+
+# Do NOT use:
+# git push --force
+# git rebase upstream/main (followed by force push)
+```
+
+Merge commits preserve history and make it easier for reviewers to track changes. Force pushing can cause confusion and may overwrite collaborative work.
 
 ### Review Process
 
