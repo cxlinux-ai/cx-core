@@ -131,23 +131,24 @@ class ShellConfigParser:
 
     # Regex patterns for variable extraction
     # Bash/Zsh: export VAR=value, VAR=value, export VAR="value"
+    # Note: Using possessive-style matching to avoid ReDoS
     BASH_EXPORT_PATTERN = re.compile(
-        r'^[\s]*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(["\']?)(.*)(\2)\s*(?:#.*)?$'
+        r'^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=(["\']?)([^"\']*)\2[ \t]*(?:#.*)?$'
     )
-    BASH_EXPORT_SIMPLE = re.compile(r"^[\s]*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+    BASH_EXPORT_SIMPLE = re.compile(r"^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=([^\n]*)$")
 
     # Fish: set -gx VAR value, set -x VAR value, set VAR value
-    FISH_SET_PATTERN = re.compile(r"^[\s]*set\s+(?:-[gxUu]+\s+)*([A-Za-z_][A-Za-z0-9_]*)\s+(.*)$")
+    # Note: Using atomic group pattern to avoid ReDoS from nested quantifiers
+    FISH_SET_PATTERN = re.compile(
+        r"^[ \t]*set[ \t]+(?:-[gxUu]+[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]+([^\n]*)$"
+    )
 
     # PATH modification patterns
-    BASH_PATH_APPEND = re.compile(
-        r"^[\s]*(?:export\s+)?PATH=.*\$PATH.*$|^[\s]*(?:export\s+)?PATH=.*\${PATH}.*$"
-    )
-    BASH_PATH_PREPEND = re.compile(
-        r"^[\s]*(?:export\s+)?PATH=.*\$PATH.*$|^[\s]*(?:export\s+)?PATH=.*\${PATH}.*$"
-    )
+    # Note: Simplified patterns to avoid .* backtracking
+    BASH_PATH_APPEND = re.compile(r"^[ \t]*(?:export[ \t]+)?PATH=[^\n]*\$\{?PATH\}?")
+    BASH_PATH_PREPEND = re.compile(r"^[ \t]*(?:export[ \t]+)?PATH=[^\n]*\$\{?PATH\}?")
     FISH_PATH_PATTERN = re.compile(
-        r"^[\s]*(?:set\s+)?(?:-[gxUu]+\s+)*(?:fish_user_paths|PATH)\s+(.*)$"
+        r"^[ \t]*(?:set[ \t]+)?(?:-[gxUu]+[ \t]+)?(?:fish_user_paths|PATH)[ \t]+([^\n]*)$"
     )
 
     def __init__(self, shell: Shell | None = None):
