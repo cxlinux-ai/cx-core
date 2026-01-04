@@ -56,6 +56,10 @@ class CortexCLI:
         # If no keys are in environment, DON'T call setup_api_key()
         # because it will show the menu and crash the tests.
         if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
+            # Before failing, check if Ollama is configured
+            ollama_url = os.environ.get("OLLAMA_BASE_URL", "").strip()
+            if ollama_url:
+                return "ollama-local"
             self._print_error("No API key found or provided")
             cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
             cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
