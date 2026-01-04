@@ -168,7 +168,15 @@ class TestSourceBuilder:
             config = BuildConfig(package_name="test", build_system="cmake")
             commands = self.builder.build(source_dir, config)
             assert len(commands) > 0
-            assert "make" in commands[0]
+            # Commands now return tuples of (command, working_dir) for cmake
+            cmd_tuple = commands[0]
+            if isinstance(cmd_tuple, tuple):
+                cmd, work_dir = cmd_tuple
+                assert "make" in cmd
+                assert work_dir == source_dir / "build"
+            else:
+                # Backward compatibility: if it's just a string
+                assert "make" in cmd_tuple
 
     def test_install_build_autotools(self):
         """Test install commands for autotools."""
