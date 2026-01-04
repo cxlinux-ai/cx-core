@@ -625,7 +625,7 @@ class UndoManager:
                 continue  # Skip comments
 
             try:
-                proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                proc = subprocess.run(cmd, capture_output=True, text=True)
                 if proc.returncode != 0:
                     errors.append(f"{cmd}: {proc.stderr}")
             except Exception as e:

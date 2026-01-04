@@ -100,7 +100,6 @@ def install_ollama() -> bool:
         # Download and execute the installer
         result = subprocess.run(
             "curl -fsSL https://ollama.ai/install.sh | sh",
-            shell=True,
             check=False,  # Don't raise exception, we'll check manually
             capture_output=False,  # Show output to user
         )

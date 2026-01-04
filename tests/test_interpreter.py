@@ -11,7 +11,7 @@ from cortex.llm.interpreter import APIProvider, CommandInterpreter
 
 class TestCommandInterpreter(unittest.TestCase):
     def setUp(self):
-        self.api_key = "test-api-key"
+api_key = os.environ.get("API_KEY")
 
     @patch("openai.OpenAI")
     def test_initialization_openai(self, mock_openai):

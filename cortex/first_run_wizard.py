@@ -364,7 +364,7 @@ Cortex uses AI to understand your commands. You can use:
             if install.lower() == "y":
                 try:
                     subprocess.run(
-                        "curl -fsSL https://ollama.ai/install.sh | sh", shell=True, check=True
+                        "curl -fsSL https://ollama.ai/install.sh | sh", check=True
                     )
                     print("\n✓ Ollama installed!")
                 except subprocess.CalledProcessError:
@@ -722,7 +722,7 @@ Cortex is ready to use! Here are some things to try:
     def _clear_screen(self):
         """Clear the terminal screen."""
         if self.interactive:
-            os.system("clear" if os.name == "posix" else "cls")
+            subprocess.run("clear" if os.name == "posix" else "cls", shell=False, check=True)
 
     def _print_banner(self):
         """Print the Cortex banner."""

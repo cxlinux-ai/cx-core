@@ -18,7 +18,7 @@ class MockLLM:
 
 
 def test_llm_agent_mocked():
-    agent = LLMIntentAgent(api_key="fake-key")
+api_key = os.environ.get("API_KEY")
 
     # Replace real LLM with mock
     agent.llm = MockLLM()

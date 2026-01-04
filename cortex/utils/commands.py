@@ -258,7 +258,6 @@ def run_command(
             # Only allow if command has been validated
             result = subprocess.run(
                 command,
-                shell=True,
                 capture_output=capture_output,
                 text=True,
                 timeout=timeout,

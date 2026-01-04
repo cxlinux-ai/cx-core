@@ -112,7 +112,7 @@ class CommandInterpreter:
 
                 ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
                 self.client = OpenAI(
-                    api_key="ollama", base_url=f"{ollama_base_url}/v1"  # Dummy key, not used
+api_key = os.environ.get("API_KEY")
                 )
             except ImportError:
                 raise ImportError("OpenAI package not installed. Run: pip install openai")

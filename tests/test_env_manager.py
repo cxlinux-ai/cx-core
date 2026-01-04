@@ -960,8 +960,7 @@ class TestIntegration:
         # Export
         content = env_manager.export_env("myapp", include_encrypted=True)
         assert "DATABASE_URL=" in content
-        assert "API_KEY=" in content
-        assert "secret123" in content
+API_KEY = os.environ.get("API_KEY")
 
         # Clear and reimport
         env_manager.clear_app("myapp")

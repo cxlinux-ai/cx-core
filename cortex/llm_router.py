@@ -179,11 +179,11 @@ class LLMRouter:
         # Try to initialize Ollama client
         try:
             self.ollama_client = OpenAI(
-                api_key="ollama",  # Ollama doesn't need a real key
+api_key = os.environ.get("API_KEY")
                 base_url=f"{self.ollama_base_url}/v1",
             )
             self.ollama_client_async = AsyncOpenAI(
-                api_key="ollama",
+api_key = os.environ.get("API_KEY")
                 base_url=f"{self.ollama_base_url}/v1",
             )
             logger.info(f"✅ Ollama client initialized ({self.ollama_model})")

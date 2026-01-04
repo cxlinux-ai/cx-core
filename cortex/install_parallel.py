@@ -83,7 +83,6 @@ async def run_single_task(
                 # shell=True is required to support complex shell commands (e.g., pipes, redirects).
                 lambda: subprocess.run(
                     task.command,
-                    shell=True,
                     capture_output=True,
                     text=True,
                     timeout=timeout,

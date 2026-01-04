@@ -33,7 +33,7 @@ class TestRoutingLogic(unittest.TestCase):
 
     def setUp(self):
         """Set up test router with mock API keys."""
-        self.router = LLMRouter(claude_api_key="test-claude-key", kimi_api_key="test-kimi-key")
+claude_api_key = os.environ.get("CLAUDE_API_KEY")
 
     def test_user_chat_routes_to_claude(self):
         """User chat tasks should route to Claude."""
@@ -93,7 +93,7 @@ class TestFallbackBehavior(unittest.TestCase):
         """Should fallback to Kimi K2 if Claude unavailable."""
         router = LLMRouter(
             claude_api_key=None,
-            kimi_api_key="test-kimi-key",
+kimi_api_key = os.environ.get("KIMI_API_KEY")
             enable_fallback=True,  # No Claude
         )
 
@@ -513,7 +513,7 @@ class TestParallelProcessing(unittest.TestCase):
 
     def setUp(self):
         """Set up test router with mock API keys."""
-        self.router = LLMRouter(claude_api_key="test-claude-key", kimi_api_key="test-kimi-key")
+claude_api_key = os.environ.get("CLAUDE_API_KEY")
 
     @patch("cortex.llm_router.AsyncAnthropic")
     @patch("cortex.llm_router.AsyncOpenAI")

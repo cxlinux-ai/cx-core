@@ -365,7 +365,7 @@ TRACEPOINT_PROBE(sched, sched_process_exit) {
 
         try:
             while self.running:
-                os.system("clear")
+                subprocess.run("clear", shell=False, check=True)
                 self.print_status()
                 time.sleep(interval)
         except KeyboardInterrupt:

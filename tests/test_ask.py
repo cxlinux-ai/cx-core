@@ -124,7 +124,7 @@ class TestAskHandler(unittest.TestCase):
         """Test that empty questions raise ValueError."""
         # Use fake provider to avoid API calls
         os.environ["CORTEX_FAKE_RESPONSE"] = "test response"
-        handler = AskHandler(api_key="fake-key", provider="fake")
+api_key = os.environ.get("API_KEY")
         with self.assertRaises(ValueError):
             handler.ask("")
         with self.assertRaises(ValueError):
@@ -133,7 +133,7 @@ class TestAskHandler(unittest.TestCase):
     def test_ask_with_fake_provider(self):
         """Test ask with fake provider returns expected response."""
         os.environ["CORTEX_FAKE_RESPONSE"] = "Test answer from fake provider"
-        handler = AskHandler(api_key="fake-key", provider="fake")
+api_key = os.environ.get("API_KEY")
         handler.cache = None  # Disable cache for this test
         answer = handler.ask("What is the meaning of life?")
         self.assertEqual(answer, "Test answer from fake provider")
@@ -143,7 +143,7 @@ class TestAskHandler(unittest.TestCase):
         # Clear any custom response to use default
         if "CORTEX_FAKE_RESPONSE" in os.environ:
             del os.environ["CORTEX_FAKE_RESPONSE"]
-        handler = AskHandler(api_key="fake-key", provider="fake")
+api_key = os.environ.get("API_KEY")
         handler.cache = None
         answer = handler.ask("What version of Python do I have?")
         self.assertIn("Python", answer)

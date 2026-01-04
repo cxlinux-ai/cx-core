@@ -179,7 +179,7 @@ class InstallationCoordinator:
             # For complex shell commands (pipes, redirects), shell=True is needed
             # Simple commands could use shlex.split() with shell=False
             result = subprocess.run(
-                step.command, shell=True, capture_output=True, text=True, timeout=self.timeout
+                step.command, capture_output=True, text=True, timeout=self.timeout
             )
 
             step.return_code = result.returncode
@@ -219,7 +219,7 @@ class InstallationCoordinator:
         for cmd in reversed(self.rollback_commands):
             try:
                 self._log(f"Rollback: {cmd}")
-                subprocess.run(cmd, shell=True, capture_output=True, timeout=self.timeout)
+                subprocess.run(cmd, capture_output=True, timeout=self.timeout)
             except Exception as e:
                 self._log(f"Rollback failed: {cmd} - {str(e)}")
 
@@ -286,7 +286,7 @@ class InstallationCoordinator:
 
         for cmd in verify_commands:
             try:
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 success = result.returncode == 0
                 verification_results[cmd] = success
                 self._log(f"Verification {cmd}: {'PASS' if success else 'FAIL'}")
