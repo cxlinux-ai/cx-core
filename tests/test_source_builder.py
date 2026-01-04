@@ -128,8 +128,12 @@ class TestSourceBuilder:
             )
             commands = self.builder.configure_build(source_dir, config)
             assert len(commands) > 0
-            assert "./configure" in commands[0]
-            assert "--prefix=/usr/local" in commands[0]
+            # Commands now return tuples of (command, working_dir)
+            cmd, work_dir = commands[0]
+            assert "bash" in cmd
+            assert "configure" in cmd
+            assert "--prefix=/usr/local" in cmd
+            assert work_dir == source_dir
 
     def test_configure_build_cmake(self):
         """Test configure for cmake."""
@@ -142,7 +146,10 @@ class TestSourceBuilder:
             )
             commands = self.builder.configure_build(source_dir, config)
             assert len(commands) > 0
-            assert "cmake" in commands[0]
+            # Commands now return tuples of (command, working_dir)
+            cmd, work_dir = commands[0]
+            assert "cmake" in cmd
+            assert work_dir == source_dir / "build"
 
     def test_build_autotools(self):
         """Test build for autotools."""
@@ -254,7 +261,11 @@ class TestSourceBuilder:
                 patch.object(self.builder, "fetch_source", return_value=source_dir),
                 patch.object(self.builder, "detect_build_system", return_value="autotools"),
                 patch.object(self.builder, "detect_build_dependencies", return_value=[]),
-                patch.object(self.builder, "configure_build", return_value=["./configure"]),
+                patch.object(
+                    self.builder,
+                    "configure_build",
+                    return_value=[("bash configure --prefix=/usr/local", source_dir)],
+                ),
                 patch.object(self.builder, "build", return_value=["make"]),
                 patch.object(self.builder, "install_build", return_value=["sudo make install"]),
                 patch("cortex.source_builder.run_command") as mock_run,

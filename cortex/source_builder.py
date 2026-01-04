@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -159,9 +160,7 @@ class SourceBuilder:
 
         return missing
 
-    def fetch_source(
-        self, package_name: str, source_url: str | None, version: str | None
-    ) -> Path:
+    def fetch_source(self, package_name: str, source_url: str | None, version: str | None) -> Path:
         """Fetch source code from URL or detect from package name.
 
         Args:
@@ -272,9 +271,7 @@ class SourceBuilder:
                 f"Python-{version or '3.12.0'}.tgz"
             ),
             "nginx": "https://nginx.org/download/nginx-1.24.0.tar.gz",
-            "redis": (
-                f"https://download.redis.io/releases/redis-{version or '7.0'}.tar.gz"
-            ),
+            "redis": (f"https://download.redis.io/releases/redis-{version or '7.0'}.tar.gz"),
         }
 
         if package_name.lower() in common_urls:
@@ -314,7 +311,9 @@ class SourceBuilder:
         # Default to autotools (most common)
         return "autotools"
 
-    def configure_build(self, source_dir: Path, config: BuildConfig) -> list[str]:
+    def configure_build(
+        self, source_dir: Path, config: BuildConfig
+    ) -> list[tuple[str, Path | None]]:
         """Configure the build.
 
         Args:
@@ -322,30 +321,48 @@ class SourceBuilder:
             config: Build configuration with options and settings.
 
         Returns:
-            List of configure commands to execute.
+            List of tuples (command, working_directory) where:
+            - command: Command string to execute (validated, no shell operators)
+            - working_directory: Working directory for command (None = use source_dir)
         """
         commands = []
 
         if config.build_system == "autotools":
-            configure_cmd = "./configure"
+            # Use bash to run configure script (bash is in ALLOWED_COMMAND_PREFIXES)
+            # This avoids ./ prefix which isn't in the allowlist
+            configure_script = source_dir / "configure"
+            if not configure_script.exists():
+                # Fallback: try configure.ac (needs autogen)
+                configure_script = source_dir / "configure.ac"
+                if configure_script.exists():
+                    # Would need autogen.sh first, but for now use configure
+                    configure_script = source_dir / "configure"
+
+            # Build command: bash configure [args]
+            configure_cmd = f"bash {shlex.quote(str(configure_script))}"
             if config.configure_args:
-                configure_cmd += " " + " ".join(config.configure_args)
+                # Sanitize and join args
+                safe_args = [shlex.quote(arg) for arg in config.configure_args]
+                configure_cmd += " " + " ".join(safe_args)
             else:
                 # Default configure options
-                configure_cmd += f" --prefix={config.install_prefix}"
-                # Note: --enable-optimizations is Python-specific, not added by default
-            commands.append(configure_cmd)
+                configure_cmd += f" --prefix={shlex.quote(config.install_prefix)}"
+            commands.append((configure_cmd, source_dir))
 
         elif config.build_system == "cmake":
             build_dir = source_dir / "build"
             build_dir.mkdir(exist_ok=True)
             cmake_cmd = "cmake"
             if config.configure_args:
-                cmake_cmd += " " + " ".join(config.configure_args)
+                # Sanitize and join args
+                safe_args = [shlex.quote(arg) for arg in config.configure_args]
+                cmake_cmd += " " + " ".join(safe_args)
             else:
-                cmake_cmd += f" -DCMAKE_INSTALL_PREFIX={config.install_prefix}"
+                cmake_cmd += f" -DCMAKE_INSTALL_PREFIX={shlex.quote(config.install_prefix)}"
+            # Use relative path from build_dir to source_dir
             cmake_cmd += " .."
-            commands.append(f"cd {build_dir} && {cmake_cmd}")
+            # Use build_dir as working directory instead of cd command
+            commands.append((cmake_cmd, build_dir))
 
         elif config.build_system == "python":
             # Python packages usually don't need explicit configure
@@ -353,7 +370,7 @@ class SourceBuilder:
 
         return commands
 
-    def build(self, source_dir: Path, config: BuildConfig) -> list[str]:
+    def build(self, source_dir: Path, config: BuildConfig) -> list[tuple[str, Path | None] | str]:
         """Build the package.
 
         Args:
@@ -361,7 +378,9 @@ class SourceBuilder:
             config: Build configuration with options and settings.
 
         Returns:
-            List of build commands to execute.
+            List of build commands to execute. Can be:
+            - Tuples of (command, working_directory) for commands needing specific cwd
+            - Strings for commands that use source_dir as cwd
         """
         commands = []
 
@@ -381,13 +400,17 @@ class SourceBuilder:
             build_dir = source_dir / "build"
             make_cmd = "make"
             if config.make_args:
-                make_cmd += " " + " ".join(config.make_args)
+                # Sanitize make args
+                safe_args = [shlex.quote(arg) for arg in config.make_args]
+                make_cmd += " " + " ".join(safe_args)
             else:
                 import multiprocessing
 
                 jobs = multiprocessing.cpu_count()
                 make_cmd += f" -j{jobs}"
-            commands.append(f"cd {build_dir} && {make_cmd}")
+            # Use build_dir as working directory instead of cd command
+            # Return as tuple for consistency with configure_build
+            commands.append((make_cmd, build_dir))
 
         elif config.build_system == "python":
             commands.append("python3 setup.py build")
@@ -510,8 +533,15 @@ class SourceBuilder:
             # Configure
             cx_print("⚙️  Configuring build...", "info")
             configure_commands = self.configure_build(source_dir, config)
-            for cmd in configure_commands:
-                result = run_command(cmd, cwd=str(source_dir), timeout=300)
+            for cmd_tuple in configure_commands:
+                if isinstance(cmd_tuple, tuple):
+                    cmd, work_dir = cmd_tuple
+                    cwd = str(work_dir) if work_dir else str(source_dir)
+                else:
+                    # Backward compatibility: if it's just a string, use source_dir
+                    cmd = cmd_tuple
+                    cwd = str(source_dir)
+                result = run_command(cmd, cwd=cwd, timeout=300)
                 if not result.success:
                     return BuildResult(
                         success=False,
@@ -525,8 +555,15 @@ class SourceBuilder:
             # Build
             cx_print("🔨 Compiling (this may take a while)...", "info")
             build_commands = self.build(source_dir, config)
-            for cmd in build_commands:
-                result = run_command(cmd, cwd=str(source_dir), timeout=3600)  # 1 hour timeout
+            for cmd_tuple in build_commands:
+                if isinstance(cmd_tuple, tuple):
+                    cmd, work_dir = cmd_tuple
+                    cwd = str(work_dir) if work_dir else str(source_dir)
+                else:
+                    # Backward compatibility: if it's just a string, use source_dir
+                    cmd = cmd_tuple
+                    cwd = str(source_dir)
+                result = run_command(cmd, cwd=cwd, timeout=3600)  # 1 hour timeout
                 if not result.success:
                     return BuildResult(
                         success=False,
@@ -562,4 +599,3 @@ class SourceBuilder:
                 install_commands=[],
                 error_message=str(e),
             )
-

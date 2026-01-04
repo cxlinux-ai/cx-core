@@ -111,6 +111,8 @@ ALLOWED_COMMAND_PREFIXES = [
     "go",
     "rustc",
     "cargo",
+    "bash",  # Needed for build scripts (configure, etc.)
+    "sh",  # Needed for build scripts
 ]
 
 
