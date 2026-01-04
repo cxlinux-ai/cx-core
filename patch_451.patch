@@ -1,0 +1,27 @@
+--- a/src/components/NetworkManager.cpp
++++ b/src/components/NetworkManager.cpp
+@@ -23,6 +23,7 @@
+ #include <sstream>
+ 
+ using namespace std;
++using namespace boost;
+ 
+ NetworkManager::NetworkManager() {
+     m_socket = new boost::asio::ip::tcp::socket(m_io_service);
+@@ -45,10 +46,14 @@ void NetworkManager::SendMessage(const string& message) {
+     m_socket->async_send(boost::asio::buffer(message), [this](const boost::system::error_code& error, size_t bytes_transferred) {
+         if (!error) {
+             // Message sent successfully
++            m_io_service.stop();
+         } else {
+-            cerr << "Failed to send message: " << error.message() << endl;
++            cerr << "[NetworkManager] Failed to send message: " << error.message() << endl;
++            m_io_service.stop();
+         }
+     });
+ 
+     // Start the IO service to process the asynchronous operation
+     m_io_service.run();
++
++    delete m_socket;
+ }
