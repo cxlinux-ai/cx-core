@@ -139,8 +139,9 @@ class ShellConfigParser:
     )
 
     # Fish: set -gx VAR value, set -x VAR value, set VAR value
+    # Note: fish has 4 flags (g,x,U,u) but allow up to 10 for redundant usage
     FISH_SET_PATTERN = re.compile(
-        r"^[ \t]{0,50}set[ \t]{1,20}(?:-[gxUu]{1,4}[ \t]{1,20})?([A-Za-z_][A-Za-z0-9_]{0,100})[ \t]{1,20}([^\n]{0,10000})$"
+        r"^[ \t]{0,50}set[ \t]{1,20}(?:-[gxUu]{1,10}[ \t]{1,20})?([A-Za-z_][A-Za-z0-9_]{0,100})[ \t]{1,20}([^\n]{0,10000})$"
     )
 
     # PATH modification patterns
@@ -151,7 +152,7 @@ class ShellConfigParser:
         r"^[ \t]{0,50}(?:export[ \t]{1,20})?PATH=[^\n]{0,10000}\$\{?PATH\}?"
     )
     FISH_PATH_PATTERN = re.compile(
-        r"^[ \t]{0,50}(?:set[ \t]{1,20})?(?:-[gxUu]{1,4}[ \t]{1,20})?(?:fish_user_paths|PATH)[ \t]{1,20}([^\n]{0,10000})$"
+        r"^[ \t]{0,50}(?:set[ \t]{1,20})?(?:-[gxUu]{1,10}[ \t]{1,20})?(?:fish_user_paths|PATH)[ \t]{1,20}([^\n]{0,10000})$"
     )
 
     def __init__(self, shell: Shell | None = None):
