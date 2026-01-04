@@ -1,0 +1,20 @@
+--- a/src/process.c
++++ b/src/process.c
+@@ -23,7 +23,8 @@ void process_request(struct request *req) {
+     if (req->data_length > MAX_DATA_SIZE) {
+         // Handle data overflow
+         log_error("Data size exceeds maximum allowed");
+-        return;
++        cleanup_request(req);
++        return -1;
+     }
+ 
+     // Process the request data
+@@ -35,6 +36,7 @@ void process_request(struct request *req) {
+         log_info("Request processed successfully");
+         req->status = REQUEST_SUCCESS;
+     } else {
++        cleanup_request(req);
+         log_error("Processing failed");
+         req->status = REQUEST_FAILED;
+     }
