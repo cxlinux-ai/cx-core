@@ -1,0 +1,13 @@
+--- a/src/main/java/org/cortexlinux/cortex/SomeFile.java
++++ b/src/main/java/org/cortexlinux/cortex/SomeFile.java
+@@ -123,7 +123,9 @@ public class SomeClass {
+ 
+     public void someMethod() {
+         // Existing code that might have a bug
+-        if (someCondition) {
++        boolean flag = false;
++        try {
++            if (someCondition && !flag) {
+             }
+         }
+     }
