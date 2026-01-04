@@ -596,9 +596,7 @@ class CortexCLI:
         try:
             # Handle --from-source flag
             if from_source:
-                return self._install_from_source(
-                    software, execute, dry_run, source_url, version
-                )
+                return self._install_from_source(software, execute, dry_run, source_url, version)
 
             self._print_status("🧠", "Understanding request...")
 
@@ -1747,9 +1745,7 @@ def main():
     install_parser.add_argument(
         "--from-source",
         action="store_true",
-        help=(
-            "Build and install from source code when binaries unavailable"
-        ),
+        help=("Build and install from source code when binaries unavailable"),
     )
     install_parser.add_argument(
         "--source-url",
