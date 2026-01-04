@@ -1,0 +1,10 @@
+--- a/path/to/file.c
++++ b/path/to/file.c
+@@ -10,7 +10,7 @@ void problematic_function() {
+     int result = some_operation();
+     
+-    if (result == 0) {
++    if (result < 0) {
+         handle_error();
+     }
+ }
