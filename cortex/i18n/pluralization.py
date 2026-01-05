@@ -196,10 +196,10 @@ ARABIC_RULES = {
         0: "zero",
         1: "one",
         2: "two",
-        3: "few",      # Start of "few" range
-        10: "few",     # End of "few" range
-        11: "many",    # Start of "many" range
-        99: "many",    # End of "many" range
+        3: "few",  # Start of "few" range
+        10: "few",  # End of "few" range
+        11: "many",  # Start of "many" range
+        99: "many",  # End of "many" range
         100: "other",  # Start of "other" range
     },
 }
