@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-03",
+  "last_updated": "2026-01-04",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -185,6 +185,19 @@
         "mikejmorgan-ai"
       ],
       "emails": []
+    },
+    "Solari Systems LLC": {
+      "contact_name": "Solari Systems LLC",
+      "contact_email": "solarisys2025@gmail.com",
+      "signed_date": "2026-01-04",
+      "cla_version": "1.0",
+      "domains": [],
+      "github_usernames": [
+        "SolariSystems"
+      ],
+      "emails": [
+        "solarisys2025@gmail.com"
+      ]
     }
   }
 }
