@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2025-12-31",
+  "last_updated": "2026-01-03",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -122,7 +122,54 @@
       ],
       "signed_date": "2026-01-02",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Ajay Bandaru",
+      "github_username": "aybanda",
+      "emails": [
+        "jsaj2024@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Murat Aslan",
+      "github_username": "murataslan1",
+      "emails": [
+        "murataslan1@users.noreply.github.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Divanshu Grover",
+      "github_username": "divanshu-go",
+      "emails": [
+        "divanshugrover2009@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Rakesh Jha",
+      "github_username": "rakesh0x",
+      "emails": [
+        "rakeshjhanda9958@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Tuan Wanna",
+      "github_username": "tuanwannafly",
+      "emails": [
+        "tunawillgetit1030@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
     }
+
+
   ],
   "corporations": {
     "AI Venture Holdings LLC": {
