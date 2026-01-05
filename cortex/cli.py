@@ -639,10 +639,13 @@ class CortexCLI:
                     logging.getLogger("cortex.llm_router").setLevel(logging.ERROR)
 
                     # Initialize LLMRouter with appropriate API key based on provider
+                    # Note: LLMRouter supports Claude and Kimi K2 as backends
+                    # OpenAI API key is passed to Kimi K2 (OpenAI-compatible endpoint)
                     if provider == "claude":
                         llm_router = LLMRouter(claude_api_key=api_key)
                     elif provider == "openai":
-                        # OpenAI uses Kimi K2 in the router
+                        # OpenAI provider maps to Kimi K2 (OpenAI-compatible API)
+                        # Future: Add native openai_api_key support in LLMRouter
                         llm_router = LLMRouter(kimi_api_key=api_key)
                     else:
                         # Ollama or other providers
@@ -650,15 +653,19 @@ class CortexCLI:
 
                     predictor = ConflictPredictor(llm_router=llm_router, history=history)
 
-                    # Predict conflicts for each package (with version if available)
+                    # Predict conflicts AND get resolutions in single LLM call
+                    all_strategies: list[ResolutionStrategy] = []
                     for package_name, version in packages_with_versions:
-                        conflicts = predictor.predict_conflicts(package_name, version)
+                        conflicts, strategies = predictor.predict_conflicts_with_resolutions(
+                            package_name, version
+                        )
                         all_conflicts.extend(conflicts)
+                        all_strategies.extend(strategies)
 
                     # Display conflicts if found
                     if all_conflicts:
-                        # Generate resolution strategies
-                        strategies = predictor.generate_resolutions(all_conflicts)
+                        # Use strategies from combined call (already generated)
+                        strategies = all_strategies
 
                         # Display formatted conflict summary (matches example UX)
                         conflict_summary = format_conflict_summary(all_conflicts, strategies)
@@ -670,11 +677,26 @@ class CortexCLI:
 
                             if chosen_strategy:
                                 # Modify commands based on chosen strategy
-                                # For venv strategies, chain commands with && so they run in same shell
                                 if chosen_strategy.strategy_type.value == "venv":
-                                    # Combine venv commands into one chained command
-                                    venv_cmd = " && ".join(chosen_strategy.commands)
-                                    commands = [venv_cmd] + commands
+                                    # Venv strategy: run in bash subshell so activation persists
+                                    # Note: 'source' is bash-specific, so we use 'bash -c'
+                                    # The venv will be created and package installed in it
+                                    venv_cmd = (
+                                        "bash -c '"
+                                        + " && ".join(
+                                            cmd.replace("'", "'\\''")
+                                            for cmd in chosen_strategy.commands
+                                        )
+                                        + "'"
+                                    )
+                                    # Don't prepend to main commands - venv is isolated
+                                    # Just run the venv setup separately
+                                    commands = [venv_cmd]
+                                    cx_print(
+                                        "⚠️  Package will be installed in virtual environment. "
+                                        "Activate it manually with: source <pkg>_env/bin/activate",
+                                        "warning",
+                                    )
                                 else:
                                     commands = chosen_strategy.commands + commands
                                 self._print_status(

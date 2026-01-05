@@ -151,11 +151,13 @@ class ConflictPredictor:
                 {"role": "user", "content": prompt},
             ]
 
+            # Increased max_tokens to 4000 for complex dependency scenarios
+            # with many conflicts and multiple resolution strategies
             response = self.llm_router.complete(
                 messages=messages,
                 task_type=CONFLICT_TASK_TYPE,
                 temperature=0.2,
-                max_tokens=3000,
+                max_tokens=4000,
             )
 
             if not response or not response.content:
@@ -403,14 +405,16 @@ Respond with JSON only."""
             if conflict.required_constraint and validate_version_constraint(
                 conflict.required_constraint
             ):
+                # Defense-in-depth: Quote entire package spec to prevent injection
+                # Constraint is validated by validate_version_constraint() which only
+                # allows safe characters (alphanumeric, dots, comparison operators)
+                package_spec = f"{conflicting}{conflict.required_constraint}"
                 strategies.append(
                     ResolutionStrategy(
                         strategy_type=StrategyType.DOWNGRADE,
                         description=f"Downgrade {conflicting} to compatible version",
                         safety_score=0.50,
-                        commands=[
-                            f"pip install {escape_command_arg(conflicting)}{conflict.required_constraint}"
-                        ],
+                        commands=[f"pip install {escape_command_arg(package_spec)}"],
                         benefits=[f"Satisfies {pkg} requirements"],
                         risks=[f"May affect packages depending on {conflicting}"],
                         affects_packages=[conflicting],
@@ -451,12 +455,64 @@ Respond with JSON only."""
         chosen_strategy: ResolutionStrategy,
         success: bool,
         user_feedback: str | None = None,
-    ) -> None:
-        """Record conflict resolution for learning."""
+    ) -> float | None:
+        """Record conflict resolution for learning and return updated success rate.
+
+        Persists the resolution to the conflict_resolutions table via InstallationHistory
+        and queries the updated success rate for use in future decisions.
+
+        Args:
+            conflict: The conflict that was resolved
+            chosen_strategy: The strategy that was applied
+            success: Whether the resolution was successful
+            user_feedback: Optional user feedback about the resolution
+
+        Returns:
+            Updated success rate for this conflict/strategy combination (0.0-1.0),
+            or None if recording failed
+        """
         logger.info(
             f"Recording resolution: {chosen_strategy.strategy_type.value} - "
             f"{'success' if success else 'failed'}"
         )
+
+        success_rate: float | None = None
+
+        # Record in history database for learning
+        try:
+            if self.history:
+                conflict_data = json.dumps(conflict.to_dict())
+                strategy_data = json.dumps(chosen_strategy.to_dict())
+
+                # Persist the resolution record
+                self.history.record_conflict_resolution(
+                    package1=conflict.package1,
+                    package2=conflict.package2,
+                    conflict_type=conflict.conflict_type.value,
+                    strategy_type=chosen_strategy.strategy_type.value,
+                    success=success,
+                    user_feedback=user_feedback,
+                    conflict_data=conflict_data,
+                    strategy_data=strategy_data,
+                )
+
+                # Query updated success rate for future decisions
+                success_rate = self.history.get_conflict_resolution_success_rate(
+                    conflict_type=conflict.conflict_type.value,
+                    strategy_type=chosen_strategy.strategy_type.value,
+                )
+                logger.info(
+                    f"Updated success rate for {conflict.conflict_type.value}/"
+                    f"{chosen_strategy.strategy_type.value}: {success_rate:.1%}"
+                )
+
+        except OSError as e:
+            # Handle DB/IO errors gracefully - log and continue
+            logger.warning(f"DB/IO error recording conflict resolution: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to record conflict resolution in history: {e}")
+
+        return success_rate
 
 
 # ============================================================================

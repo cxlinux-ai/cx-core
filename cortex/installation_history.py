@@ -272,7 +272,8 @@ class InstallationHistory:
                         # Filter out flags and invalid package names
                         if pkg and not pkg.startswith("-") and len(pkg) > 1:
                             # Remove version constraints (e.g., package=1.0.0 or package==1.0.0)
-                            pkg = re.sub(r"[=:].*$", "", pkg)
+                            # Note: Only match '=' for pip/apt constraints, not ':'
+                            pkg = re.sub(r"=.*$", "", pkg)
                             # Remove any trailing special characters
                             pkg = re.sub(r"[^\w\.\-\+]+$", "", pkg)
                             if pkg:

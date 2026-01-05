@@ -506,8 +506,13 @@ class TestRecordResolution(unittest.TestCase):
             commands=["pip install tensorflow==2.16"],
         )
 
-        # Should not raise exception
-        self.predictor.record_resolution(conflict, strategy, success=True)
+        # Should not raise exception and return success rate
+        result = self.predictor.record_resolution(conflict, strategy, success=True)
+        # Default predictor has history, should return a success rate
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, float)
+        self.assertGreaterEqual(result, 0.0)
+        self.assertLessEqual(result, 1.0)
 
     def test_record_failed_resolution(self):
         """Test recording a failed resolution"""
@@ -526,10 +531,85 @@ class TestRecordResolution(unittest.TestCase):
             commands=["pip install pkg2==1.0"],
         )
 
-        # Should not raise exception
-        self.predictor.record_resolution(
+        # Should not raise exception and return success rate
+        result = self.predictor.record_resolution(
             conflict, strategy, success=False, user_feedback="Did not work"
         )
+        # Default predictor has history, should return a success rate
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, float)
+        self.assertGreaterEqual(result, 0.0)
+        self.assertLessEqual(result, 1.0)
+
+    def test_record_resolution_with_mock_history(self):
+        """Test that persistence call is made and success rate is queried"""
+        mock_history = MagicMock()
+        mock_history.record_conflict_resolution.return_value = "test-id"
+        mock_history.get_conflict_resolution_success_rate.return_value = 0.75
+
+        predictor = ConflictPredictor(history=mock_history)
+
+        conflict = ConflictPrediction(
+            package1="tensorflow",
+            package2="numpy",
+            conflict_type=ConflictType.VERSION,
+            confidence=0.95,
+            explanation="Version conflict",
+        )
+
+        strategy = ResolutionStrategy(
+            strategy_type=StrategyType.VENV,
+            description="Use venv",
+            safety_score=0.95,
+            commands=["python3 -m venv tf_env"],
+        )
+
+        # Record resolution
+        success_rate = predictor.record_resolution(conflict, strategy, success=True)
+
+        # Assert persistence call was made with correct parameters
+        mock_history.record_conflict_resolution.assert_called_once()
+        call_kwargs = mock_history.record_conflict_resolution.call_args[1]
+        self.assertEqual(call_kwargs["package1"], "tensorflow")
+        self.assertEqual(call_kwargs["package2"], "numpy")
+        self.assertEqual(call_kwargs["conflict_type"], "version")
+        self.assertEqual(call_kwargs["strategy_type"], "venv")
+        self.assertTrue(call_kwargs["success"])
+
+        # Assert success rate was queried after recording
+        mock_history.get_conflict_resolution_success_rate.assert_called_once_with(
+            conflict_type="version",
+            strategy_type="venv",
+        )
+
+        # Assert returned success rate
+        self.assertEqual(success_rate, 0.75)
+
+    def test_record_resolution_handles_db_error(self):
+        """Test that DB/IO errors are handled gracefully"""
+        mock_history = MagicMock()
+        mock_history.record_conflict_resolution.side_effect = OSError("DB error")
+
+        predictor = ConflictPredictor(history=mock_history)
+
+        conflict = ConflictPrediction(
+            package1="pkg1",
+            package2="pkg2",
+            conflict_type=ConflictType.VERSION,
+            confidence=0.9,
+            explanation="Test",
+        )
+
+        strategy = ResolutionStrategy(
+            strategy_type=StrategyType.UPGRADE,
+            description="Upgrade",
+            safety_score=0.8,
+            commands=["pip install --upgrade pkg1"],
+        )
+
+        # Should not raise exception, returns None on error
+        result = predictor.record_resolution(conflict, strategy, success=True)
+        self.assertIsNone(result)
 
 
 class TestCommandInjectionProtection(unittest.TestCase):

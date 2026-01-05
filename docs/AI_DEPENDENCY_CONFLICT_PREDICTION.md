@@ -55,7 +55,7 @@ $ cortex install tensorflow
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     CLI Layer (cli.py)                      │
 │            Entry point: `cortex install <package>`          │
@@ -85,40 +85,28 @@ $ cortex install tensorflow
 
 ### Module: `cortex/conflict_predictor.py`
 
-#### Version Parsing Functions
+#### LLM-Based Conflict Analysis
+
+Unlike traditional package managers that use hardcoded rules, Cortex uses LLM analysis
+for conflict prediction. This approach leverages the LLM's knowledge of package ecosystems
+to identify complex conflicts that rule-based systems miss.
 
 ```python
-# Parse version strings into comparable tuples
-parse_version("1.2.3")        # -> (1, 2, 3)
-parse_version("2.0.0rc1")     # -> (2, 0, 0)
+# System state gathering (implemented)
+get_pip_packages()          # -> {"numpy": "2.1.0", "pandas": "2.0.0", ...}
+get_apt_packages_summary()  # -> ["python3", "libssl-dev", ...]
 
-# Compare versions
-compare_versions("1.9", "2.0")  # -> -1 (less than)
-compare_versions("2.0", "2.0")  # -> 0  (equal)
-compare_versions("2.1", "2.0")  # -> 1  (greater than)
+# Version constraint validation (implemented)
+validate_version_constraint("< 2.0")   # -> True (safe format)
+validate_version_constraint("; rm -rf") # -> False (injection attempt)
 
-# Check version constraints
-check_version_constraint("1.9.0", "< 2.0")   # -> True
-check_version_constraint("2.0.0", "< 2.0")   # -> False
-check_version_constraint("2.0.0", ">= 1.5")  # -> True
-check_version_constraint("1.5.0", "~= 1.5")  # -> True (compatible release)
+# Command argument escaping (implemented)
+escape_command_arg("package; rm -rf /")  # -> "'package; rm -rf /'" (safe)
 ```
 
-#### Package Version Lookup
-
-```python
-# Get available versions from PyPI
-get_pypi_versions("numpy")     # -> ["2.1.0", "2.0.0", "1.26.4", ...]
-
-# Get available versions from apt
-get_apt_versions("nginx")      # -> ["1.18.0-1ubuntu1", ...]
-
-# Find version satisfying constraint
-find_compatible_version("numpy", "< 2.0", versions)  # -> "1.26.4"
-
-# Find packages that depend on a package
-get_package_dependents("numpy")  # -> ["pandas", "scipy", "tensorflow"]
-```
+**Note**: Version parsing, comparison, and PyPI/apt version lookup are handled by
+the LLM rather than explicit functions. The LLM analyzes the system state and uses
+its knowledge of package ecosystems to predict conflicts.
 
 #### Data Classes
 
@@ -189,8 +177,8 @@ class ConflictPredictor:
         chosen_strategy: ResolutionStrategy,
         success: bool,
         user_feedback: str | None = None
-    ) -> None:
-        """Record resolution outcome for future learning."""
+    ) -> float | None:
+        """Record resolution outcome and return updated success rate for learning."""
 ```
 
 #### Display Functions
@@ -326,9 +314,9 @@ python -m pytest tests/test_conflict_predictor.py -v
 - **TestSafetyScore**: Safety score calculation algorithm
 - **TestSystemParsing**: dpkg status and pip package parsing
 - **TestRecordResolution**: Recording outcomes for learning
-- **TestVersionParsing**: Version string parsing
-- **TestVersionConstraints**: Constraint checking (<, >, >=, <=, ==, !=, ~=)
-- **TestFindCompatibleVersion**: Finding compatible versions
+- **TestSecurityValidation**: Security validation (constraint checking, command escaping)
+- **TestCommandInjectionProtection**: Command injection protection tests
+- **TestJsonExtractionRobustness**: JSON extraction edge cases
 - **TestDisplayFormatting**: UI formatting with [RECOMMENDED] label
 - **TestConflictPredictionExtendedFields**: New fields (installed_by, current_version)
 
@@ -371,8 +359,8 @@ version_conflicts = {
 | Dependency graph analysis before install | ✅ | `predict_conflicts()` method |
 | Conflict prediction with confidence scores | ✅ | `ConflictPrediction.confidence` field |
 | Resolution suggestions ranked by safety | ✅ | `generate_resolutions()` with sorting |
-| Integration with apt/dpkg dependency data | ✅ | `parse_dpkg_status()`, `get_apt_versions()` |
-| Works with pip packages too | ✅ | `get_pip_packages()`, `get_pypi_versions()` |
+| Integration with apt/dpkg dependency data | ✅ | `get_apt_packages_summary()` (LLM-based analysis) |
+| Works with pip packages too | ✅ | `get_pip_packages()` (LLM-based analysis) |
 | CLI output shows prediction and suggestions | ✅ | `format_conflict_summary()` with [RECOMMENDED] |
 | Learning from outcomes | ✅ | `record_resolution()` method |
 
@@ -383,6 +371,12 @@ version_conflicts = {
 3. **Parallel Conflict Detection** - Detect conflicts across multiple packages concurrently
 4. **Conflict History Dashboard** - View past conflicts and resolution success rates
 5. **Custom Conflict Rules** - Allow users to define custom conflict patterns
+
+---
+
+## AI/IDE Agents Used
+
+Used Cursor Copilot with Claude Opus 4.5 model for generating test cases and documentation. Core implementation was done manually.
 
 ---
 
