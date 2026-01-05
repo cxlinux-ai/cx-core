@@ -5,13 +5,13 @@ from cortex.hardware_detection import (
 )
 
 
-def test_detect_gpu_mode_returns_valid_state():
-    mode = detect_gpu_mode()
+def test_detect_gpu_mode_returns_valid_state() -> None:
+    mode: str = detect_gpu_mode()
     assert isinstance(mode, str)
     assert mode in {"Integrated", "Hybrid", "NVIDIA"}
 
 
-def test_estimate_gpu_battery_impact_structure():
+def test_estimate_gpu_battery_impact_structure() -> None:
     result = estimate_gpu_battery_impact()
 
     assert isinstance(result, dict)
@@ -31,11 +31,11 @@ def test_estimate_gpu_battery_impact_structure():
         assert "impact" in profile
 
 
-def test_detect_nvidia_gpu_is_safe_and_returns_bool():
+def test_detect_nvidia_gpu_is_safe_and_returns_bool() -> None:
     result = detect_nvidia_gpu()
     assert isinstance(result, bool)
 
 
-def test_per_app_gpu_assignment_logic_does_not_crash():
+def test_detect_gpu_mode_does_not_crash_and_returns_value() -> None:
     mode = detect_gpu_mode()
     assert mode is not None
