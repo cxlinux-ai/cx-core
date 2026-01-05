@@ -33,6 +33,9 @@ def test_777_detection():
         temp_path = f.name
     
     try:
+    # SECURITY TEST: Intentionally setting dangerous permissions for testing
+    # This file is in temp directory and will be deleted immediately
+    # NOSONAR - This is a security test for the permission auditor
         os.chmod(temp_path, 0o777)
         
         result = check_file_permissions(temp_path)
@@ -58,6 +61,9 @@ def test_world_writable_detection():
         temp_path = f.name
     
     try:
+    # SECURITY TEST: Intentionally setting dangerous permissions for testing
+    # This file is in temp directory and will be deleted immediately
+    # NOSONAR - This is a security test for the permission auditor
         os.chmod(temp_path, 0o666)
         
         result = check_file_permissions(temp_path)
@@ -84,7 +90,9 @@ def test_directory_scan():
     try:
         with open(test_file, 'w') as f:
             f.write("#!/bin/bash\necho 'test'")
-        
+    # SECURITY TEST: Intentionally setting dangerous permissions for testing
+    # This file is in temp directory and will be deleted immediately
+    # NOSONAR - This is a security test for the permission auditor        
         os.chmod(test_file, 0o777)
         
         findings = scan_directory(temp_dir, recursive=True)

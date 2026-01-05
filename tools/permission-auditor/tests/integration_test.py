@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Integration tests for Permission Auditor."""
 
 import os
@@ -13,6 +12,9 @@ def test_777_file():
         temp_path = f.name
     
     try:
+    # SECURITY TEST: Intentionally setting dangerous permissions for testing
+    # This file is in temp directory and will be deleted immediately
+    # NOSONAR - This is a security test for the permission auditor
         os.chmod(temp_path, 0o777)
         
         # Run auditor
@@ -40,6 +42,9 @@ def test_world_writable():
         temp_path = f.name
     
     try:
+    # SECURITY TEST: Intentionally setting dangerous permissions for testing
+    # This file is in temp directory and will be deleted immediately
+    # NOSONAR - This is a security test for the permission auditor
         os.chmod(temp_path, 0o666)
         
         result = subprocess.run(
