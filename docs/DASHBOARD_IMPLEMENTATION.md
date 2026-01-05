@@ -55,7 +55,7 @@ The Cortex Dashboard is a terminal-based real-time system monitoring interface t
   ├─ SystemMonitor (Metrics Collection Thread)
   │   ├─ CPU metrics (psutil.cpu_percent())
   │   ├─ RAM metrics (psutil.virtual_memory())
-  │   └─ GPU metrics (pynvml.nvmlDeviceGetHandleByIndex())
+  │   └─ GPU metrics (nvidia-ml-py nvmlDeviceGetHandleByIndex())
   │
   ├─ ProcessLister (Process Detection)
   │   └─ Filters by: python, ollama, pytorch, tensorflow, huggingface
@@ -121,7 +121,7 @@ cli.py
 ```
 # System monitoring (for dashboard)
 psutil>=5.0.0          # CPU, RAM, process monitoring
-pynvml>=11.0.0         # NVIDIA GPU monitoring
+nvidia-ml-py>=12.0.0   # NVIDIA GPU monitoring
 ```
 
 **Existing dependencies used:**
@@ -411,7 +411,7 @@ pip install -r requirements.txt
 
 The following packages will be installed:
 - `psutil>=5.0.0` - System metrics
-- `pynvml>=11.0.0` - GPU monitoring
+- `nvidia-ml-py>=12.0.0` - GPU monitoring
 - `rich>=13.0.0` - Terminal UI
 
 **2. Verify installation:**
@@ -591,7 +591,7 @@ nvidia-smi
 
 **Solution:**
 ```bash
-pip install psutil pynvml
+pip install psutil nvidia-ml-py
 ```
 
 #### 5. Terminal Display Issues
@@ -706,7 +706,7 @@ git log --oneline -1  # Shows: docs: Add SECURITY.md (commit f18bc09)
 ```
 Modified Files:
 - cortex/cli.py (added dashboard command)
-- requirements.txt (added psutil, pynvml)
+- requirements.txt (added psutil, nvidia-ml-py)
 
 New Files:
 - cortex/dashboard.py (main implementation)
@@ -730,7 +730,7 @@ New Files:
 
 - **Rich Library:** https://rich.readthedocs.io/
 - **psutil:** https://psutil.readthedocs.io/
-- **NVIDIA NVML (pynvml):** https://docs.nvidia.com/cuda/nvml-api/
+- **NVIDIA NVML (nvidia-ml-py):** https://docs.nvidia.com/cuda/nvml-api/
 
 ### Related Issues
 

@@ -323,7 +323,7 @@ class HardwareDetector:
             info.hostname = "unknown"
 
         # Kernel
-        with contextlib.suppress(builtins.BaseException):
+        with contextlib.suppress(Exception):
             info.kernel_version = self._uname().release
 
         # Distro

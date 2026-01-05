@@ -25,5 +25,5 @@ typing-extensions>=4.0.0
 PyYAML==6.0.3
 
 # System monitoring (for dashboard)
-psutil>=5.0.0
+psutil>=5.9.0
 nvidia-ml-py>=12.0.0
