@@ -440,7 +440,7 @@ class PackageManager:
         try:
             if self.pm_type == PackageManagerType.APT:
                 result = subprocess.run(
-                    ["apt-cache", "show", package_name], capture_output=True, text=True, timeout=10
+                    ["apt-cache", "show", shlex.quote(package_name)], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     info = {}
@@ -453,7 +453,7 @@ class PackageManager:
             elif self.pm_type in (PackageManagerType.YUM, PackageManagerType.DNF):
                 pm_cmd = "yum" if self.pm_type == PackageManagerType.YUM else "dnf"
                 result = subprocess.run(
-                    [pm_cmd, "info", package_name], capture_output=True, text=True, timeout=10
+                    [pm_cmd, "info", shlex.quote(package_name)], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     info = {}
