@@ -14,6 +14,7 @@ This document provides a comprehensive reference for all commands available in t
 | `cortex history` | View installation history |
 | `cortex rollback <id>` | Undo an installation |
 | `cortex stack <name>` | Install a pre-built package stack |
+| `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex cache stats` | Show LLM cache statistics |
 | `cortex notify` | Manage desktop notifications |
 
@@ -258,6 +259,63 @@ cortex cache <action>
 ```bash
 cortex cache stats
 ```
+
+---
+
+### `cortex sandbox`
+
+Test packages in isolated Docker containers before installing to the main system. Requires Docker.
+
+**Usage:**
+```bash
+cortex sandbox <action> [options]
+```
+
+**Actions:**
+| Action | Description |
+|--------|-------------|
+| `create <name>` | Create a sandbox environment |
+| `install <name> <pkg>` | Install package in sandbox |
+| `test <name> [pkg]` | Run automated tests in sandbox |
+| `promote <name> <pkg>` | Install tested package on main system |
+| `cleanup <name>` | Remove sandbox environment |
+| `list` | List all sandbox environments |
+| `exec <name> <cmd...>` | Execute command in sandbox |
+
+**Options:**
+| Flag | Description |
+|------|-------------|
+| `--image <img>` | Docker image for create (default: ubuntu:22.04) |
+| `--dry-run` | Preview promote without executing |
+| `-y, --yes` | Skip confirmation for promote |
+| `-f, --force` | Force cleanup even if running |
+
+**Examples:**
+```bash
+# Create a sandbox
+cortex sandbox create test-env
+
+# Install package in sandbox
+cortex sandbox install test-env nginx
+
+# Run tests
+cortex sandbox test test-env
+
+# Promote to main system
+cortex sandbox promote test-env nginx
+
+# Cleanup
+cortex sandbox cleanup test-env
+
+# Use custom base image
+cortex sandbox create debian-test --image debian:12
+```
+
+**Notes:**
+- Docker must be installed and running
+- Promotion runs fresh `apt install` on host (not container export)
+- Some commands (`systemctl`, `service`) are blocked in sandbox
+- See [SANDBOX.md](SANDBOX.md) for full documentation
 
 ---
 

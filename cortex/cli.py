@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
@@ -82,7 +83,14 @@ class CortexCLI:
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
             return explicit_provider
 
-        # Auto-detect based on available API keys
+        # Use provider from auto-detection (set by _get_api_key)
+        detected = getattr(self, "_detected_provider", None)
+        if detected == "anthropic":
+            return "claude"
+        elif detected == "openai":
+            return "openai"
+
+        # Check env vars (may have been set by auto-detect)
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
         elif os.environ.get("OPENAI_API_KEY"):
@@ -300,6 +308,226 @@ class CortexCLI:
         self._print_success(f"\n✅ Stack '{stack['name']}' installed successfully!")
         console.print(f"Installed {len(packages)} packages")
         return 0
+
+    # --- Sandbox Commands (Docker-based package testing) ---
+    def sandbox(self, args: argparse.Namespace) -> int:
+        """Handle `cortex sandbox` commands for Docker-based package testing."""
+        from cortex.sandbox import (
+            DockerNotFoundError,
+            DockerSandbox,
+            SandboxAlreadyExistsError,
+            SandboxNotFoundError,
+            SandboxTestStatus,
+        )
+
+        action = getattr(args, "sandbox_action", None)
+
+        if not action:
+            cx_print("\n🐳 Docker Sandbox - Test packages safely before installing\n", "info")
+            console.print("Usage: cortex sandbox <command> [options]")
+            console.print("\nCommands:")
+            console.print("  create <name>              Create a sandbox environment")
+            console.print("  install <name> <package>   Install package in sandbox")
+            console.print("  test <name> [package]      Run tests in sandbox")
+            console.print("  promote <name> <package>   Install tested package on main system")
+            console.print("  cleanup <name>             Remove sandbox environment")
+            console.print("  list                       List all sandboxes")
+            console.print("  exec <name> <cmd...>       Execute command in sandbox")
+            console.print("\nExample workflow:")
+            console.print("  cortex sandbox create test-env")
+            console.print("  cortex sandbox install test-env nginx")
+            console.print("  cortex sandbox test test-env")
+            console.print("  cortex sandbox promote test-env nginx")
+            console.print("  cortex sandbox cleanup test-env")
+            return 0
+
+        try:
+            sandbox = DockerSandbox()
+
+            if action == "create":
+                return self._sandbox_create(sandbox, args)
+            elif action == "install":
+                return self._sandbox_install(sandbox, args)
+            elif action == "test":
+                return self._sandbox_test(sandbox, args)
+            elif action == "promote":
+                return self._sandbox_promote(sandbox, args)
+            elif action == "cleanup":
+                return self._sandbox_cleanup(sandbox, args)
+            elif action == "list":
+                return self._sandbox_list(sandbox)
+            elif action == "exec":
+                return self._sandbox_exec(sandbox, args)
+            else:
+                self._print_error(f"Unknown sandbox action: {action}")
+                return 1
+
+        except DockerNotFoundError as e:
+            self._print_error(str(e))
+            cx_print("Docker is required only for sandbox commands.", "info")
+            return 1
+        except SandboxNotFoundError as e:
+            self._print_error(str(e))
+            cx_print("Use 'cortex sandbox list' to see available sandboxes.", "info")
+            return 1
+        except SandboxAlreadyExistsError as e:
+            self._print_error(str(e))
+            return 1
+
+    def _sandbox_create(self, sandbox, args: argparse.Namespace) -> int:
+        """Create a new sandbox environment."""
+        name = args.name
+        image = getattr(args, "image", "ubuntu:22.04")
+
+        cx_print(f"Creating sandbox '{name}'...", "info")
+        result = sandbox.create(name, image=image)
+
+        if result.success:
+            cx_print(f"✓ Sandbox environment '{name}' created", "success")
+            console.print(f"  [dim]{result.stdout}[/dim]")
+            return 0
+        else:
+            self._print_error(result.message)
+            if result.stderr:
+                console.print(f"  [red]{result.stderr}[/red]")
+            return 1
+
+    def _sandbox_install(self, sandbox, args: argparse.Namespace) -> int:
+        """Install a package in sandbox."""
+        name = args.name
+        package = args.package
+
+        cx_print(f"Installing '{package}' in sandbox '{name}'...", "info")
+        result = sandbox.install(name, package)
+
+        if result.success:
+            cx_print(f"✓ {package} installed in sandbox", "success")
+            return 0
+        else:
+            self._print_error(result.message)
+            if result.stderr:
+                console.print(f"  [dim]{result.stderr[:500]}[/dim]")
+            return 1
+
+    def _sandbox_test(self, sandbox, args: argparse.Namespace) -> int:
+        """Run tests in sandbox."""
+        from cortex.sandbox import SandboxTestStatus
+
+        name = args.name
+        package = getattr(args, "package", None)
+
+        cx_print(f"Running tests in sandbox '{name}'...", "info")
+        result = sandbox.test(name, package)
+
+        console.print()
+        for test in result.test_results:
+            if test.result == SandboxTestStatus.PASSED:
+                console.print(f"   ✓  {test.name}")
+                if test.message:
+                    console.print(f"      [dim]{test.message[:80]}[/dim]")
+            elif test.result == SandboxTestStatus.FAILED:
+                console.print(f"   ✗  {test.name}")
+                if test.message:
+                    console.print(f"      [red]{test.message}[/red]")
+            else:
+                console.print(f"   ⊘  {test.name} [dim](skipped)[/dim]")
+
+        console.print()
+        if result.success:
+            cx_print("All tests passed", "success")
+            return 0
+        else:
+            self._print_error("Some tests failed")
+            return 1
+
+    def _sandbox_promote(self, sandbox, args: argparse.Namespace) -> int:
+        """Promote a tested package to main system."""
+        name = args.name
+        package = args.package
+        dry_run = getattr(args, "dry_run", False)
+        skip_confirm = getattr(args, "yes", False)
+
+        if dry_run:
+            result = sandbox.promote(name, package, dry_run=True)
+            cx_print(f"Would run: sudo apt-get install -y {package}", "info")
+            return 0
+
+        # Confirm with user unless -y flag
+        if not skip_confirm:
+            console.print(f"\nPromote '{package}' to main system? [Y/n]: ", end="")
+            try:
+                response = input().strip().lower()
+                if response and response not in ("y", "yes"):
+                    cx_print("Promotion cancelled", "warning")
+                    return 0
+            except (EOFError, KeyboardInterrupt):
+                console.print()
+                cx_print("Promotion cancelled", "warning")
+                return 0
+
+        cx_print(f"Installing '{package}' on main system...", "info")
+        result = sandbox.promote(name, package, dry_run=False)
+
+        if result.success:
+            cx_print(f"✓ {package} installed on main system", "success")
+            return 0
+        else:
+            self._print_error(result.message)
+            if result.stderr:
+                console.print(f"  [red]{result.stderr[:500]}[/red]")
+            return 1
+
+    def _sandbox_cleanup(self, sandbox, args: argparse.Namespace) -> int:
+        """Remove a sandbox environment."""
+        name = args.name
+        force = getattr(args, "force", False)
+
+        cx_print(f"Removing sandbox '{name}'...", "info")
+        result = sandbox.cleanup(name, force=force)
+
+        if result.success:
+            cx_print(f"✓ Sandbox '{name}' removed", "success")
+            return 0
+        else:
+            self._print_error(result.message)
+            return 1
+
+    def _sandbox_list(self, sandbox) -> int:
+        """List all sandbox environments."""
+        sandboxes = sandbox.list_sandboxes()
+
+        if not sandboxes:
+            cx_print("No sandbox environments found", "info")
+            cx_print("Create one with: cortex sandbox create <name>", "info")
+            return 0
+
+        cx_print("\n🐳 Sandbox Environments:\n", "info")
+        for sb in sandboxes:
+            status_icon = "🟢" if sb.state.value == "running" else "⚪"
+            console.print(f"  {status_icon} [green]{sb.name}[/green]")
+            console.print(f"      Image: {sb.image}")
+            console.print(f"      Created: {sb.created_at[:19]}")
+            if sb.packages:
+                console.print(f"      Packages: {', '.join(sb.packages)}")
+            console.print()
+
+        return 0
+
+    def _sandbox_exec(self, sandbox, args: argparse.Namespace) -> int:
+        """Execute command in sandbox."""
+        name = args.name
+        command = args.command
+
+        result = sandbox.exec_command(name, command)
+
+        if result.stdout:
+            console.print(result.stdout, end="")
+        if result.stderr:
+            console.print(result.stderr, style="red", end="")
+
+        return result.exit_code
+
+    # --- End Sandbox Commands ---
 
     def ask(self, question: str) -> int:
         """Answer a natural language question about the system."""
@@ -1356,6 +1584,7 @@ def show_rich_help():
     table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("stack <name>", "Install the stack")
+    table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
     table.add_row("doctor", "System health check")
 
     console.print(table)
@@ -1520,6 +1749,56 @@ def main():
     cache_subs = cache_parser.add_subparsers(dest="cache_action", help="Cache actions")
     cache_subs.add_parser("stats", help="Show cache statistics")
 
+    # --- Sandbox Commands (Docker-based package testing) ---
+    sandbox_parser = subparsers.add_parser(
+        "sandbox", help="Test packages in isolated Docker sandbox"
+    )
+    sandbox_subs = sandbox_parser.add_subparsers(dest="sandbox_action", help="Sandbox actions")
+
+    # sandbox create <name> [--image IMAGE]
+    sandbox_create_parser = sandbox_subs.add_parser("create", help="Create a sandbox environment")
+    sandbox_create_parser.add_argument("name", help="Unique name for the sandbox")
+    sandbox_create_parser.add_argument(
+        "--image", default="ubuntu:22.04", help="Docker image to use (default: ubuntu:22.04)"
+    )
+
+    # sandbox install <name> <package>
+    sandbox_install_parser = sandbox_subs.add_parser("install", help="Install a package in sandbox")
+    sandbox_install_parser.add_argument("name", help="Sandbox name")
+    sandbox_install_parser.add_argument("package", help="Package to install")
+
+    # sandbox test <name> [package]
+    sandbox_test_parser = sandbox_subs.add_parser("test", help="Run tests in sandbox")
+    sandbox_test_parser.add_argument("name", help="Sandbox name")
+    sandbox_test_parser.add_argument("package", nargs="?", help="Specific package to test")
+
+    # sandbox promote <name> <package> [--dry-run]
+    sandbox_promote_parser = sandbox_subs.add_parser(
+        "promote", help="Install tested package on main system"
+    )
+    sandbox_promote_parser.add_argument("name", help="Sandbox name")
+    sandbox_promote_parser.add_argument("package", help="Package to promote")
+    sandbox_promote_parser.add_argument(
+        "--dry-run", action="store_true", help="Show command without executing"
+    )
+    sandbox_promote_parser.add_argument(
+        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
+    )
+
+    # sandbox cleanup <name> [--force]
+    sandbox_cleanup_parser = sandbox_subs.add_parser("cleanup", help="Remove a sandbox environment")
+    sandbox_cleanup_parser.add_argument("name", help="Sandbox name to remove")
+    sandbox_cleanup_parser.add_argument("-f", "--force", action="store_true", help="Force removal")
+
+    # sandbox list
+    sandbox_subs.add_parser("list", help="List all sandbox environments")
+
+    # sandbox exec <name> <command...>
+    sandbox_exec_parser = sandbox_subs.add_parser("exec", help="Execute command in sandbox")
+    sandbox_exec_parser.add_argument("name", help="Sandbox name")
+    sandbox_exec_parser.add_argument("command", nargs="+", help="Command to execute")
+    # --------------------------
+
     # --- Environment Variable Management Commands ---
     env_parser = subparsers.add_parser("env", help="Manage environment variables")
     env_subs = env_parser.add_subparsers(dest="env_action", help="Environment actions")
@@ -1647,6 +1926,8 @@ def main():
             return cli.notify(args)
         elif args.command == "stack":
             return cli.stack(args)
+        elif args.command == "sandbox":
+            return cli.sandbox(args)
         elif args.command == "cache":
             if getattr(args, "cache_action", None) == "stats":
                 return cli.cache_stats()

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2024-12-29",
+  "last_updated": "2026-01-03",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -13,7 +13,163 @@
       ],
       "signed_date": "2024-12-29",
       "cla_version": "1.0"
+    },
+    {
+      "name": "pavani manchala",
+      "github_username": "pavanimanchala53",
+      "emails": [
+        "pavanimanchala53@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "swaroop manchala",
+      "github_username": "SWAROOP323",
+      "emails": [
+        "swaroopmanchala323@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Sahil Bhatane",
+      "github_username": "Sahilbhatane",
+      "emails": [
+        "Sahilbhatane@gmail.com",
+        "Sahilbhatane6@gmail.com"
+      ],
+      "signed_date": "2024-12-29",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Sujay Dongre",
+      "github_username": "sujay-d07",
+      "emails": [
+        "sujaydongre07@gmail.com"
+      ],
+      "signed_date": "2024-12-29",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Ansh Grover",
+      "github_username": "Anshgrover23",
+      "emails": [
+        "anshgrover938@gmail.com"
+      ],
+      "signed_date": "2025-12-30",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Kesavaraja M",
+      "github_username": "Kesavaraja67",
+      "emails": [
+        "krkesavaraja67@gmail.com"
+      ],
+      "signed_date": "2025-12-31",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Krishna",
+      "github_username": "lu11y0",
+      "emails": [
+        "bijjurkrishna@gmail.com"
+      ],
+      "signed_date": "2025-12-31",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Suyash",
+      "github_username": "Suyashd999",
+      "emails": [
+        "suyashd999@gmail.com"
+      ],
+      "signed_date": "2026-01-01",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Dhruv",
+      "github_username": "Dhruv-89",
+      "emails": [
+        "dhruvborkar21@gmail.com"
+      ],
+      "signed_date": "2026-01-02",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Anuj Ghodke",
+      "github_username": "RIVALHIDE",
+      "emails": [
+        "anujghodke09@gmail.com"
+      ],
+      "signed_date": "2026-01-02",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Dhaval Chaudhari",
+      "github_username": "dhvll",
+      "emails": [
+        "dhavalchaudhari39@gmail.com"
+      ],
+      "signed_date": "2026-01-02",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Shree Milind Jejurikar",
+      "github_username": "ShreeJejurikar",
+      "emails": [
+        "shreemj0407@gmail.com"
+      ],
+      "signed_date": "2026-01-02",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Ajay Bandaru",
+      "github_username": "aybanda",
+      "emails": [
+        "jsaj2024@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Murat Aslan",
+      "github_username": "murataslan1",
+      "emails": [
+        "murataslan1@users.noreply.github.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Divanshu Grover",
+      "github_username": "divanshu-go",
+      "emails": [
+        "divanshugrover2009@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Rakesh Jha",
+      "github_username": "rakesh0x",
+      "emails": [
+        "rakeshjhanda9958@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Tuan Wanna",
+      "github_username": "tuanwannafly",
+      "emails": [
+        "tunawillgetit1030@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
     }
+
+
   ],
   "corporations": {
     "AI Venture Holdings LLC": {
