@@ -10,6 +10,7 @@ Handles installation of multiple packages with:
 """
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -101,6 +102,7 @@ class BatchInstaller:
         self.progress_callback = progress_callback
         self.enable_rollback = enable_rollback
         self.dependency_resolver = DependencyResolver()
+        self._install_lock = threading.Lock()
 
     def analyze_packages(self, package_names: list[str]) -> dict[str, PackageInstallation]:
         """
@@ -397,17 +399,21 @@ class BatchInstaller:
                 return (package_name, True, None)
 
             try:
-                coordinator = InstallationCoordinator(
-                    commands=commands,
-                    descriptions=[
-                        f"Installing {package_name} - step {i+1}" for i in range(len(commands))
-                    ],
-                    timeout=300,
-                    stop_on_error=True,
-                    enable_rollback=self.enable_rollback,
-                )
+                # Use a lock to ensure only one apt-get process runs at a time
+                # but allows parallel analysis and UI updates
+                with self._install_lock:
+                    coordinator = InstallationCoordinator(
+                        commands=commands,
+                        descriptions=[
+                            f"Installing {package_name} - step {i+1}" for i in range(len(commands))
+                        ],
+                        timeout=300,
+                        stop_on_error=True,
+                        enable_rollback=self.enable_rollback,
+                    )
 
-                result = coordinator.execute()
+                    result = coordinator.execute()
+                
                 pkg.result = result
                 pkg.end_time = time.time()
 

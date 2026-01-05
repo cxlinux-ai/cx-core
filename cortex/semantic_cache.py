@@ -77,10 +77,21 @@ class SemanticCache:
         self._init_database()
 
     def _ensure_db_directory(self) -> None:
-        db_dir = Path(self.db_path).parent
+        """Ensure database directory exists and is writable"""
+        path = Path(self.db_path)
+        db_dir = path.parent
+
         try:
+            # Try to create directory if missing
             db_dir.mkdir(parents=True, exist_ok=True)
-        except PermissionError:
+
+            # Check if we can actually write to this location
+            # by attempting to open/create a temporary file
+            test_file = db_dir / ".cortex_cache_test"
+            test_file.touch()
+            test_file.unlink()
+        except (PermissionError, OSError):
+            # Fallback to user directory if system directory not accessible/writable
             user_dir = Path.home() / ".cortex"
             user_dir.mkdir(parents=True, exist_ok=True)
             self.db_path = str(user_dir / "cache.db")
