@@ -73,6 +73,18 @@ dev = [
     "isort>=5.0.0",
     "build>=0.10.0",
 ]
+daemon = [
+    # Build and System Dependencies for cortexd daemon
+    # Install with: sudo apt-get install <package>
+    # cmake>=3.28.0
+    # build-essential
+    # libssl-dev
+    # libsqlite3-dev
+    # uuid-dev
+    # libsystemd-dev
+    # libcap-dev
+    # nlohmann-json3-dev
+]
 security = [
     "bandit>=1.7.0",
     "safety>=2.0.0",

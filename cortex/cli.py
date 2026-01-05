@@ -11,6 +11,7 @@ from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
+from cortex.daemon_commands import DaemonManager
 from cortex.demo import run_demo
 from cortex.dependency_importer import (
     DependencyImporter,
@@ -265,6 +266,40 @@ class CortexCLI:
 
         else:
             self._print_error("Unknown notify command")
+            return 1
+
+    # --- Daemon Management ---
+    def daemon(self, args) -> int:
+        """Handle daemon commands"""
+        if not args.daemon_action:
+            self._print_error("Please specify a daemon action (status/health/install/uninstall/alerts/reload-config)")
+            return 1
+
+        mgr = DaemonManager()
+
+        if args.daemon_action == "status":
+            return mgr.status(verbose=args.verbose)
+
+        elif args.daemon_action == "health":
+            return mgr.health()
+
+        elif args.daemon_action == "install":
+            return mgr.install()
+
+        elif args.daemon_action == "uninstall":
+            return mgr.uninstall()
+
+        elif args.daemon_action == "alerts":
+            severity = getattr(args, 'severity', None)
+            alert_type = getattr(args, 'type', None)
+            acknowledge_all = getattr(args, 'acknowledge_all', False)
+            return mgr.alerts(severity=severity, acknowledge_all=acknowledge_all)
+
+        elif args.daemon_action == "reload-config":
+            return mgr.reload_config()
+
+        else:
+            self._print_error("Unknown daemon command")
             return 1
 
     # -------------------------------
@@ -2127,6 +2162,24 @@ def main():
     # Wizard command
     wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
 
+    # Daemon command
+    daemon_parser = subparsers.add_parser("daemon", help="Manage cortexd daemon service")
+    daemon_subs = daemon_parser.add_subparsers(dest="daemon_action", help="Daemon actions")
+
+    daemon_subs.add_parser("status", help="Check daemon status")
+    daemon_subs.add_parser("health", help="Show daemon health snapshot")
+    daemon_subs.add_parser("install", help="Install and start daemon service")
+    daemon_subs.add_parser("uninstall", help="Uninstall daemon service")
+
+    alerts_parser = daemon_subs.add_parser("alerts", help="Show daemon alerts")
+    alerts_parser.add_argument("--severity", choices=["info", "warning", "error", "critical"],
+                            help="Filter by severity")
+    alerts_parser.add_argument("--type", help="Filter by alert type")
+    alerts_parser.add_argument("--acknowledge-all", action="store_true",
+                            help="Acknowledge all alerts")
+
+    daemon_subs.add_parser("reload-config", help="Reload daemon configuration")
+
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
 
@@ -2500,6 +2553,8 @@ def main():
             return cli.demo()
         elif args.command == "wizard":
             return cli.wizard()
+        elif args.command == "daemon":
+            return cli.daemon(args)
         elif args.command == "status":
             return cli.status()
         elif args.command == "ask":

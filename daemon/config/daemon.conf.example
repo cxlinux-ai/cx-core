@@ -1,0 +1,11 @@
+# Example Cortexd Configuration File
+# Location: ~/.cortex/daemon.conf
+
+socket_path: /run/cortex.sock
+model_path: ~/.cortex/models/default.gguf
+monitoring_interval_seconds: 300
+enable_cve_scanning: true
+enable_journald_logging: true
+log_level: 1
+max_inference_queue_size: 100
+memory_limit_mb: 150

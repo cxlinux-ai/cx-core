@@ -1,0 +1,10 @@
+[Unit]
+Description=Cortex Daemon Socket
+Documentation=https://github.com/cortexlinux/cortex
+
+[Socket]
+ListenStream=%t/cortex.sock
+Accept=no
+
+[Install]
+WantedBy=sockets.target

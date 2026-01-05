@@ -1,0 +1,37 @@
+[Unit]
+Description=Cortex AI Package Manager Daemon
+Documentation=https://github.com/cortexlinux/cortex
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/cortexd
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cortexd
+
+# Security
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/run/cortex /var/log/cortex /root/.cortex
+RuntimeDirectory=cortex
+RuntimeDirectoryMode=0755
+
+# Resource limits
+MemoryMax=256M
+MemoryAccounting=yes
+CPUAccounting=yes
+TasksMax=100
+
+# Shutdown behavior
+TimeoutStopSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

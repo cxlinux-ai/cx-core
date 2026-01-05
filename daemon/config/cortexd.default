@@ -1,0 +1,23 @@
+# Cortexd Default Configuration
+# Location: /etc/default/cortexd
+
+# Socket path
+# CORTEXD_SOCKET=/run/cortex.sock
+
+# Model path
+# CORTEXD_MODEL=/home/.cortex/models/default.gguf
+
+# Monitoring interval (seconds)
+# CORTEXD_MONITORING_INTERVAL=300
+
+# Enable CVE scanning (true/false)
+# CORTEXD_CVE_SCANNING=true
+
+# Enable journald logging (true/false)
+# CORTEXD_JOURNALD_LOGGING=true
+
+# Log level (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR)
+# CORTEXD_LOG_LEVEL=1
+
+# Memory limit (MB)
+# CORTEXD_MEMORY_LIMIT=150

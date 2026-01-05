@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced contribution guidelines (CONTRIBUTING.md)
 - Professional README with full documentation
 - This CHANGELOG file
+- Daemon LLM health status documentation (docs/DAEMON_LLM_HEALTH_STATUS.md)
 
 ### Changed
 - Updated README with proper installation instructions
@@ -25,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - For true offline operation, use `export CORTEX_PROVIDER=ollama` instead
 
 ### Fixed
+- **Daemon**: LLM loaded status now correctly reports "Yes" in `cortex daemon health` when model loads successfully
+  - Added `set_llm_loaded()` method to SystemMonitor interface
+  - Main daemon calls this method after successful model load
+  - Implementation is generic and works with any GGUF model
 - (Pending) Shell injection vulnerability in coordinator.py
 - (Pending) CI/CD pipeline test directory path
 
