@@ -5,8 +5,8 @@
 <h1 align="center">Cortex Linux</h1>
 
 <p align="center">
-  <strong>AI-Powered Package Manager for Debian/Ubuntu</strong><br>
-  Install software using natural language. No more memorizing package names.
+  <strong>Cortex is an AI layer for Linux Debian/Ubuntu</strong><br>
+ Instead of memorizing commands, googling errors, and copy-pasting from Stack Overflow — describe what you need.
 </p>
 
 <p align="center">
@@ -40,8 +40,8 @@
 
 ## What is Cortex?
 
-Cortex is an AI-native package manager that understands what you want to install, even when you don't know the exact package name.
-
+<strong>Cortex is an AI layer for Linux Debian/Ubuntu</strong><br>
+Instead of memorizing commands, googling errors, and copy-pasting from Stack Overflow — describe what you need.
 ```bash
 # Instead of googling "what's the package name for PDF editing on Ubuntu?"
 cortex install "something to edit PDFs"
