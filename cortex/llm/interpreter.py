@@ -538,35 +538,6 @@ Respond with ONLY this JSON format (no explanations):
         enriched_input = user_input + context
         return self.parse(enriched_input, validate=validate)
 
-    def _estimate_clarity(self, user_input: str, domain: str) -> float:
-        """
-        Estimate a heuristic clarity score for ui hinting only.
-        Uses simple linguistic signals.
-        """
-        score = 0.0
-        text = user_input.lower()
-
-        # Signal 1: length (more detail → more confidence)
-        if len(text.split()) >= 3:
-            score += 0.3
-
-        # Signal 2: install intent words
-        install_words = {"install", "setup", "set up", "configure"}
-        if any(word in text for word in install_words):
-            score += 0.3
-
-        # Signal 3: vague words reduce confidence
-        vague_words = {"something", "stuff", "things", "etc"}
-        if any(word in text for word in vague_words):
-            score -= 0.3
-
-        # Signal 4: unknown domain penalty
-        if domain == "unknown":
-            score -= 0.2
-
-        # Clamp to [0.0, 1.0]
-        return round(max(0.0, min(1.0, score), 2))
-
     def extract_intent(self, user_input: str) -> dict:
         if not user_input or not user_input.strip():
             raise ValueError("User input cannot be empty")
@@ -578,14 +549,22 @@ Respond with ONLY this JSON format (no explanations):
         elif self.provider == APIProvider.OLLAMA:
             return self._extract_intent_ollama(user_input)
         elif self.provider == APIProvider.FAKE:
-            # Return a default intent for testing
+            # Check for configurable fake intent from environment
+            fake_intent_env = os.environ.get("CORTEX_FAKE_INTENT")
+            if fake_intent_env:
+                try:
+                    return json.loads(fake_intent_env)
+                except json.JSONDecodeError:
+                    pass  # Fall back to default
+
+            # Return realistic intent for testing (not ambiguous)
             return {
                 "action": "install",
-                "domain": "unknown",
+                "domain": "general",
                 "install_mode": "system",
                 "description": user_input,
-                "ambiguous": True,
-                "confidence": 1.0,
+                "ambiguous": False,
+                "confidence": 0.8,
             }
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")

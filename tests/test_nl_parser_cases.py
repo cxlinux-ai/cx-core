@@ -1,3 +1,4 @@
+import json
 import os
 
 import pytest
@@ -62,3 +63,68 @@ def test_short_query(fake_interpreter):
 def test_sentence_style_query(fake_interpreter):
     commands = fake_interpreter.parse("can you please install a database for me")
     assert commands
+
+
+def test_fake_intent_extraction_default_is_not_ambiguous(fake_interpreter):
+    intent = fake_interpreter.extract_intent("install something")
+    assert intent["ambiguous"] is False
+    assert intent["domain"] == "general"
+
+
+def test_install_database(fake_interpreter):
+    commands = fake_interpreter.parse("I need a database")
+    assert isinstance(commands, list)
+
+
+def test_install_containerization(fake_interpreter):
+    commands = fake_interpreter.parse("set up containerization tools")
+    assert commands
+
+
+def test_install_ml_tools(fake_interpreter):
+    commands = fake_interpreter.parse("machine learning libraries")
+    assert commands
+
+
+def test_install_web_dev(fake_interpreter):
+    commands = fake_interpreter.parse("web development stack")
+    assert commands
+
+
+def test_install_with_typos(fake_interpreter):
+    commands = fake_interpreter.parse("instll pytorch")
+    assert commands
+
+
+def test_install_unknown(fake_interpreter):
+    commands = fake_interpreter.parse("install unicorn software")
+    assert isinstance(commands, list)  # should handle gracefully
+
+
+def test_intent_low_confidence(fake_interpreter, monkeypatch):
+    fake_intent = {
+        "action": "install",
+        "domain": "unknown",
+        "install_mode": "system",
+        "description": "something vague",
+        "ambiguous": True,
+        "confidence": 0.3,
+    }
+    monkeypatch.setenv("CORTEX_FAKE_INTENT", json.dumps(fake_intent))
+    intent = fake_interpreter.extract_intent("vague request")
+    assert intent["confidence"] < 0.5
+
+
+def test_intent_high_confidence(fake_interpreter, monkeypatch):
+    fake_intent = {
+        "action": "install",
+        "domain": "machine_learning",
+        "install_mode": "python",
+        "description": "pytorch",
+        "ambiguous": False,
+        "confidence": 0.9,
+    }
+    monkeypatch.setenv("CORTEX_FAKE_INTENT", json.dumps(fake_intent))
+    intent = fake_interpreter.extract_intent("install pytorch")
+    assert intent["confidence"] >= 0.5
+    assert intent["domain"] == "machine_learning"
