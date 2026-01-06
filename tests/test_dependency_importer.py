@@ -348,6 +348,72 @@ mypy
         self.assertEqual(len(result.packages), 1)
         self.assertIsNotNone(result.packages[0].source)
 
+    def test_parse_git_url_github(self):
+        content = """git+https://github.com/user/repo.git
+"""
+        file_path = self._create_temp_file("requirements.txt", content)
+        result = self.importer.parse(file_path)
+
+        self.assertEqual(len(result.packages), 1)
+        self.assertEqual(result.packages[0].name, "repo")
+
+    def test_parse_git_url_gitlab(self):
+        content = """git+https://gitlab.com/user/repo.git
+"""
+        file_path = self._create_temp_file("requirements.txt", content)
+        result = self.importer.parse(file_path)
+
+        self.assertEqual(len(result.packages), 1)
+        self.assertEqual(result.packages[0].name, "repo")
+
+    def test_parse_git_url_bitbucket(self):
+        content = """git+https://bitbucket.org/user/repo.git
+"""
+        file_path = self._create_temp_file("requirements.txt", content)
+        result = self.importer.parse(file_path)
+
+        self.assertEqual(len(result.packages), 1)
+        self.assertEqual(result.packages[0].name, "repo")
+
+    def test_parse_malicious_git_url_substring_attack(self):
+        # Test that URLs with allowed hostnames as substrings are rejected
+        malicious_urls = [
+            "git+https://evilgithub.com/user/repo.git",
+            "git+https://github.com.evil.com/user/repo.git",
+            "git+https://evilgitlab.com/user/repo.git",
+            "git+https://gitlab.com.evil.com/user/repo.git",
+            "git+https://evilbitbucket.org/user/repo.git",
+            "git+https://bitbucket.org.evil.com/user/repo.git",
+        ]
+
+        for malicious_url in malicious_urls:
+            content = f"{malicious_url}\n"
+            file_path = self._create_temp_file("requirements.txt", content)
+            result = self.importer.parse(file_path)
+
+            # Should not parse any packages from malicious URLs
+            self.assertEqual(
+                len(result.packages), 0, f"Malicious URL {malicious_url} was incorrectly parsed"
+            )
+
+    def test_parse_git_url_with_branch(self):
+        content = """git+https://github.com/user/repo.git@branch
+"""
+        file_path = self._create_temp_file("requirements.txt", content)
+        result = self.importer.parse(file_path)
+
+        self.assertEqual(len(result.packages), 1)
+        self.assertEqual(result.packages[0].name, "repo")
+
+    def test_parse_git_url_without_git_extension(self):
+        content = """git+https://github.com/user/repo
+"""
+        file_path = self._create_temp_file("requirements.txt", content)
+        result = self.importer.parse(file_path)
+
+        self.assertEqual(len(result.packages), 1)
+        self.assertEqual(result.packages[0].name, "repo")
+
     def test_file_not_found(self):
         result = self.importer.parse("/nonexistent/requirements.txt")
 

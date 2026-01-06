@@ -67,6 +67,7 @@ cortex install "tools for video compression"
 | **Dry-Run Default** | Preview all commands before execution |
 | **Sandboxed Execution** | Commands run in Firejail isolation |
 | **Full Rollback** | Undo any installation with `cortex rollback` |
+| **Docker Permission Fixer** | Fix root-owned bind mount issues automatically |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
 | **Multi-LLM Support** | Works with Claude, GPT-4, or local Ollama models |
@@ -147,6 +148,7 @@ cortex rollback <installation-id>
 | `cortex install <query>` | Install packages matching natural language query |
 | `cortex install <query> --dry-run` | Preview installation plan (default) |
 | `cortex install <query> --execute` | Execute the installation |
+| `cortex docker permissions` | Fix file ownership for Docker bind mounts |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
@@ -336,6 +338,7 @@ pip install -e .
 - [x] Hardware detection (GPU/CPU/Memory)
 - [x] Firejail sandboxing
 - [x] Dry-run preview mode
+- [x] Docker bind-mount permission fixer
 
 ### In Progress
 - [ ] Conflict resolution UI

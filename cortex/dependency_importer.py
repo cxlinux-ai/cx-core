@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 class PackageEcosystem(Enum):
@@ -350,7 +351,16 @@ class DependencyImporter:
             return source.split("#egg=")[1].split("&")[0]
 
         # Handle git URLs
-        if "github.com" in source or "gitlab.com" in source or "bitbucket.org" in source:
+        allowed_hosts = {"github.com", "gitlab.com", "bitbucket.org"}
+        parsed = urlparse(source)
+        host = parsed.netloc
+
+        # Handle URLs where the actual URL is in the path (e.g., git+https://...)
+        if not host and parsed.path.startswith("//"):
+            path_parsed = urlparse("https:" + parsed.path)
+            host = path_parsed.netloc
+
+        if host in allowed_hosts:
             # Extract repo name from URL
             match = re.search(r"/([^/]+?)(?:\.git)?(?:@|#|$)", source)
             if match:
