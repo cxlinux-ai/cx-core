@@ -22,6 +22,7 @@ from cortex.installation_history import InstallationHistory, InstallationStatus,
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
+from cortex.permissions import PermissionManager
 from cortex.stack_manager import StackManager
 from cortex.validators import validate_api_key, validate_install_request
 
@@ -114,6 +115,31 @@ class CortexCLI:
         except Exception as e:
             # Safety net for unexpected runtime exceptions to prevent CLI crashes.
             cx_print(f"❌ Unexpected error: {e}", "error")
+            return 1
+
+    # --- Permission Auditor Command ---
+    def audit_permissions(self, args):
+        """Handle permission auditing and fixing."""
+        try:
+            # Initialize manager
+            manager = PermissionManager(
+                verbose=getattr(args, "verbose", False), dry_run=getattr(args, "dry_run", False)
+            )
+
+            path = getattr(args, "path", ".")
+            apply_fixes = getattr(args, "fix", False)
+
+            # Scan and fix
+            result = manager.scan_and_fix(path=path, apply_fixes=apply_fixes)
+
+            # Print report
+            print(result["report"])
+
+            # Return exit code
+            return 0 if result["issues_found"] == 0 or apply_fixes else 1
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
             return 1
 
     def _debug(self, message: str):
@@ -1971,6 +1997,23 @@ def main():
     env_template_apply_parser.add_argument(
         "--encrypt-keys", help="Comma-separated list of keys to encrypt"
     )
+
+    # --- Audit Permissions Command ---
+    audit_parser = subparsers.add_parser(
+        "audit-permissions", help="Audit and fix dangerous file permissions"
+    )
+    audit_parser.add_argument(
+        "path", nargs="?", default=".", help="Path to scan (default: current directory)"
+    )
+    audit_parser.add_argument("--fix", action="store_true", help="Apply safe fixes")
+    audit_parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be fixed without changes"
+    )
+    audit_parser.add_argument(
+        "--docker", action="store_true", help="Consider Docker container UID mappings"
+    )
+    audit_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output")
+
     # --------------------------
 
     args = parser.parse_args()
@@ -2026,6 +2069,8 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
+        elif args.command == "audit-permissions":
+            return cli.audit_permissions(args)
         else:
             parser.print_help()
             return 1
