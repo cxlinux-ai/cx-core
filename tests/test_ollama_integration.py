@@ -12,6 +12,7 @@ Usage:
     python tests/test_ollama_integration.py
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -23,11 +24,68 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cortex.llm_router import LLMProvider, LLMRouter, TaskType
 
-# Mark all tests to skip if Ollama is not available
-pytestmark = pytest.mark.skipif(
-    not subprocess.run(["which", "ollama"], capture_output=True).returncode == 0,
-    reason="Ollama is not installed. Install with: python scripts/setup_ollama.py",
-)
+
+def get_available_ollama_model() -> str | None:
+    """Get the first available Ollama model, or None if none available."""
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            # Parse output: skip header line, get first model name
+            lines = result.stdout.strip().split("\n")
+            if len(lines) > 1:
+                # Model name is the first column
+                parts = lines[1].split()
+                if parts:
+                    model_name = parts[0]
+                    return model_name
+    except Exception:
+        # Best-effort helper: on any error, behave as if no models are available.
+        pass
+    return None
+
+
+def is_ollama_installed() -> bool:
+    """Check if Ollama is installed."""
+    return subprocess.run(["which", "ollama"], capture_output=True).returncode == 0
+
+
+def is_ollama_running() -> bool:
+    """Check if Ollama service is running."""
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+# Get available model for tests (can be overridden via env var)
+OLLAMA_TEST_MODEL = os.environ.get("OLLAMA_TEST_MODEL") or get_available_ollama_model()
+
+# Mark all tests to skip if Ollama is not available or no models installed
+pytestmark = [
+    pytest.mark.skipif(
+        not is_ollama_installed(),
+        reason="Ollama is not installed. Install with: python scripts/setup_ollama.py",
+    ),
+    pytest.mark.skipif(
+        not is_ollama_running(),
+        reason="Ollama service is not running. Start with: ollama serve",
+    ),
+    pytest.mark.skipif(
+        OLLAMA_TEST_MODEL is None,
+        reason="No Ollama models installed. Install with: ollama pull llama3.2",
+    ),
+]
 
 
 def check_ollama_installed():
@@ -72,12 +130,13 @@ def check_ollama_running():
 def test_llm_router():
     """Test LLMRouter with Ollama."""
     print("3. Testing LLM Router with Ollama...")
+    print(f"   Using model: {OLLAMA_TEST_MODEL}")
 
     try:
         # Initialize router with Ollama
         router = LLMRouter(
             ollama_base_url="http://localhost:11434",
-            ollama_model="llama3.2",
+            ollama_model=OLLAMA_TEST_MODEL,
             default_provider=LLMProvider.OLLAMA,
             enable_fallback=False,  # Don't fall back to cloud APIs
         )
@@ -115,10 +174,15 @@ def test_routing_decision():
     """Test routing logic with Ollama."""
     print("4. Testing routing decision...")
 
+    # Get available model
+    test_model = os.environ.get("OLLAMA_MODEL") or get_available_ollama_model()
+    if not test_model:
+        pytest.skip("No Ollama models available")
+
     try:
         router = LLMRouter(
             ollama_base_url="http://localhost:11434",
-            ollama_model="llama3.2",
+            ollama_model=OLLAMA_TEST_MODEL,
             default_provider=LLMProvider.OLLAMA,
         )
 
@@ -145,10 +209,15 @@ def test_stats_tracking():
     """Test that stats tracking works with Ollama."""
     print("5. Testing stats tracking...")
 
+    # Get available model
+    test_model = os.environ.get("OLLAMA_MODEL") or get_available_ollama_model()
+    if not test_model:
+        pytest.skip("No Ollama models available")
+
     try:
         router = LLMRouter(
             ollama_base_url="http://localhost:11434",
-            ollama_model="llama3.2",
+            ollama_model=OLLAMA_TEST_MODEL,
             default_provider=LLMProvider.OLLAMA,
             track_costs=True,
         )
