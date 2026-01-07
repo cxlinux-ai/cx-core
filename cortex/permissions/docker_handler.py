@@ -14,14 +14,6 @@ from typing import Optional
 class DockerPermissionHandler:
     """Handle Docker-specific permission mapping and adjustments."""
 
-    def test_get_container_specific_fix_with_docker_path():
-        """Test get_container_specific_fix with docker path"""
-        import sys
-
-        sys.path.insert(0, ".")  # Добавляем текущую директорию в путь
-
-        from cortex.permissions.docker_handler import get_container_specific_fix
-
     def __init__(self, verbose: bool = False, dry_run: bool = True):
         self.verbose = verbose
         self.dry_run = dry_run
@@ -299,6 +291,7 @@ class DockerPermissionHandler:
 
             # Execute if not dry-run
             if not dry_run and actions_needed:
+                all_succeeded = True
                 for action in actions_needed:
                     try:
                         if action["type"] == "chown":
@@ -307,10 +300,11 @@ class DockerPermissionHandler:
                             recommended = int(action["command"].split()[1], 8)
                             os.chmod(path_obj, recommended)
 
-                        result["success"] = True
-
                     except (PermissionError, OSError) as e:
                         result["warnings"].append(f"Failed {action['type']}: {e}")
+                        all_succeeded = False
+
+                result["success"] = all_succeeded
 
             elif dry_run and actions_needed:
                 result["success"] = True  # Dry-run considered successful

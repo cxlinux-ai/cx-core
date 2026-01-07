@@ -29,25 +29,25 @@ class TestHardwareProfiler(unittest.TestCase):
         """Test CPU detection for AMD Ryzen 9 5950X."""
         # Mock cpuinfo with multiple processors showing 16 cores
         cpuinfo_data = """
-processor	: 0
-vendor_id	: AuthenticAMD
-cpu family	: 23
-model		: 113
-model name	: AMD Ryzen 9 5950X 16-Core Processor
-stepping	: 0
-physical id	: 0
-core id		: 0
-cpu cores	: 16
+processor    : 0
+vendor_id    : AuthenticAMD
+cpu family    : 23
+model        : 113
+model name    : AMD Ryzen 9 5950X 16-Core Processor
+stepping    : 0
+physical id    : 0
+core id        : 0
+cpu cores    : 16
 
-processor	: 1
-vendor_id	: AuthenticAMD
-cpu family	: 23
-model		: 113
-model name	: AMD Ryzen 9 5950X 16-Core Processor
-stepping	: 0
-physical id	: 0
-core id		: 1
-cpu cores	: 16
+processor    : 1
+vendor_id    : AuthenticAMD
+cpu family    : 23
+model        : 113
+model name    : AMD Ryzen 9 5950X 16-Core Processor
+stepping    : 0
+physical id    : 0
+core id        : 1
+cpu cores    : 16
 """
         mock_file.return_value.read.return_value = cpuinfo_data
         mock_file.return_value.__enter__.return_value = mock_file.return_value
@@ -73,19 +73,19 @@ cpu cores	: 16
         "builtins.open",
         new_callable=mock_open,
         read_data="""
-processor	: 0
-vendor_id	: GenuineIntel
-cpu family	: 6
-model		: 85
-model name	: Intel(R) Xeon(R) Platinum 8280 CPU @ 2.70GHz
-stepping	: 7
-microcode	: 0xffffffff
-cpu MHz		: 2700.000
-cache size	: 39424 KB
-physical id	: 0
-siblings	: 56
-core id		: 0
-cpu cores	: 28
+processor    : 0
+vendor_id    : GenuineIntel
+cpu family    : 6
+model        : 85
+model name    : Intel(R) Xeon(R) Platinum 8280 CPU @ 2.70GHz
+stepping    : 7
+microcode    : 0xffffffff
+cpu MHz        : 2700.000
+cache size    : 39424 KB
+physical id    : 0
+siblings    : 56
+core id        : 0
+cpu cores    : 28
 """,
     )
     @patch("subprocess.run")

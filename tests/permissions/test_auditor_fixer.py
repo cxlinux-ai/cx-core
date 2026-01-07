@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from cortex.permissions.auditor_fixer import PermissionAuditor
+from cortex.permissions import PermissionAuditor, PermissionManager
 
 
 class TestPermissionAuditorBasic:
@@ -58,37 +58,19 @@ class TestPermissionAuditorBasic:
 
         assert str(safe_file) not in result["world_writable"]
 
-    def test_suggest_fix_method(self):
+    def test_suggest_fix_method(self, tmp_path):
         """Test that suggest_fix method works"""
         auditor = PermissionAuditor()
 
         assert hasattr(auditor, "suggest_fix")
 
-        test_file = "/tmp/test_suggest.txt"
-        try:
-            with open(test_file, "w") as f:
-                f.write("test")
-            os.chmod(test_file, 0o777)
+        test_file = tmp_path / "test_suggest.txt"
+        test_file.write_text("test")
+        test_file.chmod(0o777)
 
-            suggestion = auditor.suggest_fix(test_file, "777")
-            assert isinstance(suggestion, str)
-            assert "chmod" in suggestion
-
-            os.remove(test_file)
-
-        except Exception:
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-                f.write("test")
-                temp_file = f.name
-            os.chmod(temp_file, 0o777)
-
-            suggestion = auditor.suggest_fix(temp_file, "777")
-            assert isinstance(suggestion, str)
-            assert "chmod" in suggestion
-
-            os.remove(temp_file)
+        suggestion = auditor.suggest_fix(str(test_file), "777")
+        assert isinstance(suggestion, str)
+        assert "chmod" in suggestion
 
 
 class TestDockerHandler:
@@ -326,9 +308,8 @@ def test_docker_handler_module():
 
 def test_cli_integration():
     """Test that CLI can import and use PermissionManager"""
-    from cortex.permissions import PermissionManager
 
-    manager = PermissionManager()
+    manager = PermissionManager(verbose=False)
     assert manager is not None
 
     # Basic functionality check

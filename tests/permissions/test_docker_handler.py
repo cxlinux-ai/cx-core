@@ -167,7 +167,7 @@ def test_discover_uid_mapping():
 
     assert isinstance(mapping, dict)
     # At least root (0) should be in mapping
-    assert 0 in mapping or len(mapping) >= 0
+    assert 0 in mapping or len(mapping) > 0
 
 
 def test_discover_gid_mapping():
@@ -179,7 +179,7 @@ def test_discover_gid_mapping():
 
     assert isinstance(mapping, dict)
     # At least root (0) should be in mapping
-    assert 0 in mapping or len(mapping) >= 0
+    assert 0 in mapping or len(mapping) > 0
 
 
 def test_generate_docker_permission_report_with_path(tmp_path):
@@ -207,7 +207,7 @@ def test_container_info_types():
     assert isinstance(info["host_gid"], int)
     assert isinstance(info["uid_mapping"], dict)
     assert isinstance(info["gid_mapping"], dict)
-    assert isinstance(info["container_runtime"], (str, type(None)))
+    assert isinstance(info["container_runtime"], str | None)
 
     # Check UID/GID are valid
     assert info["host_uid"] >= 0
