@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cortex.api_key_detector import auto_detect_api_key, setup_api_key
@@ -1532,8 +1533,6 @@ class CortexCLI:
 
     def _env_path_list(self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace) -> int:
         """List PATH entries with status."""
-        import os
-
         as_json = getattr(args, "json", False)
 
         current_path = os.environ.get("PATH", "")
@@ -1558,8 +1557,6 @@ class CortexCLI:
             status_icons = []
 
             # Check if exists
-            from pathlib import Path
-
             if not Path(entry).exists():
                 status_icons.append("[red]✗ missing[/red]")
 
