@@ -17,6 +17,9 @@ cryptography>=42.0.0
 # Terminal UI
 rich>=13.0.0
 
+# Asynchronous File I/O
+aiofiles>=23.2.1
+
 # Configuration
 pyyaml>=6.0.0
 
