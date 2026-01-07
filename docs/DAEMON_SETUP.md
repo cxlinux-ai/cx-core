@@ -193,6 +193,10 @@ cortex daemon alerts --severity critical
 
 # Acknowledge all alerts
 cortex daemon alerts --acknowledge-all
+
+# Dismiss (delete) a specific alert by ID
+cortex daemon alerts --dismiss <alert-id>
+# Example: cortex daemon alerts --dismiss a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Alert Table:
@@ -204,6 +208,8 @@ Alerts (5):
 [CRITICAL] Dependency conflict (m3n4o5p6...)
 [WARNING] APT updates available (q7r8s9t0...)
 ```
+
+**Note:** The alert ID shown in the table (e.g., `a1b2c3d4...`) is truncated. Use the full UUID when dismissing alerts.
 
 #### Install/Uninstall Daemon
 

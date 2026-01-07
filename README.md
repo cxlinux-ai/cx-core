@@ -250,87 +250,53 @@ cortex/
 
 ## Cortexd - System Daemon
 
-Cortex includes **cortexd**, a production-grade Linux system daemon that:
+Cortex includes **cortexd**, a production-grade C++ system daemon that provides persistent system monitoring, embedded LLM inference, and alert management.
 
-- **Monitors** system health and package updates
-- **Infers** package recommendations via embedded LLM
-- **Alerts** on security updates and system issues
-- **Integrates** seamlessly with Cortex CLI
-- **Runs** as a systemd service for persistent operation
-
-### Quick Start: Cortexd
+### Quick Start
 
 ```bash
-# Build and install the daemon (one command)
+# Build and install the daemon
 cd daemon
+./scripts/build.sh Release
 sudo ./scripts/install.sh
 
-# Load an LLM model (optional but recommended)
-sudo ./scripts/setup-llm.sh
-
-# Use via CLI
-cortex daemon status       # Check daemon health
-cortex daemon health       # View system metrics
-cortex daemon alerts       # See active alerts
-
-# View daemon logs
-journalctl -u cortexd -f
+# Verify it's running
+cortex daemon status
+cortex daemon health
 ```
 
-### Cortexd Features
+### CLI Commands
 
-| Feature | Details |
-|---------|---------|
-| System Monitoring | Memory, disk, CPU tracking with real /proc metrics |
-| Alert Management | Create, query, acknowledge alerts |
-| Configuration | File-based configuration with hot reload |
-| IPC Protocol | JSON-RPC via Unix socket |
-| Systemd Integration | Service + socket units |
-| Python Client | cortex/daemon_client.py |
-| LLM Integration | llama.cpp with 1000+ GGUF model support |
-| APT Monitoring | Update detection stub |
-| Security Scanning | CVE detection stub |
-
-### Cortexd Documentation
-
-- **[GETTING_STARTED_CORTEXD.md](docs/GETTING_STARTED_CORTEXD.md)** - Quick reference and navigation
-- **[DAEMON_BUILD.md](docs/DAEMON_BUILD.md)** - Build instructions and troubleshooting (650 lines)
-- **[DAEMON_SETUP.md](docs/DAEMON_SETUP.md)** - Installation and usage guide (750 lines)
-- **[LLM_SETUP.md](docs/LLM_SETUP.md)** - Model installation, configuration, and troubleshooting
-- **[DAEMON_API.md](docs/DAEMON_API.md)** - Socket IPC protocol reference (500 lines)
-- **[DAEMON_ARCHITECTURE.md](docs/DAEMON_ARCHITECTURE.md)** - Technical architecture deep-dive (800 lines)
-- **[DAEMON_TROUBLESHOOTING.md](docs/DAEMON_TROUBLESHOOTING.md)** - Common issues and solutions (600 lines)
-- **[DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md)** - Pre-production verification
-- **[daemon/README.md](daemon/README.md)** - Daemon module overview
-
-### Cortexd Statistics
-
-- **7,500+ lines** of well-documented code
-- **3,895 lines** of C++17 implementation
-- **1,000 lines** of Python integration
-- **40+ files** organized in modular structure
-- **3,600 lines** of comprehensive documentation
-- **0 external dependencies** for core functionality
-
-### Cortexd Architecture
-
+```bash
+cortex daemon status              # Check daemon status
+cortex daemon health              # View system metrics (CPU, memory, disk, alerts)
+cortex daemon alerts              # List active alerts
+cortex daemon alerts --severity warning   # Filter by severity
+cortex daemon alerts --acknowledge-all    # Acknowledge all alerts
+cortex daemon alerts --dismiss <id>       # Dismiss a specific alert
+cortex daemon reload-config       # Reload configuration
+cortex daemon install             # Install daemon service
+cortex daemon uninstall           # Uninstall daemon service
 ```
-Cortex CLI (Python)
-    ↓
-daemon_client.py (Unix socket connection)
-    ↓
-/run/cortex.sock (JSON-RPC protocol)
-    ↓
-Cortexd (C++17 daemon)
-    ├─ SocketServer: Accept connections
-    ├─ SystemMonitor: 5-minute health checks
-    ├─ AlertManager: Alert CRUD operations
-    ├─ ConfigManager: File-based configuration
-    ├─ LlamaWrapper: LLM inference queue
-    └─ Logging: Structured journald output
-    ↓
-systemd (Persistent service)
-```
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **System Monitoring** | CPU, memory, disk usage with configurable thresholds |
+| **Alert Management** | Create, query, acknowledge, dismiss alerts (SQLite-backed) |
+| **LLM Integration** | llama.cpp with 1000+ GGUF model support |
+| **IPC Protocol** | JSON-RPC via Unix socket (`/run/cortex/cortex.sock`) |
+| **Systemd Integration** | Type=notify, watchdog, journald logging |
+
+### Documentation
+
+- **[daemon/README.md](daemon/README.md)** - Quick reference and IPC API
+- **[DAEMON_SETUP.md](docs/DAEMON_SETUP.md)** - Installation and usage guide
+- **[DAEMON_BUILD.md](docs/DAEMON_BUILD.md)** - Build instructions
+- **[DAEMON_API.md](docs/DAEMON_API.md)** - Socket IPC protocol reference
+- **[DAEMON_ARCHITECTURE.md](docs/DAEMON_ARCHITECTURE.md)** - Technical deep-dive
+- **[DAEMON_TROUBLESHOOTING.md](docs/DAEMON_TROUBLESHOOTING.md)** - Common issues and solutions
 
 ---
 

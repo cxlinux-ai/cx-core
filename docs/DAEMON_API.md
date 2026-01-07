@@ -15,15 +15,15 @@ All requests follow this structure:
 
 ```json
 {
-  "command": "status",
+  "method": "status",
   "params": {}
 }
 ```
 
 ### Required Fields
 
-- `command` (string): Command name (status, alerts, health, etc)
-- `params` (object, optional): Command-specific parameters
+- `method` (string): Method name (status, alerts, health, etc)
+- `params` (object, optional): Method-specific parameters
 
 ## Response Format
 
@@ -54,7 +54,7 @@ Get daemon status and version information.
 **Request**:
 ```json
 {
-  "command": "status"
+  "method": "status"
 }
 ```
 
@@ -75,12 +75,12 @@ Get daemon status and version information.
 
 ### 2. Health
 
-Get detailed health snapshot with system metrics.
+Get detailed health snapshot with system metrics. Alert counts are always fetched fresh from the AlertManager.
 
 **Request**:
 ```json
 {
-  "command": "health"
+  "method": "health"
 }
 ```
 
@@ -121,7 +121,7 @@ Get active system alerts.
 **Request**:
 ```json
 {
-  "command": "alerts",
+  "method": "alerts",
   "params": {
     "severity": "warning",
     "type": "memory_usage"
@@ -179,9 +179,19 @@ Mark an alert as acknowledged.
 **Request**:
 ```json
 {
-  "command": "acknowledge_alert",
+  "method": "alerts.acknowledge",
   "params": {
-    "alert_id": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p"
+    "id": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p"
+  }
+}
+```
+
+To acknowledge all alerts:
+```json
+{
+  "method": "alerts.acknowledge",
+  "params": {
+    "all": true
   }
 }
 ```
@@ -198,26 +208,27 @@ Mark an alert as acknowledged.
 }
 ```
 
-### 5. Clear Alerts
+### 5. Dismiss Alert
 
-Clear all acknowledged alerts.
+Dismiss (permanently delete) an alert.
 
 **Request**:
 ```json
 {
-  "command": "clear_alerts"
+  "method": "alerts.dismiss",
+  "params": {
+    "id": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p"
+  }
 }
 ```
 
 **Response**:
 ```json
 {
-  "status": "success",
-  "data": {
-    "message": "Cleared acknowledged alerts",
-    "count": 3
-  },
-  "timestamp": 1672574400
+  "success": true,
+  "result": {
+    "dismissed": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p"
+  }
 }
 ```
 
@@ -228,7 +239,7 @@ Reload daemon configuration from disk.
 **Request**:
 ```json
 {
-  "command": "config_reload"
+  "method": "config.reload"
 }
 ```
 
@@ -251,7 +262,7 @@ Request daemon shutdown (graceful).
 **Request**:
 ```json
 {
-  "command": "shutdown"
+  "method": "shutdown"
 }
 ```
 
@@ -274,7 +285,7 @@ Run LLM inference using llama.cpp (requires model to be loaded).
 **Request**:
 ```json
 {
-  "command": "inference",
+  "method": "llm.infer",
   "params": {
     "prompt": "What packages are installed?",
     "max_tokens": 256,
@@ -422,13 +433,13 @@ except Exception as e:
 
 ```bash
 # Direct socket command
-echo '{"command":"status"}' | socat - UNIX-CONNECT:/run/cortex.sock
+echo '{"method":"status"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 
 # Pretty-printed response
-echo '{"command":"health"}' | socat - UNIX-CONNECT:/run/cortex.sock | jq '.'
+echo '{"method":"health"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock | jq '.'
 
 # Piped to file
-echo '{"command":"alerts"}' | socat - UNIX-CONNECT:/run/cortex.sock > alerts.json
+echo '{"method":"alerts"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock > alerts.json
 ```
 
 ### Using nc (netcat)
@@ -441,12 +452,12 @@ echo '{"command":"alerts"}' | socat - UNIX-CONNECT:/run/cortex.sock > alerts.jso
 
 ```bash
 # Setup proxy (in another terminal)
-socat TCP-LISTEN:9999,reuseaddr UNIX-CONNECT:/run/cortex.sock &
+socat TCP-LISTEN:9999,reuseaddr UNIX-CONNECT:/run/cortex/cortex.sock &
 
 # Make request
 curl -X POST http://localhost:9999 \
   -H "Content-Type: application/json" \
-  -d '{"command":"status"}'
+  -d '{"method":"status"}'
 ```
 
 ## Rate Limiting

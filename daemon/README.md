@@ -96,6 +96,38 @@ daemon/
 └── tests/                    # Test suite
 ```
 
+## CLI Commands
+
+Cortex provides integrated CLI commands to interact with the daemon:
+
+```bash
+# Check daemon status
+cortex daemon status
+
+# View system health metrics  
+cortex daemon health
+
+# List active alerts
+cortex daemon alerts
+
+# Filter alerts by severity
+cortex daemon alerts --severity warning
+cortex daemon alerts --severity critical
+
+# Acknowledge all alerts
+cortex daemon alerts --acknowledge-all
+
+# Dismiss (delete) a specific alert by ID
+cortex daemon alerts --dismiss <alert-id>
+
+# Reload daemon configuration
+cortex daemon reload-config
+
+# Install/uninstall daemon
+cortex daemon install
+cortex daemon uninstall
+```
+
 ## IPC API
 
 ### Methods
@@ -107,8 +139,8 @@ daemon/
 | `health` | Get system health snapshot |
 | `version` | Get version info |
 | `alerts` | Get active alerts |
-| `alerts.acknowledge` | Acknowledge alert |
-| `alerts.dismiss` | Delete alert |
+| `alerts.acknowledge` | Acknowledge alert(s) |
+| `alerts.dismiss` | Dismiss (delete) an alert |
 | `config.get` | Get configuration |
 | `config.reload` | Reload config file |
 | `llm.status` | Get LLM status |
@@ -120,8 +152,8 @@ daemon/
 ### Example
 
 ```bash
-# Get health status
-echo '{"method":"health"}' | socat - UNIX-CONNECT:/run/cortex.sock
+# Get health status via socat
+echo '{"method":"health"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 
 # Response:
 # {
