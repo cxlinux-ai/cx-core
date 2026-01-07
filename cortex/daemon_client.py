@@ -5,22 +5,27 @@ Provides a Python interface for communicating with the cortexd daemon
 via Unix socket using JSON-based protocol.
 """
 
-import socket
 import json
-import os
-from typing import Dict, Any, Optional, List
-from pathlib import Path
 import logging
+import os
+import socket
+from pathlib import Path
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+
 class DaemonConnectionError(Exception):
     """Raised when unable to connect to daemon"""
+
     pass
+
 
 class DaemonProtocolError(Exception):
     """Raised when daemon communication protocol fails"""
+
     pass
+
 
 class CortexDaemonClient:
     """Client for communicating with cortexd daemon"""
@@ -40,7 +45,7 @@ class CortexDaemonClient:
         self.socket_path = socket_path
         self.timeout = timeout
 
-    def _connect(self, timeout: Optional[float] = None) -> socket.socket:
+    def _connect(self, timeout: float | None = None) -> socket.socket:
         """
         Create and connect Unix socket.
 
@@ -64,15 +69,12 @@ class CortexDaemonClient:
             sock.settimeout(timeout if timeout is not None else self.timeout)
             sock.connect(self.socket_path)
             return sock
-        except socket.error as e:
+        except OSError as e:
             raise DaemonConnectionError(f"Failed to connect to daemon: {e}")
 
     def _send_request(
-        self, 
-        method: str, 
-        params: Optional[Dict[str, Any]] = None,
-        timeout: Optional[float] = None
-    ) -> Dict[str, Any]:
+        self, method: str, params: dict[str, Any] | None = None, timeout: float | None = None
+    ) -> dict[str, Any]:
         """
         Send request to daemon and receive response.
 
@@ -89,17 +91,14 @@ class CortexDaemonClient:
             DaemonProtocolError: If protocol error occurs
         """
         # Build JSON-RPC style request
-        request = {
-            "method": method,
-            "params": params or {}
-        }
+        request = {"method": method, "params": params or {}}
 
         request_json = json.dumps(request)
         logger.debug(f"Sending: {request_json}")
 
         try:
             sock = self._connect(timeout)
-            sock.sendall(request_json.encode('utf-8'))
+            sock.sendall(request_json.encode("utf-8"))
 
             # Receive response
             response_data = b""
@@ -111,11 +110,11 @@ class CortexDaemonClient:
                     response_data += chunk
                     # Try to parse - if valid JSON, we're done
                     try:
-                        json.loads(response_data.decode('utf-8'))
+                        json.loads(response_data.decode("utf-8"))
                         break
                     except json.JSONDecodeError:
                         continue
-                except socket.timeout:
+                except TimeoutError:
                     break
 
             sock.close()
@@ -123,16 +122,16 @@ class CortexDaemonClient:
             if not response_data:
                 raise DaemonProtocolError("Empty response from daemon")
 
-            response = json.loads(response_data.decode('utf-8'))
+            response = json.loads(response_data.decode("utf-8"))
             logger.debug(f"Received: {response}")
             return response
 
         except json.JSONDecodeError as e:
             raise DaemonProtocolError(f"Invalid JSON response: {e}")
-        except socket.timeout:
+        except TimeoutError:
             raise DaemonConnectionError("Daemon connection timeout")
 
-    def _check_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
+    def _check_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """
         Check response for success and extract result.
 
@@ -184,7 +183,7 @@ class CortexDaemonClient:
         except (DaemonConnectionError, DaemonProtocolError):
             return False
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get daemon status.
 
@@ -194,7 +193,7 @@ class CortexDaemonClient:
         response = self._send_request("status")
         return self._check_response(response)
 
-    def get_health(self) -> Dict[str, Any]:
+    def get_health(self) -> dict[str, Any]:
         """
         Get daemon health snapshot.
 
@@ -204,7 +203,7 @@ class CortexDaemonClient:
         response = self._send_request("health")
         return self._check_response(response)
 
-    def get_version(self) -> Dict[str, Any]:
+    def get_version(self) -> dict[str, Any]:
         """
         Get daemon version info.
 
@@ -214,7 +213,9 @@ class CortexDaemonClient:
         response = self._send_request("version")
         return self._check_response(response)
 
-    def get_alerts(self, severity: Optional[str] = None, alert_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_alerts(
+        self, severity: str | None = None, alert_type: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
         """
         Get alerts from daemon.
 
@@ -295,7 +296,7 @@ class CortexDaemonClient:
         except DaemonProtocolError:
             return False
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """
         Get current daemon configuration.
 
@@ -322,7 +323,7 @@ class CortexDaemonClient:
 
     # LLM operations
 
-    def get_llm_status(self) -> Dict[str, Any]:
+    def get_llm_status(self) -> dict[str, Any]:
         """
         Get LLM engine status.
 
@@ -335,7 +336,7 @@ class CortexDaemonClient:
     # Timeout for model loading (can take 30-120+ seconds for large models)
     MODEL_LOAD_TIMEOUT = 120.0
 
-    def load_model(self, model_path: str) -> Dict[str, Any]:
+    def load_model(self, model_path: str) -> dict[str, Any]:
         """
         Load an LLM model.
 
@@ -346,9 +347,7 @@ class CortexDaemonClient:
             Model info dictionary
         """
         response = self._send_request(
-            "llm.load", 
-            {"model_path": model_path},
-            timeout=self.MODEL_LOAD_TIMEOUT
+            "llm.load", {"model_path": model_path}, timeout=self.MODEL_LOAD_TIMEOUT
         )
         return self._check_response(response)
 
@@ -369,8 +368,14 @@ class CortexDaemonClient:
     # Timeout for inference (depends on max_tokens and model size)
     INFERENCE_TIMEOUT = 60.0
 
-    def infer(self, prompt: str, max_tokens: int = 256, temperature: float = 0.7, 
-              top_p: float = 0.9, stop: Optional[str] = None) -> Dict[str, Any]:
+    def infer(
+        self,
+        prompt: str,
+        max_tokens: int = 256,
+        temperature: float = 0.7,
+        top_p: float = 0.9,
+        stop: str | None = None,
+    ) -> dict[str, Any]:
         """
         Run inference on loaded model.
 
@@ -388,7 +393,7 @@ class CortexDaemonClient:
             "prompt": prompt,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "top_p": top_p
+            "top_p": top_p,
         }
         if stop:
             params["stop"] = stop
@@ -398,19 +403,19 @@ class CortexDaemonClient:
 
     # Convenience methods
 
-    def get_alerts_by_severity(self, severity: str) -> List[Dict[str, Any]]:
+    def get_alerts_by_severity(self, severity: str) -> list[dict[str, Any]]:
         """Get alerts filtered by severity"""
         return self.get_alerts(severity=severity)
 
-    def get_alerts_by_type(self, alert_type: str) -> List[Dict[str, Any]]:
+    def get_alerts_by_type(self, alert_type: str) -> list[dict[str, Any]]:
         """Get alerts filtered by type"""
         return self.get_alerts(alert_type=alert_type)
 
-    def get_active_alerts(self) -> List[Dict[str, Any]]:
+    def get_active_alerts(self) -> list[dict[str, Any]]:
         """Get all active (unacknowledged) alerts"""
         return self.get_alerts()
 
-    def format_health_snapshot(self, health: Dict[str, Any]) -> str:
+    def format_health_snapshot(self, health: dict[str, Any]) -> str:
         """Format health snapshot for display"""
         lines = [
             f"  CPU Usage:          {health.get('cpu_usage_percent', 0):.1f}%",
@@ -429,7 +434,7 @@ class CortexDaemonClient:
         ]
         return "\n".join(lines)
 
-    def format_status(self, status: Dict[str, Any]) -> str:
+    def format_status(self, status: dict[str, Any]) -> str:
         """Format daemon status for display"""
         uptime = status.get("uptime_seconds", 0)
         hours, remainder = divmod(uptime, 3600)
@@ -463,7 +468,7 @@ class CortexDaemonClient:
 
         return "\n".join(lines)
 
-    def format_alerts(self, alerts: List[Dict[str, Any]]) -> str:
+    def format_alerts(self, alerts: list[dict[str, Any]]) -> str:
         """Format alerts for display"""
         if not alerts:
             return "No alerts"

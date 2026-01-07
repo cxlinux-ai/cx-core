@@ -272,7 +272,9 @@ class CortexCLI:
     def daemon(self, args) -> int:
         """Handle daemon commands"""
         if not args.daemon_action:
-            self._print_error("Please specify a daemon action (status/health/install/uninstall/alerts/reload-config)")
+            self._print_error(
+                "Please specify a daemon action (status/health/install/uninstall/alerts/reload-config)"
+            )
             return 1
 
         mgr = DaemonManager()
@@ -290,11 +292,13 @@ class CortexCLI:
             return mgr.uninstall()
 
         elif args.daemon_action == "alerts":
-            severity = getattr(args, 'severity', None)
-            alert_type = getattr(args, 'type', None)
-            acknowledge_all = getattr(args, 'acknowledge_all', False)
-            dismiss_id = getattr(args, 'dismiss', None)
-            return mgr.alerts(severity=severity, acknowledge_all=acknowledge_all, dismiss_id=dismiss_id)
+            severity = getattr(args, "severity", None)
+            alert_type = getattr(args, "type", None)
+            acknowledge_all = getattr(args, "acknowledge_all", False)
+            dismiss_id = getattr(args, "dismiss", None)
+            return mgr.alerts(
+                severity=severity, acknowledge_all=acknowledge_all, dismiss_id=dismiss_id
+            )
 
         elif args.daemon_action == "reload-config":
             return mgr.reload_config()
@@ -306,11 +310,11 @@ class CortexCLI:
             return mgr.config()
 
         elif args.daemon_action == "llm":
-            llm_action = getattr(args, 'llm_action', None)
+            llm_action = getattr(args, "llm_action", None)
             if llm_action == "status":
                 return mgr.llm_status()
             elif llm_action == "load":
-                model_path = getattr(args, 'model_path', None)
+                model_path = getattr(args, "model_path", None)
                 if not model_path:
                     self._print_error("Model path required")
                     return 1
@@ -2196,13 +2200,14 @@ def main():
     daemon_subs.add_parser("uninstall", help="Uninstall daemon service")
 
     alerts_parser = daemon_subs.add_parser("alerts", help="Show daemon alerts")
-    alerts_parser.add_argument("--severity", choices=["info", "warning", "error", "critical"],
-                            help="Filter by severity")
+    alerts_parser.add_argument(
+        "--severity", choices=["info", "warning", "error", "critical"], help="Filter by severity"
+    )
     alerts_parser.add_argument("--type", help="Filter by alert type")
-    alerts_parser.add_argument("--acknowledge-all", action="store_true",
-                            help="Acknowledge all alerts")
-    alerts_parser.add_argument("--dismiss", metavar="ID",
-                            help="Dismiss (delete) an alert by ID")
+    alerts_parser.add_argument(
+        "--acknowledge-all", action="store_true", help="Acknowledge all alerts"
+    )
+    alerts_parser.add_argument("--dismiss", metavar="ID", help="Dismiss (delete) an alert by ID")
 
     daemon_subs.add_parser("reload-config", help="Reload daemon configuration")
     daemon_subs.add_parser("version", help="Show daemon version")

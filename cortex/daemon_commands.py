@@ -2,19 +2,22 @@
 Daemon management commands for Cortex CLI
 """
 
-import sys
 import os
 import subprocess
-from typing import Optional
+import sys
 from pathlib import Path
+from typing import Optional
+
+from rich import print as rprint
 from rich.console import Console
+
 # Table import removed - alerts now use custom formatting for AI analysis
 from rich.panel import Panel
-from rich import print as rprint
 
 from cortex.daemon_client import CortexDaemonClient, DaemonConnectionError, DaemonProtocolError
 
 console = Console()
+
 
 class DaemonManager:
     """Manages cortexd daemon operations"""
@@ -61,7 +64,7 @@ class DaemonManager:
                     panel = Panel(
                         self.client.format_status(status),
                         title="[bold]Daemon Status[/bold]",
-                        border_style="green"
+                        border_style="green",
                     )
                     console.print(panel)
                 except (DaemonConnectionError, DaemonProtocolError) as e:
@@ -91,10 +94,7 @@ class DaemonManager:
             return 1
 
         try:
-            result = subprocess.run(
-                ["sudo", str(script_path)],
-                check=False
-            )
+            result = subprocess.run(["sudo", str(script_path)], check=False)
             return result.returncode
         except Exception as e:
             console.print(f"[red]✗ Installation failed: {e}[/red]")
@@ -119,10 +119,7 @@ class DaemonManager:
             return 1
 
         try:
-            result = subprocess.run(
-                ["sudo", str(script_path)],
-                check=False
-            )
+            result = subprocess.run(["sudo", str(script_path)], check=False)
             return result.returncode
         except Exception as e:
             console.print(f"[red]✗ Uninstallation failed: {e}[/red]")
@@ -140,7 +137,7 @@ class DaemonManager:
             panel = Panel(
                 self.client.format_health_snapshot(health),
                 title="[bold]Daemon Health[/bold]",
-                border_style="green"
+                border_style="green",
             )
             console.print(panel)
             return 0
@@ -153,7 +150,12 @@ class DaemonManager:
             console.print(f"[red]✗ Protocol error: {e}[/red]")
             return 1
 
-    def alerts(self, severity: Optional[str] = None, acknowledge_all: bool = False, dismiss_id: Optional[str] = None) -> int:
+    def alerts(
+        self,
+        severity: str | None = None,
+        acknowledge_all: bool = False,
+        dismiss_id: str | None = None,
+    ) -> int:
         """Show daemon alerts"""
         if not self.check_daemon_installed():
             console.print("[red]✗ Daemon is not installed[/red]")
@@ -174,7 +176,11 @@ class DaemonManager:
                 console.print(f"[green]✓ Acknowledged {count} alerts[/green]")
                 return 0
 
-            alerts = self.client.get_alerts(severity=severity) if severity else self.client.get_active_alerts()
+            alerts = (
+                self.client.get_alerts(severity=severity)
+                if severity
+                else self.client.get_active_alerts()
+            )
 
             if not alerts:
                 console.print("[green]✓ No active alerts[/green]")
@@ -186,40 +192,44 @@ class DaemonManager:
                 severity_val = alert.get("severity", "info")
                 severity_style = {
                     "info": "blue",
-                    "warning": "yellow", 
+                    "warning": "yellow",
                     "error": "red",
-                    "critical": "red bold"
+                    "critical": "red bold",
                 }.get(severity_val, "white")
-                
+
                 alert_id = alert.get("id", "")[:8]
                 alert_type = alert.get("type", "unknown")
                 title = alert.get("title", "")
                 message = alert.get("message", "")
                 metadata = alert.get("metadata", {})
                 is_ai_enhanced = metadata.get("ai_enhanced") == "true"
-                
+
                 # Severity icon
                 severity_icon = {
                     "info": "ℹ️ ",
                     "warning": "⚠️ ",
                     "error": "❌",
-                    "critical": "🚨"
+                    "critical": "🚨",
                 }.get(severity_val, "•")
-                
+
                 # Print alert header
-                console.print(f"{severity_icon} [{severity_style}][bold]{title}[/bold][/{severity_style}]")
-                console.print(f"   [dim]ID: {alert_id}... | Type: {alert_type} | Severity: {severity_val}[/dim]")
-                
+                console.print(
+                    f"{severity_icon} [{severity_style}][bold]{title}[/bold][/{severity_style}]"
+                )
+                console.print(
+                    f"   [dim]ID: {alert_id}... | Type: {alert_type} | Severity: {severity_val}[/dim]"
+                )
+
                 # Check if message contains AI analysis
                 if "💡 AI Analysis:" in message:
                     # Split into basic message and AI analysis
                     parts = message.split("\n\n💡 AI Analysis:\n", 1)
                     basic_msg = parts[0]
                     ai_analysis = parts[1] if len(parts) > 1 else ""
-                    
+
                     # Print basic message
                     console.print(f"   {basic_msg}")
-                    
+
                     # Print AI analysis in a highlighted box
                     if ai_analysis:
                         console.print()
@@ -231,11 +241,11 @@ class DaemonManager:
                     # Print regular message
                     for line in message.split("\n"):
                         console.print(f"   {line}")
-                
+
                 # Add badge for AI-enhanced alerts
                 if is_ai_enhanced:
                     console.print("   [dim cyan]🤖 AI-enhanced[/dim cyan]")
-                
+
                 console.print()  # Blank line between alerts
 
             return 0
@@ -281,7 +291,9 @@ class DaemonManager:
 
         try:
             version_info = self.client.get_version()
-            console.print(f"[cyan]{version_info.get('name', 'cortexd')}[/cyan] version [green]{version_info.get('version', 'unknown')}[/green]")
+            console.print(
+                f"[cyan]{version_info.get('name', 'cortexd')}[/cyan] version [green]{version_info.get('version', 'unknown')}[/green]"
+            )
             return 0
         except DaemonConnectionError as e:
             console.print(f"[red]✗ Connection error: {e}[/red]")
@@ -301,7 +313,7 @@ class DaemonManager:
 
         try:
             config = self.client.get_config()
-            
+
             # Format config for display
             lines = [
                 f"  Socket Path:        {config.get('socket_path', 'N/A')}",
@@ -311,7 +323,7 @@ class DaemonManager:
                 f"  Monitor Interval:   {config.get('monitor_interval_sec', 'N/A')}s",
                 f"  Log Level:          {config.get('log_level', 'N/A')}",
             ]
-            
+
             thresholds = config.get("thresholds", {})
             if thresholds:
                 lines.append("")
@@ -322,9 +334,7 @@ class DaemonManager:
                 lines.append(f"    Memory Critical:  {thresholds.get('mem_crit', 0) * 100:.0f}%")
 
             panel = Panel(
-                "\n".join(lines),
-                title="[bold]Daemon Configuration[/bold]",
-                border_style="cyan"
+                "\n".join(lines), title="[bold]Daemon Configuration[/bold]", border_style="cyan"
             )
             console.print(panel)
             return 0
@@ -346,7 +356,7 @@ class DaemonManager:
 
         try:
             status = self.client.get_llm_status()
-            
+
             lines = [
                 f"  Loaded:             {'Yes' if status.get('loaded') else 'No'}",
                 f"  Running:            {'Yes' if status.get('running') else 'No'}",
@@ -354,7 +364,7 @@ class DaemonManager:
                 f"  Queue Size:         {status.get('queue_size', 0)}",
                 f"  Memory Usage:       {status.get('memory_bytes', 0) / 1024 / 1024:.1f} MB",
             ]
-            
+
             if status.get("loaded") and status.get("model"):
                 model = status["model"]
                 lines.append("")
@@ -365,9 +375,7 @@ class DaemonManager:
                 lines.append(f"    Quantized:        {'Yes' if model.get('quantized') else 'No'}")
 
             panel = Panel(
-                "\n".join(lines),
-                title="[bold]LLM Engine Status[/bold]",
-                border_style="cyan"
+                "\n".join(lines), title="[bold]LLM Engine Status[/bold]", border_style="cyan"
             )
             console.print(panel)
             return 0
@@ -434,4 +442,4 @@ class DaemonManager:
     def confirm(message: str) -> bool:
         """Ask user for confirmation"""
         response = console.input(f"[yellow]{message} [y/N][/yellow] ")
-        return response.lower() == 'y'
+        return response.lower() == "y"
