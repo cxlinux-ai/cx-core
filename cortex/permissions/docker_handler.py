@@ -216,7 +216,7 @@ class DockerPermissionHandler:
 
         # Adjust for common container paths
         if "/var/www/" in path or "/app/" in path:
-            fix["recommended"] = "0o755" if issue.get("is_directory") else "0o644"
+            fix["recommended"] = 0o755 if issue.get("is_directory") else 0o644
             fix["reason"] = "Web application files in container"
 
         return fix
