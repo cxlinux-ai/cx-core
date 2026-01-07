@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.config.git_manager import GitManager
@@ -39,29 +40,112 @@ class CortexCLI:
         self.spinner_idx = 0
         self.verbose = verbose
 
+    # Define a method to handle Docker-specific permission repairs
+    def docker_permissions(self, args: argparse.Namespace) -> int:
+        """Handle the diagnosis and repair of Docker file permissions.
+
+        This method coordinates the environment-aware scanning of the project
+        directory and applies ownership reclamation logic. It ensures that
+        administrative actions (sudo) are never performed without user
+        acknowledgment unless the non-interactive flag is present.
+
+        Args:
+            args: The parsed command-line arguments containing the execution
+                context and safety flags.
+
+        Returns:
+            int: 0 if successful or the operation was gracefully cancelled,
+                1 if a system or logic error occurred.
+        """
+        from cortex.permission_manager import PermissionManager
+
+        try:
+            manager = PermissionManager(os.getcwd())
+            cx_print("🔍 Scanning for Docker-related permission issues...", "info")
+
+            # Validate Docker Compose configurations for missing user mappings
+            # to help prevent future permission drift.
+            manager.check_compose_config()
+
+            # Retrieve execution context from argparse.
+            execute_flag = getattr(args, "execute", False)
+            yes_flag = getattr(args, "yes", False)
+
+            # SAFETY GUARD: If executing repairs, prompt for confirmation unless
+            # the --yes flag was provided. This follows the project safety
+            # standard: 'No silent sudo execution'.
+            if execute_flag and not yes_flag:
+                mismatches = manager.diagnose()
+                if mismatches:
+                    cx_print(
+                        f"⚠️ Found {len(mismatches)} paths requiring ownership reclamation.",
+                        "warning",
+                    )
+                    try:
+                        # Interactive confirmation prompt for administrative repair.
+                        response = console.input(
+                            "[bold cyan]Reclaim ownership using sudo? (y/n): [/bold cyan]"
+                        )
+                        if response.lower() not in ("y", "yes"):
+                            cx_print("Operation cancelled", "info")
+                            return 0
+                    except (EOFError, KeyboardInterrupt):
+                        # Graceful handling of terminal exit or manual interruption.
+                        console.print()
+                        cx_print("Operation cancelled", "info")
+                        return 0
+
+            # Delegate repair logic to PermissionManager. If execute is False,
+            # a dry-run report is generated. If True, repairs are batched to
+            # avoid system ARG_MAX shell limits.
+            if manager.fix_permissions(execute=execute_flag):
+                if execute_flag:
+                    cx_print("✨ Permissions fixed successfully!", "success")
+                return 0
+
+            return 1
+
+        except (PermissionError, FileNotFoundError, OSError) as e:
+            # Handle system-level access issues or missing project files.
+            cx_print(f"❌ Permission check failed: {e}", "error")
+            return 1
+        except NotImplementedError as e:
+            # Report environment incompatibility (e.g., native Windows).
+            cx_print(f"❌ {e}", "error")
+            return 1
+        except Exception as e:
+            # Safety net for unexpected runtime exceptions to prevent CLI crashes.
+            cx_print(f"❌ Unexpected error: {e}", "error")
+            return 1
+
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
         if self.verbose:
             console.print(f"[dim][DEBUG] {message}[/dim]")
 
     def _get_api_key(self) -> str | None:
-        # Check if using Ollama or Fake provider (no API key needed)
-        provider = self._get_provider()
-        if provider == "ollama":
-            self._debug("Using Ollama (no API key required)")
-            return "ollama-local"  # Placeholder for Ollama
-        if provider == "fake":
+        # 1. Check explicit provider override first (fake/ollama need no key)
+        explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+        if explicit_provider == "fake":
             self._debug("Using Fake provider for testing")
-            return "fake-key"  # Placeholder for Fake provider
+            return "fake-key"
+        if explicit_provider == "ollama":
+            self._debug("Using Ollama (no API key required)")
+            return "ollama-local"
 
-        is_valid, detected_provider, error = validate_api_key()
-        if not is_valid:
-            self._print_error(error)
-            cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
-            cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
-            return None
-        api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
-        return api_key
+        # 2. Try auto-detection + prompt to save (setup_api_key handles both)
+        success, key, detected_provider = setup_api_key()
+        if success:
+            self._debug(f"Using {detected_provider} API key")
+            # Store detected provider so _get_provider can use it
+            self._detected_provider = detected_provider
+            return key
+
+        # Still no key
+        self._print_error("No API key found or provided")
+        cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
+        cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
+        return None
 
     def _get_provider(self) -> str:
         # Check environment variable for explicit provider choice
@@ -69,7 +153,14 @@ class CortexCLI:
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
             return explicit_provider
 
-        # Auto-detect based on available API keys
+        # Use provider from auto-detection (set by _get_api_key)
+        detected = getattr(self, "_detected_provider", None)
+        if detected == "anthropic":
+            return "claude"
+        elif detected == "openai":
+            return "openai"
+
+        # Check env vars (may have been set by auto-detect)
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
         elif os.environ.get("OPENAI_API_KEY"):
@@ -287,6 +378,226 @@ class CortexCLI:
         self._print_success(f"\n✅ Stack '{stack['name']}' installed successfully!")
         console.print(f"Installed {len(packages)} packages")
         return 0
+
+    # --- Sandbox Commands (Docker-based package testing) ---
+    def sandbox(self, args: argparse.Namespace) -> int:
+        """Handle `cortex sandbox` commands for Docker-based package testing."""
+        from cortex.sandbox import (
+            DockerNotFoundError,
+            DockerSandbox,
+            SandboxAlreadyExistsError,
+            SandboxNotFoundError,
+            SandboxTestStatus,
+        )
+
+        action = getattr(args, "sandbox_action", None)
+
+        if not action:
+            cx_print("\n🐳 Docker Sandbox - Test packages safely before installing\n", "info")
+            console.print("Usage: cortex sandbox <command> [options]")
+            console.print("\nCommands:")
+            console.print("  create <name>              Create a sandbox environment")
+            console.print("  install <name> <package>   Install package in sandbox")
+            console.print("  test <name> [package]      Run tests in sandbox")
+            console.print("  promote <name> <package>   Install tested package on main system")
+            console.print("  cleanup <name>             Remove sandbox environment")
+            console.print("  list                       List all sandboxes")
+            console.print("  exec <name> <cmd...>       Execute command in sandbox")
+            console.print("\nExample workflow:")
+            console.print("  cortex sandbox create test-env")
+            console.print("  cortex sandbox install test-env nginx")
+            console.print("  cortex sandbox test test-env")
+            console.print("  cortex sandbox promote test-env nginx")
+            console.print("  cortex sandbox cleanup test-env")
+            return 0
+
+        try:
+            sandbox = DockerSandbox()
+
+            if action == "create":
+                return self._sandbox_create(sandbox, args)
+            elif action == "install":
+                return self._sandbox_install(sandbox, args)
+            elif action == "test":
+                return self._sandbox_test(sandbox, args)
+            elif action == "promote":
+                return self._sandbox_promote(sandbox, args)
+            elif action == "cleanup":
+                return self._sandbox_cleanup(sandbox, args)
+            elif action == "list":
+                return self._sandbox_list(sandbox)
+            elif action == "exec":
+                return self._sandbox_exec(sandbox, args)
+            else:
+                self._print_error(f"Unknown sandbox action: {action}")
+                return 1
+
+        except DockerNotFoundError as e:
+            self._print_error(str(e))
+            cx_print("Docker is required only for sandbox commands.", "info")
+            return 1
+        except SandboxNotFoundError as e:
+            self._print_error(str(e))
+            cx_print("Use 'cortex sandbox list' to see available sandboxes.", "info")
+            return 1
+        except SandboxAlreadyExistsError as e:
+            self._print_error(str(e))
+            return 1
+
+    def _sandbox_create(self, sandbox, args: argparse.Namespace) -> int:
+        """Create a new sandbox environment."""
+        name = args.name
+        image = getattr(args, "image", "ubuntu:22.04")
+
+        cx_print(f"Creating sandbox '{name}'...", "info")
+        result = sandbox.create(name, image=image)
+
+        if result.success:
+            cx_print(f"✓ Sandbox environment '{name}' created", "success")
+            console.print(f"  [dim]{result.stdout}[/dim]")
+            return 0
+        else:
+            self._print_error(result.message)
+            if result.stderr:
+                console.print(f"  [red]{result.stderr}[/red]")
+            return 1
+
+    def _sandbox_install(self, sandbox, args: argparse.Namespace) -> int:
+        """Install a package in sandbox."""
+        name = args.name
+        package = args.package
+
+        cx_print(f"Installing '{package}' in sandbox '{name}'...", "info")
+        result = sandbox.install(name, package)
+
+        if result.success:
+            cx_print(f"✓ {package} installed in sandbox", "success")
+            return 0
+        else:
+            self._print_error(result.message)
+            if result.stderr:
+                console.print(f"  [dim]{result.stderr[:500]}[/dim]")
+            return 1
+
+    def _sandbox_test(self, sandbox, args: argparse.Namespace) -> int:
+        """Run tests in sandbox."""
+        from cortex.sandbox import SandboxTestStatus
+
+        name = args.name
+        package = getattr(args, "package", None)
+
+        cx_print(f"Running tests in sandbox '{name}'...", "info")
+        result = sandbox.test(name, package)
+
+        console.print()
+        for test in result.test_results:
+            if test.result == SandboxTestStatus.PASSED:
+                console.print(f"   ✓  {test.name}")
+                if test.message:
+                    console.print(f"      [dim]{test.message[:80]}[/dim]")
+            elif test.result == SandboxTestStatus.FAILED:
+                console.print(f"   ✗  {test.name}")
+                if test.message:
+                    console.print(f"      [red]{test.message}[/red]")
+            else:
+                console.print(f"   ⊘  {test.name} [dim](skipped)[/dim]")
+
+        console.print()
+        if result.success:
+            cx_print("All tests passed", "success")
+            return 0
+        else:
+            self._print_error("Some tests failed")
+            return 1
+
+    def _sandbox_promote(self, sandbox, args: argparse.Namespace) -> int:
+        """Promote a tested package to main system."""
+        name = args.name
+        package = args.package
+        dry_run = getattr(args, "dry_run", False)
+        skip_confirm = getattr(args, "yes", False)
+
+        if dry_run:
+            result = sandbox.promote(name, package, dry_run=True)
+            cx_print(f"Would run: sudo apt-get install -y {package}", "info")
+            return 0
+
+        # Confirm with user unless -y flag
+        if not skip_confirm:
+            console.print(f"\nPromote '{package}' to main system? [Y/n]: ", end="")
+            try:
+                response = input().strip().lower()
+                if response and response not in ("y", "yes"):
+                    cx_print("Promotion cancelled", "warning")
+                    return 0
+            except (EOFError, KeyboardInterrupt):
+                console.print()
+                cx_print("Promotion cancelled", "warning")
+                return 0
+
+        cx_print(f"Installing '{package}' on main system...", "info")
+        result = sandbox.promote(name, package, dry_run=False)
+
+        if result.success:
+            cx_print(f"✓ {package} installed on main system", "success")
+            return 0
+        else:
+            self._print_error(result.message)
+            if result.stderr:
+                console.print(f"  [red]{result.stderr[:500]}[/red]")
+            return 1
+
+    def _sandbox_cleanup(self, sandbox, args: argparse.Namespace) -> int:
+        """Remove a sandbox environment."""
+        name = args.name
+        force = getattr(args, "force", False)
+
+        cx_print(f"Removing sandbox '{name}'...", "info")
+        result = sandbox.cleanup(name, force=force)
+
+        if result.success:
+            cx_print(f"✓ Sandbox '{name}' removed", "success")
+            return 0
+        else:
+            self._print_error(result.message)
+            return 1
+
+    def _sandbox_list(self, sandbox) -> int:
+        """List all sandbox environments."""
+        sandboxes = sandbox.list_sandboxes()
+
+        if not sandboxes:
+            cx_print("No sandbox environments found", "info")
+            cx_print("Create one with: cortex sandbox create <name>", "info")
+            return 0
+
+        cx_print("\n🐳 Sandbox Environments:\n", "info")
+        for sb in sandboxes:
+            status_icon = "🟢" if sb.state.value == "running" else "⚪"
+            console.print(f"  {status_icon} [green]{sb.name}[/green]")
+            console.print(f"      Image: {sb.image}")
+            console.print(f"      Created: {sb.created_at[:19]}")
+            if sb.packages:
+                console.print(f"      Packages: {', '.join(sb.packages)}")
+            console.print()
+
+        return 0
+
+    def _sandbox_exec(self, sandbox, args: argparse.Namespace) -> int:
+        """Execute command in sandbox."""
+        name = args.name
+        command = args.command
+
+        result = sandbox.exec_command(name, command)
+
+        if result.stdout:
+            console.print(result.stdout, end="")
+        if result.stderr:
+            console.print(result.stderr, style="red", end="")
+
+        return result.exit_code
+
+    # --- End Sandbox Commands ---
 
     def ask(self, question: str) -> int:
         """Answer a natural language question about the system."""
@@ -1307,7 +1618,12 @@ class CortexCLI:
 
 
 def show_rich_help():
-    """Display beautifully formatted help using Rich"""
+    """Display a beautifully formatted help table using the Rich library.
+
+    This function outputs the primary command menu, providing descriptions
+    for all core Cortex utilities including installation, environment
+    management, and container tools.
+    """
     from rich.table import Table
 
     show_banner(show_version=True)
@@ -1317,11 +1633,12 @@ def show_rich_help():
     console.print("[dim]Just tell Cortex what you want to install.[/dim]")
     console.print()
 
-    # Commands table
+    # Initialize a table to display commands with specific column styling
     table = Table(show_header=True, header_style="bold cyan", box=None)
     table.add_column("Command", style="green")
     table.add_column("Description")
 
+    # Command Rows
     table.add_row("ask <question>", "Ask about your system")
     table.add_row("demo", "See Cortex in action")
     table.add_row("wizard", "Configure API key")
@@ -1334,6 +1651,8 @@ def show_rich_help():
     table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("stack <name>", "Install the stack")
+    table.add_row("docker permissions", "Fix Docker bind-mount permissions")
+    table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
     table.add_row("doctor", "System health check")
 
     console.print(table)
@@ -1422,6 +1741,22 @@ def main():
     commit_parser.add_argument("message", help="Commit message")
 
     # --------------------------
+
+    # Define the docker command and its associated sub-actions
+    docker_parser = subparsers.add_parser("docker", help="Docker and container utilities")
+    docker_subs = docker_parser.add_subparsers(dest="docker_action", help="Docker actions")
+
+    # Add the permissions action to allow fixing file ownership issues
+    perm_parser = docker_subs.add_parser(
+        "permissions", help="Fix file permissions from bind mounts"
+    )
+
+    # Provide an option to skip the manual confirmation prompt
+    perm_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+
+    perm_parser.add_argument(
+        "--execute", "-e", action="store_true", help="Apply ownership changes (default: dry-run)"
+    )
 
     # Demo command
     demo_parser = subparsers.add_parser("demo", help="See Cortex in action")
@@ -1522,6 +1857,56 @@ def main():
     cache_subs = cache_parser.add_subparsers(dest="cache_action", help="Cache actions")
     cache_subs.add_parser("stats", help="Show cache statistics")
 
+    # --- Sandbox Commands (Docker-based package testing) ---
+    sandbox_parser = subparsers.add_parser(
+        "sandbox", help="Test packages in isolated Docker sandbox"
+    )
+    sandbox_subs = sandbox_parser.add_subparsers(dest="sandbox_action", help="Sandbox actions")
+
+    # sandbox create <name> [--image IMAGE]
+    sandbox_create_parser = sandbox_subs.add_parser("create", help="Create a sandbox environment")
+    sandbox_create_parser.add_argument("name", help="Unique name for the sandbox")
+    sandbox_create_parser.add_argument(
+        "--image", default="ubuntu:22.04", help="Docker image to use (default: ubuntu:22.04)"
+    )
+
+    # sandbox install <name> <package>
+    sandbox_install_parser = sandbox_subs.add_parser("install", help="Install a package in sandbox")
+    sandbox_install_parser.add_argument("name", help="Sandbox name")
+    sandbox_install_parser.add_argument("package", help="Package to install")
+
+    # sandbox test <name> [package]
+    sandbox_test_parser = sandbox_subs.add_parser("test", help="Run tests in sandbox")
+    sandbox_test_parser.add_argument("name", help="Sandbox name")
+    sandbox_test_parser.add_argument("package", nargs="?", help="Specific package to test")
+
+    # sandbox promote <name> <package> [--dry-run]
+    sandbox_promote_parser = sandbox_subs.add_parser(
+        "promote", help="Install tested package on main system"
+    )
+    sandbox_promote_parser.add_argument("name", help="Sandbox name")
+    sandbox_promote_parser.add_argument("package", help="Package to promote")
+    sandbox_promote_parser.add_argument(
+        "--dry-run", action="store_true", help="Show command without executing"
+    )
+    sandbox_promote_parser.add_argument(
+        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
+    )
+
+    # sandbox cleanup <name> [--force]
+    sandbox_cleanup_parser = sandbox_subs.add_parser("cleanup", help="Remove a sandbox environment")
+    sandbox_cleanup_parser.add_argument("name", help="Sandbox name to remove")
+    sandbox_cleanup_parser.add_argument("-f", "--force", action="store_true", help="Force removal")
+
+    # sandbox list
+    sandbox_subs.add_parser("list", help="List all sandbox environments")
+
+    # sandbox exec <name> <command...>
+    sandbox_exec_parser = sandbox_subs.add_parser("exec", help="Execute command in sandbox")
+    sandbox_exec_parser.add_argument("name", help="Sandbox name")
+    sandbox_exec_parser.add_argument("command", nargs="+", help="Command to execute")
+    # --------------------------
+
     # --- Environment Variable Management Commands ---
     env_parser = subparsers.add_parser("env", help="Manage environment variables")
     env_subs = env_parser.add_subparsers(dest="env_action", help="Environment actions")
@@ -1616,13 +2001,22 @@ def main():
 
     args = parser.parse_args()
 
+    # The Guard: Check for empty commands before starting the CLI
     if not args.command:
         show_rich_help()
         return 0
 
+    # Initialize the CLI handler
     cli = CortexCLI(verbose=args.verbose)
 
     try:
+        # Route the command to the appropriate method inside the cli object
+        if args.command == "docker":
+            if args.docker_action == "permissions":
+                return cli.docker_permissions(args)
+            parser.print_help()
+            return 1
+
         if args.command == "demo":
             return cli.demo()
         elif args.command == "wizard":
@@ -1686,6 +2080,8 @@ def main():
             return cli.notify(args)
         elif args.command == "stack":
             return cli.stack(args)
+        elif args.command == "sandbox":
+            return cli.sandbox(args)
         elif args.command == "cache":
             if getattr(args, "cache_action", None) == "stats":
                 return cli.cache_stats()
