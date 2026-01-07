@@ -19,7 +19,7 @@ from pathlib import Path
 
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 
-#Let the application configure logging; don't set basicConfig at module level
+# Let the application configure logging; don't set basicConfig at module level
 logger = logging.getLogger(__name__)
 
 
@@ -369,7 +369,7 @@ class TarballHelper:
 
         # Pattern: PKG_CHECK_MODULES([VAR], [package])
         pkg_check_pattern = re.compile(
-            r"^PKG_CHECK_MODULES\s*\(\s*[^,]+,\s*\[([A-Za-z0-9_.+-]+)\]\s*\)",
+            r"^PKG_CHECK_MODULES\s*\(\s*[^,\s]+\s*,\s*\[([A-Za-z0-9_.+-]+)\]\s*\)   ",
             re.MULTILINE,
         )
         for match in pkg_check_pattern.finditer(content):
@@ -385,7 +385,7 @@ class TarballHelper:
                 dependencies.append(dep)
 
         # Pattern: AC_CHECK_HEADER(header, ...)
-        ac_check_header_pattern = r"^AC_CHECK_HEADER\s*\(\s*([^'\s,)]+)\s*[,)]"   
+        ac_check_header_pattern = r"^AC_CHECK_HEADER\s*\(\s*([^'\s,)]+)\s*[,)]"
         for match in re.finditer(ac_check_header_pattern, content):
             header = match.group(1).strip().strip("\"'")
             if header:

@@ -1379,10 +1379,8 @@ class CortexCLI:
 
     def tarball_command(self, args: argparse.Namespace) -> int:
         """Handle tarball analysis and installation commands.
-        
         Analyzes source tarballs to detect build systems, identify dependencies,
         check for missing -dev packages, and optionally install them with tracking.
-        
         Args:
             args: Parsed command-line arguments containing:
                 - tarball: Path to tarball file
@@ -1390,10 +1388,9 @@ class CortexCLI:
                 - install_deps: Whether to install missing dependencies
                 - dry_run: Whether to perform dry-run only
                 - no_track: Whether to disable installation tracking
-        
+
         Returns:
             0 on success, 1 on failure
-        
         Raises:
             FileNotFoundError: If tarball file doesn't exist
         """
