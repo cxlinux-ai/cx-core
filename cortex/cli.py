@@ -23,6 +23,7 @@ from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
 from cortex.permissions.auditor_fixer import PermissionAuditor
+
 PermissionManager = PermissionAuditor  # Alias for compatibility
 from cortex.stack_manager import StackManager
 from cortex.validators import validate_api_key, validate_install_request
@@ -141,10 +142,12 @@ class CortexCLI:
             )
 
             path = getattr(args, "path", ".")
-            apply_fixes = getattr(args, "fix", False)
+            dry_run_flag = getattr(args, "dry_run", False)
+            fix_flag = getattr(args, "fix", False)
+            apply_fixes = dry_run_flag or fix_flag
 
             # Scan and fix
-            result = manager.scan_and_fix(path=path, apply_fixes=apply_fixes)
+            result = manager.scan_and_fix(path=path, apply_fixes=apply_fixes, dry_run=dry_run_flag)
 
             # Print report
             cx_print(result["report"], "info")
@@ -152,7 +155,7 @@ class CortexCLI:
             # Return exit code
             issues_found = result.get("issues_found", 0)
             fixes_applied = result.get("fixed", False)
-            
+
             if issues_found == 0 or fixes_applied:
                 return 0
             else:
@@ -161,6 +164,7 @@ class CortexCLI:
         except Exception as e:
             cx_print(f"Error during permission audit: {e}", "error")
             return 1
+
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
         if self.verbose:
