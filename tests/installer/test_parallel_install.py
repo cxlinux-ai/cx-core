@@ -17,9 +17,9 @@ class TestParallelExecution:
         async def run_test():
             # Create 3 independent commands using Python's time.sleep (Windows-compatible)
             commands = [
-                "python -c \"import time; time.sleep(0.1); print('Task 1')\"",
-                "python -c \"import time; time.sleep(0.1); print('Task 2')\"",
-                "python -c \"import time; time.sleep(0.1); print('Task 3')\"",
+                "python3 -c \"import time; time.sleep(0.1); print('Task 1')\"",
+                "python3 -c \"import time; time.sleep(0.1); print('Task 2')\"",
+                "python3 -c \"import time; time.sleep(0.1); print('Task 3')\"",
             ]
 
             # Run in parallel
@@ -42,9 +42,9 @@ class TestParallelExecution:
 
         async def run_test():
             commands = [
-                "python -c \"print('Task 1')\"",
-                "python -c \"print('Task 2')\"",
-                "python -c \"print('Task 3')\"",
+                "python3 -c \"print('Task 1')\"",
+                "python3 -c \"print('Task 2')\"",
+                "python3 -c \"print('Task 3')\"",
             ]
 
             # Task 1 has no dependencies
@@ -70,9 +70,9 @@ class TestParallelExecution:
 
         async def run_test():
             commands = [
-                'python -c "exit(1)"',  # Task 1 fails
-                "python -c \"print('Task 2')\"",  # Task 2 depends on Task 1
-                "python -c \"print('Task 3')\"",  # Task 3 is independent
+                'python3 -c "exit(1)"',  # Task 1 fails
+                "python3 -c \"print('Task 2')\"",  # Task 2 depends on Task 1
+                "python3 -c \"print('Task 3')\"",  # Task 3 is independent
             ]
 
             # Task 2 depends on Task 1
@@ -98,10 +98,10 @@ class TestParallelExecution:
 
         async def run_test():
             commands = [
-                "python -c \"print('Task 1')\"",
-                "python -c \"print('Task 2')\"",
-                "python -c \"print('Task 3')\"",
-                "python -c \"print('Task 4')\"",
+                "python3 -c \"print('Task 1')\"",
+                "python3 -c \"print('Task 2')\"",
+                "python3 -c \"print('Task 3')\"",
+                "python3 -c \"print('Task 4')\"",
             ]
 
             # All tasks are independent (no dependencies)
@@ -121,7 +121,7 @@ class TestParallelExecution:
         """Verify that descriptions are properly assigned to tasks."""
 
         async def run_test():
-            commands = ["python -c \"print('Task 1')\"", "python -c \"print('Task 2')\""]
+            commands = ["python3 -c \"print('Task 1')\"", "python3 -c \"print('Task 2')\""]
             descriptions = ["Install package A", "Start service B"]
 
             success, tasks = await run_parallel_install(
@@ -138,7 +138,7 @@ class TestParallelExecution:
         """Verify that mismatched description count raises ValueError."""
 
         async def run_test():
-            commands = ["python -c \"print('Task 1')\"", "python -c \"print('Task 2')\""]
+            commands = ["python3 -c \"print('Task 1')\"", "python3 -c \"print('Task 2')\""]
             descriptions = ["Only one description"]  # Mismatch
 
             with pytest.raises(ValueError):
@@ -151,7 +151,7 @@ class TestParallelExecution:
 
         async def run_test():
             commands = [
-                'python -c "import time; time.sleep(5)"',  # This will timeout with 1 second limit
+                'python3 -c "import time; time.sleep(5)"',  # This will timeout with 1 second limit
             ]
 
             success, tasks = await run_parallel_install(commands, timeout=1)
@@ -177,7 +177,7 @@ class TestParallelExecution:
         """Verify that task status is properly tracked."""
 
         async def run_test():
-            commands = ["python -c \"print('Success')\""]
+            commands = ["python3 -c \"print('Success')\""]
 
             success, tasks = await run_parallel_install(commands, timeout=10)
 
@@ -197,9 +197,9 @@ class TestParallelExecution:
 
         async def run_test():
             commands = [
-                "python -c \"print('Step 1')\"",
-                "python -c \"print('Step 2')\"",
-                "python -c \"print('Step 3')\"",
+                "python3 -c \"print('Step 1')\"",
+                "python3 -c \"print('Step 2')\"",
+                "python3 -c \"print('Step 3')\"",
             ]
             descriptions = ["Step 1", "Step 2", "Step 3"]
 
@@ -218,7 +218,7 @@ class TestParallelExecution:
         """Verify that log callback is invoked during execution."""
 
         async def run_test():
-            commands = ["python -c \"print('Test')\""]
+            commands = ["python3 -c \"print('Test')\""]
             log_messages = []
 
             def log_callback(message: str, level: str = "info"):
@@ -247,10 +247,10 @@ class TestParallelExecutionIntegration:
 
         async def run_test():
             commands = [
-                "python -c \"print('Base')\"",  # Task 1
-                "python -c \"print('Branch A')\"",  # Task 2
-                "python -c \"print('Branch B')\"",  # Task 3
-                "python -c \"print('Final')\"",  # Task 4
+                "python3 -c \"print('Base')\"",  # Task 1
+                "python3 -c \"print('Branch A')\"",  # Task 2
+                "python3 -c \"print('Branch B')\"",  # Task 3
+                "python3 -c \"print('Final')\"",  # Task 4
             ]
 
             # Task 2 and 3 depend on Task 1
@@ -276,9 +276,9 @@ class TestParallelExecutionIntegration:
 
         async def run_test():
             commands = [
-                'python -c "exit(1)"',  # Task 1 fails
-                "python -c \"print('OK')\"",  # Task 2 independent
-                "python -c \"print('OK')\"",  # Task 3 independent
+                'python3 -c "exit(1)"',  # Task 1 fails
+                "python3 -c \"print('OK')\"",  # Task 2 independent
+                "python3 -c \"print('OK')\"",  # Task 3 independent
             ]
 
             dependencies = {0: [], 1: [], 2: []}

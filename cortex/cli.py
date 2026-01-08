@@ -39,6 +39,16 @@ class CortexCLI:
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.verbose = verbose
+        
+        # Initialize language manager and translator
+        self.lang_manager = LanguageManager()
+        detected_language = language or self.lang_manager.detect_language()
+        from cortex.i18n import get_translator
+        self.translator = get_translator(detected_language)
+    
+    def t(self, key: str, **kwargs) -> str:
+        """Shortcut for translator.get()"""
+        return self.translator.get(key, **kwargs)
 
     # Define a method to handle Docker-specific permission repairs
     def docker_permissions(self, args: argparse.Namespace) -> int:
