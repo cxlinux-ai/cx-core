@@ -411,6 +411,7 @@ class TestSecuritySchedulerSystemd(unittest.TestCase):
 
             scheduler = SecurityScheduler()
             scheduler.config_path = Path(self.config_path)
+            scheduler.cortex_binary = "/usr/bin/cortex"
             scheduler.schedules = {}
 
             scheduler.create_schedule(

@@ -49,9 +49,14 @@ class SecuritySchedule:
 class SecurityScheduler:
     """Manages scheduled security scans and patches"""
 
-    def __init__(self):
-        """Initialize the security scheduler"""
+    def __init__(self, cortex_binary: str = "/usr/bin/cortex"):
+        """Initialize the security scheduler.
+
+        Args:
+            cortex_binary: Path to the cortex binary for systemd service files
+        """
         self.config_path = Path.home() / ".cortex" / "security_schedule.json"
+        self.cortex_binary = cortex_binary
         self.schedules: dict[str, SecuritySchedule] = {}
         self._load_schedules()
 
@@ -224,14 +229,10 @@ class SecurityScheduler:
                         strategy=schedule.patch_strategy, dry_run=schedule.dry_run
                     )
 
-                    # Get critical/high vulnerabilities
-                    to_patch = [
-                        v
-                        for v in scan_result.vulnerabilities
-                        if v.severity.value in ["critical", "high"]
-                    ]
-
-                    patch_result = patcher.patch_vulnerabilities(to_patch)
+                    # Let AutonomousPatcher apply its own strategy/severity filters
+                    patch_result = patcher.patch_vulnerabilities(
+                        scan_result.vulnerabilities
+                    )
 
                     results["patch_result"] = {
                         "packages_updated": len(patch_result.packages_updated),
@@ -281,7 +282,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/cortex security run {schedule_id}
+ExecStart={self.cortex_binary} security schedule run {schedule_id}
 User=root
 """
 

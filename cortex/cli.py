@@ -1095,8 +1095,6 @@ class CortexCLI:
 
     def _security_scan(self, args: argparse.Namespace) -> int:
         """Handle vulnerability scanning."""
-        import logging
-
         from cortex.vulnerability_scanner import Severity, VulnerabilityScanner
 
         # Suppress verbose logging for cleaner output
@@ -1197,8 +1195,6 @@ class CortexCLI:
 
     def _security_patch(self, args: argparse.Namespace) -> int:
         """Handle autonomous patching."""
-        import logging
-
         from cortex.autonomous_patcher import AutonomousPatcher, PatchStrategy
         from cortex.progress_indicators import get_progress_indicator
 
