@@ -139,6 +139,7 @@ class InstallationState(Enum):
 
     IDLE = "idle"
     WAITING_INPUT = "waiting_input"
+    WAITING_CONFIRMATION = "waiting_confirmation"
     PROCESSING = "processing"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -610,6 +611,7 @@ class UIRenderer:
         self.installation_progress = InstallationProgress()
         self.input_text = ""
         self.input_active = False
+        self._pending_commands: list[str] = []  # Commands pending confirmation
 
         # Current action state (for display)
         self.current_action = ActionType.NONE
@@ -780,12 +782,43 @@ class UIRenderer:
             content, title="📦 What would you like to install?", padding=(2, 2), box=ROUNDED
         )
 
+    def _render_confirmation_dialog(self) -> Panel:
+        """Render confirmation dialog for installation"""
+        progress = self.installation_progress
+        package = progress.package
+
+        lines = []
+        lines.append("[bold yellow]⚠️  Confirm Installation[/bold yellow]")
+        lines.append("")
+        lines.append(f"You are about to install: [bold cyan]{package}[/bold cyan]")
+        lines.append("")
+
+        # Show generated commands if available
+        if hasattr(self, "_pending_commands") and self._pending_commands:
+            lines.append("[bold]Commands to execute:[/bold]")
+            for i, cmd in enumerate(self._pending_commands[:5], 1):
+                # Truncate long commands
+                display_cmd = cmd if len(cmd) <= 60 else cmd[:57] + "..."
+                lines.append(f"  [dim]{i}.[/dim] {display_cmd}")
+            if len(self._pending_commands) > 5:
+                lines.append(f"  [dim]... and {len(self._pending_commands) - 5} more[/dim]")
+            lines.append("")
+
+        lines.append("[bold green]Press Y[/bold green] to confirm and install")
+        lines.append("[bold red]Press N[/bold red] or [bold red]Esc[/bold red] to cancel")
+
+        content = "\n".join(lines)
+        return Panel(content, title="⚠️ Confirm Installation", padding=(2, 2), box=ROUNDED)
+
     def _render_progress_panel(self) -> Panel:
         """Render progress panel with support for install, bench, doctor"""
         progress = self.installation_progress
 
         if progress.state == InstallationState.WAITING_INPUT:
             return self._render_input_dialog()
+
+        if progress.state == InstallationState.WAITING_CONFIRMATION:
+            return self._render_confirmation_dialog()
 
         lines = []
 
@@ -847,6 +880,7 @@ class UIRenderer:
         title_map = {
             InstallationState.IDLE: "📋 Progress",
             InstallationState.WAITING_INPUT: "📦 Installation",
+            InstallationState.WAITING_CONFIRMATION: "⚠️ Confirm Installation",
             InstallationState.PROCESSING: "🔄 Processing",
             InstallationState.IN_PROGRESS: "⏳ In Progress",
             InstallationState.COMPLETED: "✅ Completed",
@@ -926,6 +960,14 @@ class UIRenderer:
                 self.input_text = self.input_text[:-1]
             elif key.isprintable() and len(self.input_text) < MAX_INPUT_LENGTH:
                 self.input_text += key
+            return
+
+        # Handle confirmation mode (Y/N)
+        if self.installation_progress.state == InstallationState.WAITING_CONFIRMATION:
+            if key.lower() == "y":
+                self._confirm_installation()
+            elif key.lower() == "n" or key == "\x1b":  # N or Escape
+                self._cancel_operation()
             return
 
         # Handle action keys using centralized ACTION_MAP
@@ -1140,10 +1182,14 @@ class UIRenderer:
                 InstallationState.IN_PROGRESS,
                 InstallationState.PROCESSING,
                 InstallationState.WAITING_INPUT,
+                InstallationState.WAITING_CONFIRMATION,
             ]:
                 self.installation_progress.state = InstallationState.FAILED
                 self.installation_progress.error_message = "Operation cancelled by user"
                 self.installation_progress.current_library = ""
+                # Clear pending commands
+                if hasattr(self, "_pending_commands"):
+                    self._pending_commands = []
 
             # Cancel bench
             if self.bench_running:
@@ -1170,6 +1216,7 @@ class UIRenderer:
                 InstallationState.IN_PROGRESS,
                 InstallationState.PROCESSING,
                 InstallationState.WAITING_INPUT,
+                InstallationState.WAITING_CONFIRMATION,
             ]:
                 return
 
@@ -1181,6 +1228,7 @@ class UIRenderer:
             self.installation_progress.state = InstallationState.WAITING_INPUT
             self.input_active = True
             self.input_text = ""
+            self._pending_commands = []  # Clear any pending commands
             self.current_tab = DashboardTab.PROGRESS
             self.doctor_results = []
             self.stop_event.clear()
@@ -1201,8 +1249,216 @@ class UIRenderer:
                 # cli.install(package, dry_run=False)
                 self._simulate_installation()
             else:
-                # TODO: Implement real CLI call here
-                self._run_real_installation()
+                # Run dry-run first to get commands, then show confirmation
+                self._run_dry_run_and_confirm()
+
+    def _run_dry_run_and_confirm(self) -> None:
+        """
+        Run dry-run to get commands, then show confirmation dialog.
+        Executes in background thread with progress feedback.
+        """
+        self.stop_event.clear()
+        threading.Thread(target=self._execute_dry_run, daemon=True).start()
+
+    def _execute_dry_run(self) -> None:
+        """Execute dry-run to get commands, then show confirmation"""
+        import contextlib
+        import io
+
+        progress = self.installation_progress
+        package_name = progress.package
+
+        progress.state = InstallationState.IN_PROGRESS
+        progress.start_time = time.time()
+        progress.total_steps = 3  # Check, Parse, Confirm
+        progress.libraries = []
+
+        try:
+            # Step 1: Check prerequisites
+            progress.current_step = 1
+            progress.current_library = "Checking prerequisites..."
+            progress.update_elapsed()
+
+            # Check for API key first
+            api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                progress.state = InstallationState.FAILED
+                progress.error_message = (
+                    "No API key found!\n"
+                    "Set ANTHROPIC_API_KEY or OPENAI_API_KEY in your environment.\n"
+                    "Run 'cortex wizard' to configure."
+                )
+                return
+
+            if self.stop_event.is_set() or progress.state == InstallationState.FAILED:
+                return
+
+            # Step 2: Initialize CLI and get commands
+            progress.current_step = 2
+            progress.current_library = "Planning installation..."
+            progress.update_elapsed()
+
+            cli = CortexCLI()
+
+            # Capture CLI output for dry-run
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+
+            try:
+                with (
+                    contextlib.redirect_stdout(stdout_capture),
+                    contextlib.redirect_stderr(stderr_capture),
+                ):
+                    result = cli.install(package_name, dry_run=True, execute=False)
+            except Exception as e:
+                result = 1
+                stderr_capture.write(str(e))
+
+            stdout_output = stdout_capture.getvalue()
+            stderr_output = stderr_capture.getvalue()
+
+            if self.stop_event.is_set() or progress.state == InstallationState.FAILED:
+                return
+
+            if result != 0:
+                progress.state = InstallationState.FAILED
+                error_msg = stderr_output.strip() or stdout_output.strip()
+                import re
+
+                clean_msg = re.sub(r"\[.*?\]", "", error_msg)
+                clean_msg = clean_msg.strip()
+                if clean_msg:
+                    lines = clean_msg.split("\n")
+                    first_line = lines[0].strip()[:80]
+                    progress.error_message = (
+                        first_line or f"Failed to plan install for '{package_name}'"
+                    )
+                else:
+                    progress.error_message = f"Failed to plan install for '{package_name}'"
+                return
+
+            # Step 3: Extract commands and show confirmation
+            progress.current_step = 3
+            progress.current_library = "Ready for confirmation..."
+            progress.update_elapsed()
+
+            # Parse commands from output
+            commands = []
+            in_commands_section = False
+            for line in stdout_output.split("\n"):
+                if "Generated commands:" in line:
+                    in_commands_section = True
+                    continue
+                if in_commands_section and line.strip():
+                    # Commands are formatted as "  1. <command>"
+                    import re
+
+                    match = re.match(r"\s*\d+\.\s*(.+)", line)
+                    if match:
+                        commands.append(match.group(1))
+                    elif line.startswith("("):
+                        # End of commands section (dry run mode message)
+                        break
+
+            self._pending_commands = commands
+            progress.libraries = [f"Package: {package_name}"]
+            if commands:
+                progress.libraries.append(f"Commands: {len(commands)}")
+
+            # Show confirmation dialog
+            progress.state = InstallationState.WAITING_CONFIRMATION
+            progress.current_library = ""
+
+        except ImportError as e:
+            progress.state = InstallationState.FAILED
+            progress.error_message = f"Missing package: {e}"
+        except Exception as e:
+            progress.state = InstallationState.FAILED
+            progress.error_message = f"Error: {str(e)[:80]}"
+
+    def _confirm_installation(self) -> None:
+        """User confirmed installation - execute with --execute flag"""
+        self.installation_progress.state = InstallationState.PROCESSING
+        self.stop_event.clear()
+        threading.Thread(target=self._execute_confirmed_install, daemon=True).start()
+
+    def _execute_confirmed_install(self) -> None:
+        """Execute the confirmed installation with execute=True"""
+        import contextlib
+        import io
+
+        progress = self.installation_progress
+        package_name = progress.package
+
+        progress.state = InstallationState.IN_PROGRESS
+        progress.start_time = time.time()
+        progress.total_steps = 3  # Init, Execute, Complete
+        progress.current_step = 1
+        progress.current_library = "Starting installation..."
+        progress.update_elapsed()
+
+        try:
+            if self.stop_event.is_set():
+                return
+
+            # Step 2: Execute installation
+            progress.current_step = 2
+            progress.current_library = f"Installing {package_name}..."
+            progress.update_elapsed()
+
+            cli = CortexCLI()
+
+            # Capture CLI output
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+
+            try:
+                with (
+                    contextlib.redirect_stdout(stdout_capture),
+                    contextlib.redirect_stderr(stderr_capture),
+                ):
+                    result = cli.install(package_name, dry_run=False, execute=True)
+            except Exception as e:
+                result = 1
+                stderr_capture.write(str(e))
+
+            stdout_output = stdout_capture.getvalue()
+            stderr_output = stderr_capture.getvalue()
+
+            if self.stop_event.is_set():
+                return
+
+            # Step 3: Complete
+            progress.current_step = 3
+            progress.current_library = "Finalizing..."
+            progress.update_elapsed()
+
+            if result == 0:
+                progress.state = InstallationState.COMPLETED
+                progress.success_message = f"✓ Successfully installed '{package_name}'!"
+            else:
+                progress.state = InstallationState.FAILED
+                error_msg = stderr_output.strip() or stdout_output.strip()
+                import re
+
+                clean_msg = re.sub(r"\[.*?\]", "", error_msg)
+                clean_msg = clean_msg.strip()
+                if clean_msg:
+                    lines = clean_msg.split("\n")
+                    first_line = lines[0].strip()[:80]
+                    progress.error_message = first_line or f"Failed to install '{package_name}'"
+                else:
+                    progress.error_message = f"Installation failed for '{package_name}'"
+
+        except ImportError as e:
+            progress.state = InstallationState.FAILED
+            progress.error_message = f"Missing package: {e}"
+        except Exception as e:
+            progress.state = InstallationState.FAILED
+            progress.error_message = f"Error: {str(e)[:80]}"
+        finally:
+            progress.current_library = ""
+            self._pending_commands = []
 
     def _run_real_installation(self) -> None:
         """
