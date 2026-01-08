@@ -78,10 +78,36 @@ cortex security patch --scan-and-patch --strategy critical_only
 # Actually apply patches
 cortex security patch --scan-and-patch --strategy critical_only --apply
 
-# Set up monthly automated patching (Linux standard practice)
-cortex security schedule create monthly-patch --frequency monthly --enable-patching
+# Set up monthly automated patching (suitable for desktops/low-risk systems)
+cortex security schedule create monthly-patch --frequency monthly --enable-patch
+
+# For servers/critical systems, use weekly with critical-only strategy
+cortex security schedule create weekly-critical --frequency weekly --enable-patch
 cortex security schedule install-timer monthly-patch
 ```
+
+### Patching Frequency Guidelines
+
+Different systems have different security requirements. Choose the appropriate patching frequency based on your use case:
+
+| System Type | Recommended Frequency | Rationale |
+|-------------|----------------------|-----------|
+| **Production servers** | Weekly or daily (critical only) | Minimize exposure window for exploitable vulnerabilities |
+| **Internet-facing services** | Daily (critical/high) | High risk of exploitation; CVEs are weaponized within ~15 days |
+| **Development workstations** | Weekly | Balance productivity with security; less exposure than servers |
+| **Desktop/personal use** | Monthly | Standard Linux practice; lower risk profile |
+| **Air-gapped/isolated systems** | Monthly | Limited attack surface; coordinate with maintenance windows |
+| **Compliance-regulated (SOC2, HIPAA)** | Per policy, typically weekly | Meet audit requirements; document all patching activity |
+
+**When to patch more frequently:**
+- After major CVE disclosures (e.g., Log4Shell, Heartbleed-class vulnerabilities)
+- Systems handling sensitive data (PII, financial, healthcare)
+- Publicly accessible services (web servers, APIs, databases)
+
+**When monthly is appropriate:**
+- Internal-only systems with limited network exposure
+- Systems where stability is prioritized over immediate patching
+- Environments with change control processes requiring scheduled maintenance windows
 
 ### Safety Controls
 
@@ -110,7 +136,7 @@ cortex security schedule install-timer monthly-patch
 1. **Differentiation**: No other package manager offers AI-assisted security scanning + natural language patching
 2. **Enterprise requirement**: Automated compliance for SOC2, ISO27001, HIPAA
 3. **User safety**: Protect users from the 25,000+ CVEs published each year
-4. **Monthly Linux patching**: Standard practice — we should make it effortless
+4. **Flexible patching schedules**: From daily (critical systems) to monthly (desktops) — we make it effortless
 
 ### Industry Statistics
 

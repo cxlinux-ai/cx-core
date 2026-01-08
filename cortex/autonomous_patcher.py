@@ -40,7 +40,9 @@ def _get_severity_color(severity: Severity) -> str:
 
 # Module-level apt update lock for thread safety
 _apt_update_lock = threading.Lock()
-_APT_UPDATE_INTERVAL_SECONDS = 300  # 5 minutes
+# Default apt update interval: 5 minutes balances freshness with avoiding
+# excessive apt-get update calls during batch operations
+_DEFAULT_APT_UPDATE_INTERVAL_SECONDS = 300
 
 
 class PatchStrategy(Enum):
@@ -87,6 +89,7 @@ class AutonomousPatcher:
         auto_approve: bool = False,
         config_path: str | Path | None = None,
         allow_unverified_patches: bool = False,
+        apt_update_interval: int = _DEFAULT_APT_UPDATE_INTERVAL_SECONDS,
     ):
         """
         Initialize the autonomous patcher.
@@ -97,11 +100,15 @@ class AutonomousPatcher:
             auto_approve: If True, automatically approve patches (dangerous!)
             config_path: Optional path to config file (defaults to ~/.cortex/patcher_config.json)
             allow_unverified_patches: If True, allow patches when fixed_version is unknown
+            apt_update_interval: Seconds between apt-get update calls. Defaults to 300 (5 min).
+                                 Increase for systems running frequent scans to reduce load.
+                                 Decrease for time-sensitive security patching.
         """
         self.strategy = strategy
         self.dry_run = dry_run
         self.auto_approve = auto_approve
         self.allow_unverified_patches = allow_unverified_patches
+        self.apt_update_interval = apt_update_interval
         self.scanner = VulnerabilityScanner()
         self.history = InstallationHistory()
 
@@ -185,7 +192,7 @@ class AutonomousPatcher:
             # Check if we need to update
             if not force and self._apt_last_updated is not None:
                 elapsed = (now - self._apt_last_updated).total_seconds()
-                if elapsed < _APT_UPDATE_INTERVAL_SECONDS:
+                if elapsed < self.apt_update_interval:
                     logger.debug(f"Apt cache still fresh ({elapsed:.0f}s old), skipping update")
                     return True
 

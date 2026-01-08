@@ -6,6 +6,7 @@ Schedules regular vulnerability scans and autonomous patching.
 Supports systemd timers, cron, and manual scheduling.
 """
 
+import calendar
 import json
 import logging
 import subprocess
@@ -171,8 +172,16 @@ class SecurityScheduler:
         elif frequency == ScheduleFrequency.WEEKLY:
             return now + timedelta(weeks=1)
         elif frequency == ScheduleFrequency.MONTHLY:
-            # Add approximately 30 days
-            return now + timedelta(days=30)
+            # Properly calculate next month, handling varying month lengths
+            year = now.year
+            month = now.month + 1
+            if month > 12:
+                month = 1
+                year += 1
+            # Clamp day to max days in target month (e.g., Jan 31 -> Feb 28)
+            max_day = calendar.monthrange(year, month)[1]
+            day = min(now.day, max_day)
+            return now.replace(year=year, month=month, day=day)
         elif frequency == ScheduleFrequency.CUSTOM:
             # For custom, we'd need a cron parser, but for now just return None
             # and let the user manage it manually
