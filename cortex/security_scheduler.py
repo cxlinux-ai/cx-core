@@ -230,9 +230,7 @@ class SecurityScheduler:
                     )
 
                     # Let AutonomousPatcher apply its own strategy/severity filters
-                    patch_result = patcher.patch_vulnerabilities(
-                        scan_result.vulnerabilities
-                    )
+                    patch_result = patcher.patch_vulnerabilities(scan_result.vulnerabilities)
 
                     results["patch_result"] = {
                         "packages_updated": len(patch_result.packages_updated),
