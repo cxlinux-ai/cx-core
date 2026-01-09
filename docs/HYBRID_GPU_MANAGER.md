@@ -1,7 +1,7 @@
 # Hybrid GPU Manager Module
 
-**Issue:** Hybrid GPU (Intel/AMD + NVIDIA) switching causes latency and stuttering\
-**Status:** Ready for Review\
+**Issue:** Hybrid GPU (Intel/AMD + NVIDIA) switching causes latency and stuttering  
+**Status:** Ready for Review  
 **Scope:** Hybrid GPU Manager (state + per-app + switching + battery estimates)
 
 ## Overview
@@ -140,7 +140,9 @@ To prove persistence in review videos, use:
 
 ```bash
 export CORTEX_CONFIG_DIR="$(mktemp -d)"
-cat "$CORTEX_CONFIG_DIR/config.yaml"
+echo "Using CORTEX_CONFIG_DIR=$CORTEX_CONFIG_DIR"
+ls -la "$CORTEX_CONFIG_DIR" || true
+cat "$CORTEX_CONFIG_DIR/config.yaml" || true
 ```
 
 ______________________________________________________________________
@@ -248,7 +250,7 @@ Planned commands:
 - Hybrid (on-demand): `sudo prime-select on-demand`
 - NVIDIA: `sudo prime-select nvidia`
 
-### system76-power (System76 / Pop!\_OS)
+### system76-power (System76 / Pop!_OS)
 
 Planned commands depend on the system76-power CLI modes supported by the distro.
 
@@ -278,6 +280,7 @@ What these tests cover:
 
 ### CLI / reviewer video scripts
 
+```bash
 set -euo pipefail
 
 echo "=== VIDEO 1: VERSION + ENV ==="
@@ -318,7 +321,6 @@ cortex gpu app get blender
 cortex gpu app list
 
 echo "--- config.yaml (persist evidence) ---"
-
 ls -la "$CORTEX_CONFIG_DIR" || true
 cat "$CORTEX_CONFIG_DIR/config.yaml" || true
 
@@ -331,14 +333,14 @@ export CORTEX_CONFIG_DIR="$(mktemp -d)"
 echo "Using CORTEX_CONFIG_DIR=$CORTEX_CONFIG_DIR"
 
 echo "--- override integrated ---"
-cortex gpu run --integrated -- bash -lc 'echo "\_\_NV_PRIME_RENDER_OFFLOAD=${\_\_NV_PRIME_RENDER_OFFLOAD:-empty}"; echo "\_\_GLX_VENDOR_LIBRARY_NAME=${\_\_GLX_VENDOR_LIBRARY_NAME:-empty}"'
+cortex gpu run --integrated -- bash -lc 'echo "__NV_PRIME_RENDER_OFFLOAD=${__NV_PRIME_RENDER_OFFLOAD:-empty}"; echo "__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME:-empty}"'
 
 echo "--- override nvidia ---"
-cortex gpu run --nvidia -- bash -lc 'echo "\_\_NV_PRIME_RENDER_OFFLOAD=${\_\_NV_PRIME_RENDER_OFFLOAD:-empty}"; echo "\_\_GLX_VENDOR_LIBRARY_NAME=${\_\_GLX_VENDOR_LIBRARY_NAME:-empty}"'
+cortex gpu run --nvidia -- bash -lc 'echo "__NV_PRIME_RENDER_OFFLOAD=${__NV_PRIME_RENDER_OFFLOAD:-empty}"; echo "__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME:-empty}"'
 
 echo "--- per-app assignment -> run --app ---"
 cortex gpu app set blender nvidia
-cortex gpu run --app blender -- bash -lc 'echo "\_\_NV_PRIME_RENDER_OFFLOAD=${\_\_NV_PRIME_RENDER_OFFLOAD:-empty}"; echo "\_\_GLX_VENDOR_LIBRARY_NAME=${\_\_GLX_VENDOR_LIBRARY_NAME:-empty}"'
+cortex gpu run --app blender -- bash -lc 'echo "__NV_PRIME_RENDER_OFFLOAD=${__NV_PRIME_RENDER_OFFLOAD:-empty}"; echo "__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME:-empty}"'
 
 echo
 echo "=== VIDEO 9: SWITCHING (DRY-RUN + EXECUTE PATH WITH FAKE BACKEND) ==="
@@ -350,14 +352,14 @@ echo "--- fake backend to prove execute path runs sudo/prime-select ---"
 FAKEBIN="$(mktemp -d)"
 echo "Using FAKEBIN=$FAKEBIN"
 
-cat >"$FAKEBIN/sudo" \<<'EOF'
+cat >"$FAKEBIN/sudo" <<'EOF'
 #!/usr/bin/env bash
 echo "[fake sudo] $@" >&2
 exec "$@"
 EOF
 chmod +x "$FAKEBIN/sudo"
 
-cat >"$FAKEBIN/prime-select" \<<'EOF'
+cat >"$FAKEBIN/prime-select" <<'EOF'
 #!/usr/bin/env bash
 echo "[fake prime-select] called with: $@" >&2
 exit 0
@@ -377,6 +379,7 @@ cortex gpu app set blender turbo || true
 
 echo
 echo "=== DONE ==="
+```
 
 ______________________________________________________________________
 

@@ -1142,12 +1142,22 @@ class CortexCLI:
             if args.execute:
                 if not getattr(args, "yes", False):
                     console.print("\n⚠ This will run GPU switch commands with sudo.")
-                    console.print("Proceed? [Y/n]: ", end="")
-                    resp = input().strip().lower()
-                    if resp and resp not in ("y", "yes"):
+                    console.print("Proceed? [y/N]: ", end="")
+                    try:
+                        resp = input().strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        # stdin closed or user pressed Ctrl+C -> treat as non-affirmative
+                        console.print()
+                        resp = ""
+
+                    # Preserve the flow: abort unless user explicitly confirms
+                    if resp not in ("y", "yes"):
                         return 0
 
+                        
+
                 return apply_gpu_mode_switch(plan, execute=True)
+
 
             return 0
 
@@ -1173,9 +1183,15 @@ class CortexCLI:
 
         if args.gpu_command == "app":
             if args.app_action == "set":
-                set_app_gpu_preference(args.app, args.mode)
+                try:
+                    set_app_gpu_preference(args.app, args.mode)
+                except ValueError as e:
+                    cx_print(f"Invalid per-app GPU assignment: {e}", "error")
+                    return 1
+
                 cx_print(f"Saved: {args.app} -> {args.mode}")
                 return 0
+
             if args.app_action == "get":
                 pref = get_app_gpu_preference(args.app)
                 cx_print(f"{args.app}: {pref}")

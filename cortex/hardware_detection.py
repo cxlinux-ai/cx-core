@@ -810,11 +810,8 @@ def get_nvidia_power_draw_watts() -> float | None:
             continue
         # support both "123.4" and "123,4"
         s = s.replace(",", ".")
-        m = re.search(r"[-+]?\d*\.?\d+", s)
-        if not m:
-            continue
         try:
-            vals.append(float(m.group(0)))
+            vals.append(float(s))
         except ValueError:
             continue
 
@@ -823,26 +820,21 @@ def get_nvidia_power_draw_watts() -> float | None:
 
 def detect_nvidia_gpu() -> bool:
     """
-    Detect the current GPU mode on hybrid graphics systems.
+    Best-effort NVIDIA presence check.
 
-    Performs best-effort detection of the active GPU configuration using
-    lightweight, non-privileged system commands (e.g., lspci, nvidia-smi).
-    Designed to avoid global GPU switching and safe to call without root access.
+    Uses `_run(["nvidia-smi"])` to detect whether NVIDIA tooling/driver is available.
+    This is a lightweight, non-privileged check and does not switch GPU modes.
 
     Returns:
-        str:
-            - "Integrated": No PCI GPU devices detected or `lspci` is unavailable.
-              Assumes the system is using the integrated GPU only.
-            - "NVIDIA": An NVIDIA GPU is detected via `detect_nvidia_gpu()`,
-              indicating a discrete NVIDIA GPU is present and potentially active.
-            - "Hybrid": PCI GPU devices are present but no NVIDIA GPU is detected,
-              suggesting a hybrid configuration with an idle or non-NVIDIA dGPU.
+        bool: True if `nvidia-smi` succeeds (NVIDIA GPU/driver detected),
+              False otherwise.
 
-    Note:
-        Detection is heuristic and may not reflect the real-time power state
-        on all systems or configurations.
+    Notes:
+        - Heuristic: `nvidia-smi` may be missing or blocked even on NVIDIA systems.
+        - On some hybrid laptops, NVIDIA may be detected but still idle.
     """
     return bool(_run(["nvidia-smi"]))
+
 
 
 def detect_gpu_mode() -> str:
