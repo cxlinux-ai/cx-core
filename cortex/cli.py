@@ -1117,14 +1117,14 @@ class CortexCLI:
 
     def gpu(self, args: argparse.Namespace) -> int:
         """Handle GPU management commands (status, set, run, app).
-        
+
         Args:
             args: Parsed command-line arguments containing gpu_command subcommand.
-            
+
         Returns:
             int: 0 on success, 1 on error, 2 on missing backend or invalid usage.
         """
-         if args.gpu_command == "status":
+
         if args.gpu_command == "status":
             backend = detect_gpu_switch_backend()
             mode = detect_gpu_mode()
