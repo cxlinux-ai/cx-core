@@ -13,7 +13,6 @@ import logging
 import subprocess
 import threading
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
