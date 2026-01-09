@@ -109,26 +109,31 @@ class CommandInterpreter:
             # Fake provider uses predefined commands from environment
             self.client = None  # No client needed for fake provider
 
-    def _get_system_prompt(self, simplified: bool = False) -> str:
+    def _get_system_prompt(self, simplified: bool = False, domain: str | None = None) -> str:
         """Get system prompt for command interpretation.
 
         Args:
             simplified: If True, return a shorter prompt optimized for local models
+            domain: Optional domain context to guide command generation
         """
+        domain_context = ""
+        if domain and domain != "unknown":
+            domain_context = f"\n\nDomain: {domain}\nGenerate commands specific to {domain}. Avoid installing unrelated packages."
+        
         if simplified:
-            return """You must respond with ONLY a JSON object. No explanations, no markdown, no code blocks.
+            return f"""You must respond with ONLY a JSON object. No explanations, no markdown, no code blocks.
 
-Format: {"commands": ["command1", "command2"]}
+Format: {{"commands": ["command1", "command2"]}}
 
 Example input: install nginx
-Example output: {"commands": ["sudo apt update", "sudo apt install -y nginx"]}
+Example output: {{"commands": ["sudo apt update", "sudo apt install -y nginx"]}}
 
 Rules:
 - Use apt for Ubuntu packages
 - Add sudo for system commands
-- Return ONLY the JSON object"""
+- Return ONLY the JSON object{domain_context}"""
 
-        return """You are a Linux system command expert. Convert natural language requests into safe, validated bash commands.
+        return f"""You are a Linux system command expert. Convert natural language requests into safe, validated bash commands.
 
     Rules:
     1. Return ONLY a JSON array of commands
@@ -138,12 +143,13 @@ Rules:
     5. Use package managers appropriate for Debian/Ubuntu systems (apt)
     6. Add sudo for system commands
     7. Validate command syntax before returning
+    8. {domain_context if domain_context else "Generate commands relevant to the user's request."}
 
     Format:
-    {"commands": ["command1", "command2", ...]}
+    {{"commands": ["command1", "command2", ...]}}
 
     Example request: "install docker with nvidia support"
-    Example response: {"commands": ["sudo apt update", "sudo apt install -y docker.io", "sudo apt install -y nvidia-docker2", "sudo systemctl restart docker"]}"""
+    Example response: {{"commands": ["sudo apt update", "sudo apt install -y docker.io", "sudo apt install -y nvidia-docker2", "sudo systemctl restart docker"]}}"""
 
     def _extract_intent_ollama(self, user_input: str) -> dict:
         import urllib.error
@@ -190,49 +196,43 @@ Rules:
     def _get_intent_prompt(self) -> str:
         return """You are an intent extraction engine for a Linux package manager.
 
-        Given a user request, extract intent as JSON with:
-        - action: install | remove | update | unknown
-        - domain: short category (machine_learning, web_server, python_dev, containerization, unknown)
-        - description: brief explanation of what the user wants
-        - ambiguous: true/false
-        - confidence: float between 0 and 1
-        Also determine the most appropriate install_mode:
-        - system (apt, requires sudo)
-        - python (pip, virtualenv)
-        - mixed
+Extract the user's intent as JSON. Score confidence based on whether the domain (not specific package names) can be identified.
 
-        Rules:
-        - Do NOT suggest commands
-        - Do NOT list packages
-        - If unsure, set ambiguous=true
-        - Respond ONLY in JSON with the following fields:
-        - action: install | remove | update | unknown
-        - domain: short category describing the request
-        - install_mode: system | python | mixed
-        - description: brief explanation
-        - ambiguous: true or false
-        - confidence: number between 0 and 1
-        - Use install_mode = "python" for Python libraries, data science, or machine learning.
-        - Use install_mode = "system" for system software like docker, nginx, kubernetes.
-        - Use install_mode = "mixed" if both are required.
+Key principle: If the domain is identifiable, confidence should be >= 0.5 even if specific details are vague.
 
-        Format:
-        {
-        "action": "...",
-        "domain": "...",
-        "install_mode": "..."
-        "description": "...",
-        "ambiguous": true/false,
-        "confidence": 0.0
-        }
-        """
+Confidence scoring:
+- HIGH (0.8-1.0): Domain is clearly mentioned or obvious from context
+- MEDIUM (0.5-0.8): Domain is recognizable but specifics are vague or need clarification
+- LOW (0.0-0.5): Domain cannot be identified or request is completely unclear
 
-    def _call_openai(self, user_input: str) -> list[str]:
+Rules:
+- Do NOT suggest commands or list packages
+- Focus on domain identification, not package specificity
+- If a domain keyword appears, confidence should be at least 0.6+
+- Set ambiguous=true if specifics need clarification but domain is recognized
+- Respond ONLY in valid JSON
+
+Domains: machine_learning, web_server, python_dev, containerization, database, unknown
+
+Install mode: system (apt/system packages), python (pip/virtualenv), mixed (both)
+
+Response format (JSON only):
+{
+  "action": "install",
+  "domain": "...",
+  "install_mode": "...",
+  "description": "brief explanation",
+  "ambiguous": true/false,
+  "confidence": 0.0
+}
+"""
+
+    def _call_openai(self, user_input: str, domain: str | None = None) -> list[str]:
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self._get_system_prompt()},
+                    {"role": "system", "content": self._get_system_prompt(domain=domain)},
                     {"role": "user", "content": user_input},
                 ],
                 temperature=0.3,
@@ -298,13 +298,13 @@ Rules:
             "confidence": 0.0,
         }
 
-    def _call_claude(self, user_input: str) -> list[str]:
+    def _call_claude(self, user_input: str, domain: str | None = None) -> list[str]:
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1000,
                 temperature=0.3,
-                system=self._get_system_prompt(),
+                system=self._get_system_prompt(domain=domain),
                 messages=[{"role": "user", "content": user_input}],
             )
 
@@ -313,7 +313,7 @@ Rules:
         except Exception as e:
             raise RuntimeError(f"Claude API call failed: {str(e)}")
 
-    def _call_ollama(self, user_input: str) -> list[str]:
+    def _call_ollama(self, user_input: str, domain: str | None = None) -> list[str]:
         """Call local Ollama instance using OpenAI-compatible API."""
         try:
             # For local models, be extremely explicit in the user message
@@ -325,7 +325,7 @@ Respond with ONLY this JSON format (no explanations):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self._get_system_prompt(simplified=True)},
+                    {"role": "system", "content": self._get_system_prompt(simplified=True, domain=domain)},
                     {"role": "user", "content": enhanced_input},
                 ],
                 temperature=0.1,  # Lower temperature for more focused responses
@@ -454,12 +454,13 @@ Respond with ONLY this JSON format (no explanations):
 
         return validated
 
-    def parse(self, user_input: str, validate: bool = True) -> list[str]:
+    def parse(self, user_input: str, validate: bool = True, domain: str | None = None) -> list[str]:
         """Parse natural language input into shell commands.
 
         Args:
             user_input: Natural language description of desired action
             validate: If True, validate commands for dangerous patterns
+            domain: Optional domain context (e.g., 'database', 'web_server') to guide command generation
 
         Returns:
             List of shell commands to execute
@@ -472,7 +473,7 @@ Respond with ONLY this JSON format (no explanations):
             raise ValueError("User input cannot be empty")
 
         cache_system_prompt = (
-            self._get_system_prompt() + f"\n\n[cortex-cache-validate={bool(validate)}]"
+            self._get_system_prompt(domain=domain) + f"\n\n[cortex-cache-validate={bool(validate)}]"
         )
 
         if self.cache is not None:
@@ -486,11 +487,11 @@ Respond with ONLY this JSON format (no explanations):
                 return cached
 
         if self.provider == APIProvider.OPENAI:
-            commands = self._call_openai(user_input)
+            commands = self._call_openai(user_input, domain=domain)
         elif self.provider == APIProvider.CLAUDE:
-            commands = self._call_claude(user_input)
+            commands = self._call_claude(user_input, domain=domain)
         elif self.provider == APIProvider.OLLAMA:
-            commands = self._call_ollama(user_input)
+            commands = self._call_ollama(user_input, domain=domain)
         elif self.provider == APIProvider.FAKE:
             commands = self._call_fake(user_input)
         else:
@@ -524,6 +525,28 @@ Respond with ONLY this JSON format (no explanations):
         enriched_input = user_input + context
         return self.parse(enriched_input, validate=validate)
 
+    def _extract_intent_claude(self, user_input: str) -> dict:
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=300,
+                temperature=0.2,
+                system=self._get_intent_prompt(),
+                messages=[{"role": "user", "content": user_input}],
+            )
+
+            content = response.content[0].text.strip()
+            return self._parse_intent_from_text(content)
+        except Exception as e:
+            return {
+                "action": "unknown",
+                "domain": "unknown",
+                "description": f"Failed to extract intent: {str(e)}",
+                "ambiguous": True,
+                "confidence": 0.0,
+                "install_mode": "system",
+            }
+
     def extract_intent(self, user_input: str) -> dict:
         if not user_input or not user_input.strip():
             raise ValueError("User input cannot be empty")
@@ -531,7 +554,7 @@ Respond with ONLY this JSON format (no explanations):
         if self.provider == APIProvider.OPENAI:
             return self._extract_intent_openai(user_input)
         elif self.provider == APIProvider.CLAUDE:
-            raise NotImplementedError("Intent extraction not yet implemented for Claude")
+            return self._extract_intent_claude(user_input)
         elif self.provider == APIProvider.OLLAMA:
             return self._extract_intent_ollama(user_input)
         elif self.provider == APIProvider.FAKE:
