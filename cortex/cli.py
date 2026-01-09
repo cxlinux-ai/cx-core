@@ -2756,6 +2756,13 @@ def main():
                 dry_run=args.dry_run,
                 parallel=args.parallel,
             )
+        elif args.command == "remove":
+            return cli.remove(
+                args.software,
+                execute=args.execute,
+                dry_run=args.dry_run,
+                cascading=args.cascading,
+            )
         elif args.command == "import":
             return cli.import_deps(args)
         elif args.command == "history":
