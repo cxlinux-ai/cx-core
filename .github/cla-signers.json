@@ -176,7 +176,17 @@
       ],
       "signed_date": "2026-01-07",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Omkar Gaikwad",
+      "github_username": "Omkar1701",
+      "emails": [
+        "omkargaik495@gmail.com"
+      ],
+      "signed_date": "2026-01-09",
+      "cla_version": "1.0"
     }
+    
 
 
   ],
