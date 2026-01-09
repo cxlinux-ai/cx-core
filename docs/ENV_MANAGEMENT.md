@@ -467,6 +467,258 @@ chmod 600 ~/.cortex/.env_key
 chmod 700 ~/.cortex/environments
 ```
 
+---
+
+## Shell Environment Analyzer
+
+Cortex includes a powerful shell environment analyzer that helps diagnose and fix common environment issues like PATH corruption, duplicate entries, and conflicting variable definitions.
+
+### Why Use This?
+
+Common problems this solves:
+- **PATH bloat** - Duplicate entries accumulating over time
+- **Variable conflicts** - Same variable defined differently in multiple files
+- **Missing paths** - PATH entries pointing to non-existent directories
+- **Cross-shell confusion** - Inconsistent environments across bash/zsh/fish
+
+### Audit Your Environment
+
+See where every variable comes from:
+
+```bash
+# Full audit of shell environment
+cortex env audit
+
+# Audit specific shell
+cortex env audit --shell zsh
+
+# Exclude system files (only scan user configs)
+cortex env audit --no-system
+
+# Output as JSON for scripting
+cortex env audit --json
+```
+
+**Example output:**
+```
+═══════════════════════════════════════════════════════════════
+  Environment Audit (bash shell)
+═══════════════════════════════════════════════════════════════
+
+Config Files Scanned:
+  • /home/user/.bashrc
+  • /home/user/.profile
+  • /etc/profile
+
+Variables with Definitions:
+
+  PATH (3 definition(s))
+    /home/user/.bashrc:5
+      → /usr/local/bin:$PATH
+    /home/user/.profile:10
+      → $HOME/bin:$PATH
+    /etc/profile:25
+      → /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+
+  EDITOR (2 definition(s))
+    /home/user/.bashrc:12
+      → vim
+    /home/user/.profile:8
+      → nano
+
+⚠️  Conflicts Detected:
+  WARNING: Variable 'EDITOR' is defined with different values in 2 files
+
+Total: 15 variable(s) found
+```
+
+### Check for Issues
+
+Quick health check of your environment:
+
+```bash
+cortex env check
+
+# Check specific shell
+cortex env check --shell fish
+```
+
+**Example output:**
+```
+═══════════════════════════════════════════════════════════════
+  Environment Health Check (bash)
+═══════════════════════════════════════════════════════════════
+
+Variable Conflicts:
+  ● EDITOR: Variable defined with different values in 2 files
+      • /home/user/.bashrc:12
+      • /home/user/.profile:8
+
+PATH Duplicates:
+  ● /usr/local/bin
+  ● /home/user/.local/bin
+
+Missing PATH Entries:
+  ● /opt/old-tool/bin
+
+Found 4 issue(s)
+Run 'cortex env path dedupe' to fix PATH duplicates
+```
+
+### PATH Management
+
+#### List PATH Entries
+
+```bash
+# Show all PATH entries with status
+cortex env path list
+
+# Output as JSON
+cortex env path list --json
+```
+
+**Example output:**
+```
+═══════════════════════════════════════════════════════════════
+  PATH Entries
+═══════════════════════════════════════════════════════════════
+   1. /home/user/.local/bin  ✓
+   2. /usr/local/bin  ✓
+   3. /usr/bin  ✓
+   4. /usr/local/bin  ⚠ duplicate
+   5. /opt/missing/bin  ✗ missing
+
+Total: 5 entries, 1 duplicates, 1 missing
+```
+
+#### Add PATH Entry
+
+```bash
+# Add to beginning of PATH (prepend - default)
+# Note: Without --persist, only affects this CLI process (immediately lost)
+cortex env path add /new/path
+
+# Add to end of PATH (append)
+cortex env path add /new/path --append
+
+# Add and persist to shell config (permanent, available in new terminals)
+cortex env path add /new/path --persist
+
+# Specify shell for persistence
+cortex env path add /new/path --persist --shell zsh
+```
+
+**Features:**
+- ✅ Idempotent - won't add duplicates
+- ✅ Resolves to absolute path
+- ✅ Optional persistence to shell config
+- ✅ Creates backup before modifying config
+
+#### Remove PATH Entry
+
+```bash
+# Remove from this CLI process only (immediately lost)
+cortex env path remove /unwanted/path
+
+# Remove from shell config (permanent)
+cortex env path remove /unwanted/path --persist
+```
+
+#### Deduplicate PATH
+
+```bash
+# Preview what would be removed
+cortex env path dedupe --dry-run
+
+# Remove duplicates from current session
+cortex env path dedupe
+
+# Show shell command for permanent fix
+cortex env path dedupe --persist
+```
+
+#### Clean PATH
+
+```bash
+# Remove duplicates only
+cortex env path clean
+
+# Also remove non-existent paths
+cortex env path clean --remove-missing
+
+# Preview changes
+cortex env path clean --remove-missing --dry-run
+```
+
+### Shell Support
+
+The analyzer supports three shells:
+
+| Shell | Config Files Scanned |
+|-------|---------------------|
+| **bash** | `~/.bashrc`, `~/.bash_profile`, `~/.profile`, `/etc/profile`, `/etc/bash.bashrc`, `/etc/profile.d/*.sh` |
+| **zsh** | `~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `/etc/zsh/zshrc`, `/etc/zsh/zprofile` |
+| **fish** | `~/.config/fish/config.fish`, `~/.config/fish/conf.d/*.fish`, `/etc/fish/config.fish` |
+
+Shell is auto-detected from `$SHELL` but can be overridden with `--shell`.
+
+### Safety Features
+
+All config modifications include:
+
+1. **Automatic backups** - Stored in `~/.cortex/backups/` with timestamps
+2. **Atomic writes** - Uses temp file + rename to prevent corruption
+3. **Marker blocks** - Cortex-managed content is clearly marked:
+   ```bash
+   # >>> cortex:path-usr-local-bin >>>
+   export PATH="/usr/local/bin:$PATH"
+   # <<< cortex:path-usr-local-bin <<<
+   ```
+4. **Idempotent operations** - Running the same command twice is safe
+
+### Programmatic API
+
+```python
+from cortex.shell_env_analyzer import (
+    Shell,
+    ShellEnvironmentAnalyzer,
+    ShellConfigEditor,
+)
+
+# Create analyzer
+analyzer = ShellEnvironmentAnalyzer(shell=Shell.BASH)
+
+# Audit environment
+audit = analyzer.audit(include_system=True)
+print(f"Found {len(audit.variables)} variables")
+print(f"Conflicts: {len(audit.conflicts)}")
+
+# PATH operations
+duplicates = analyzer.get_path_duplicates()
+missing = analyzer.get_missing_paths()
+
+# Clean PATH (returns new value, doesn't modify env)
+clean_path = analyzer.clean_path(remove_missing=True)
+
+# Safe add (idempotent)
+new_path = analyzer.safe_add_path("/my/bin", prepend=True)
+
+# Persist to config
+analyzer.add_path_to_config("/my/bin", prepend=True, backup=True)
+analyzer.add_variable_to_config("MY_VAR", "value", backup=True)
+
+# Low-level config editing
+editor = ShellConfigEditor(backup_dir=Path("~/.cortex/backups"))
+editor.add_to_config(
+    Path("~/.bashrc"),
+    'export FOO="bar"',
+    marker_id="my-feature",
+    backup=True,
+)
+```
+
+---
+
 ## API Reference
 
 For programmatic access, use the `EnvironmentManager` class:

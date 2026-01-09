@@ -9,6 +9,7 @@ import datetime
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
 import subprocess
@@ -80,10 +81,13 @@ class InstallationHistory:
         self._init_database()
 
     def _ensure_db_directory(self):
-        """Ensure database directory exists"""
+        """Ensure database directory exists and is writable"""
         db_dir = Path(self.db_path).parent
         try:
             db_dir.mkdir(parents=True, exist_ok=True)
+            # Also check if we can actually write to this directory
+            if not os.access(db_dir, os.W_OK):
+                raise PermissionError(f"No write permission to {db_dir}")
         except PermissionError:
             # Fallback to user directory if system directory not accessible
             user_dir = Path.home() / ".cortex"

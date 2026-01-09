@@ -131,7 +131,73 @@
       ],
       "signed_date": "2026-01-03",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Murat Aslan",
+      "github_username": "murataslan1",
+      "emails": [
+        "murataslan1@users.noreply.github.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Divanshu Grover",
+      "github_username": "divanshu-go",
+      "emails": [
+        "divanshugrover2009@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Rakesh Jha",
+      "github_username": "rakesh0x",
+      "emails": [
+        "rakeshjhanda9958@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Tuan Wanna",
+      "github_username": "tuanwannafly",
+      "emails": [
+        "tunawillgetit1030@gmail.com"
+      ],
+      "signed_date": "2026-01-03",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Altynai Teplova",
+      "github_username": "altynai9128",
+      "emails": [
+        "amybates2891@gmail.com"
+      ],
+      "signed_date": "2026-01-07",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Omkar Gaikwad",
+      "github_username": "Omkar1701",
+      "emails": [
+        "omkargaik495@gmail.com"
+      ],
+      "signed_date": "2026-01-09",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Jay Surse",
+      "github_username": "jaysurse",
+      "emails": [
+        "jaysurse07@gmail.com"
+      ],
+      "signed_date": "2026-01-09",
+      "cla_version": "1.0"
     }
+    
+
+
   ],
   "corporations": {
     "AI Venture Holdings LLC": {

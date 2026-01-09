@@ -6,7 +6,9 @@ mocking of internal methods.
 
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -19,32 +21,50 @@ class TestCortexCLIExtended(unittest.TestCase):
 
     def setUp(self) -> None:
         self.cli = CortexCLI()
+        # Use a temp dir for cache isolation
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self._temp_home = Path(self._temp_dir.name)
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"}, clear=True)
+    def tearDown(self):
+        self._temp_dir.cleanup()
+
     def test_get_api_key_openai(self) -> None:
-        api_key = self.cli._get_api_key()
-        self.assertEqual(api_key, "sk-test-key")
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"}, clear=True):
+            with patch("pathlib.Path.home", return_value=self._temp_home):
+                api_key = self.cli._get_api_key()
+                self.assertEqual(api_key, "sk-test-key")
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test-claude-key"}, clear=True)
     def test_get_api_key_claude(self) -> None:
-        api_key = self.cli._get_api_key()
-        self.assertEqual(api_key, "sk-ant-test-claude-key")
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test-claude-key"}, clear=True):
+            with patch("pathlib.Path.home", return_value=self._temp_home):
+                api_key = self.cli._get_api_key()
+                self.assertEqual(api_key, "sk-ant-test-claude-key")
 
-    @patch.object(CortexCLI, "_get_provider", return_value="openai")
-    @patch.dict(os.environ, {}, clear=True)
-    def test_get_api_key_not_found(self, _mock_get_provider) -> None:
-        api_key = self.cli._get_api_key()
-        self.assertIsNone(api_key)
+    def test_get_api_key_not_found(self) -> None:
+        # When no API key is set and user selects Ollama, falls back to Ollama local mode
+        from cortex.api_key_detector import PROVIDER_MENU_CHOICES
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True)
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("pathlib.Path.home", return_value=self._temp_home):
+                with patch("builtins.input", return_value=PROVIDER_MENU_CHOICES["ollama"]):
+                    api_key = self.cli._get_api_key()
+                    self.assertEqual(api_key, "ollama-local")
+
     def test_get_provider_openai(self) -> None:
-        provider = self.cli._get_provider()
-        self.assertEqual(provider, "openai")
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch("pathlib.Path.home", return_value=self._temp_home):
+                # Call _get_api_key first to populate _detected_provider
+                self.cli._get_api_key()
+                provider = self.cli._get_provider()
+                self.assertEqual(provider, "openai")
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True)
     def test_get_provider_claude(self) -> None:
-        provider = self.cli._get_provider()
-        self.assertEqual(provider, "claude")
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
+            with patch("pathlib.Path.home", return_value=self._temp_home):
+                # Call _get_api_key first to populate _detected_provider
+                self.cli._get_api_key()
+                provider = self.cli._get_provider()
+                self.assertEqual(provider, "claude")
 
     def test_get_provider_override(self) -> None:
         with patch.dict(
@@ -52,12 +72,15 @@ class TestCortexCLIExtended(unittest.TestCase):
             {"CORTEX_PROVIDER": "claude", "OPENAI_API_KEY": "test-key"},
             clear=True,
         ):
-            provider = self.cli._get_provider()
-            self.assertEqual(provider, "claude")
+            with patch("pathlib.Path.home", return_value=self._temp_home):
+                provider = self.cli._get_provider()
+                self.assertEqual(provider, "claude")
 
-            del os.environ["CORTEX_PROVIDER"]
-            provider = self.cli._get_provider()
-            self.assertEqual(provider, "openai")
+                del os.environ["CORTEX_PROVIDER"]
+                # Call _get_api_key first to populate _detected_provider
+                self.cli._get_api_key()
+                provider = self.cli._get_provider()
+                self.assertEqual(provider, "openai")
 
     @patch("cortex.cli.cx_print")
     def test_print_status(self, mock_cx_print) -> None:
