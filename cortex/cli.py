@@ -995,9 +995,8 @@ class CortexCLI:
             prompt = self._build_prompt_with_stdin(base_prompt)
             # ---------------------------------------------------
 
-            # Pass domain to guide command generation
-            domain = intent.get("domain", "unknown")
-            commands = interpreter.parse(prompt, domain=domain)
+            # Parse commands from prompt
+            commands = interpreter.parse(prompt)
             if not commands:
                 self._print_error(
                     "No commands generated. Please try again with a different request."
