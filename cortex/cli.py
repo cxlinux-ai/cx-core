@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cortex.api_key_detector import auto_detect_api_key, setup_api_key
@@ -26,6 +27,7 @@ from cortex.stack_manager import StackManager
 from cortex.validators import validate_api_key, validate_install_request
 
 if TYPE_CHECKING:
+    from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
     from cortex.uninstall_impact import UninstallImpactAnalysis
 
 # Suppress noisy log messages in normal operation
@@ -2414,19 +2416,7 @@ def main():
     remove_parser.add_argument(
         "--cascading",
         action="store_true",
-        help="Scan directory for all dependency files",
-    )
-    import_parser.add_argument(
-        "--execute",
-        "-e",
-        action="store_true",
-        help="Execute install commands (default: dry-run)",
-    )
-    import_parser.add_argument(
-        "--dev",
-        "-d",
-        action="store_true",
-        help="Include dev dependencies",
+        help="Remove dependent packages automatically",
     )
 
     # History command
