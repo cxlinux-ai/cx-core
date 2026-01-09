@@ -2368,7 +2368,6 @@ def main():
 
     gpu_run.add_argument("cmd", nargs=argparse.REMAINDER)
 
-
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
     ask_parser.add_argument("question", type=str, help="Natural language question")
