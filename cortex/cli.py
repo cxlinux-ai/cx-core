@@ -900,11 +900,6 @@ class CortexCLI:
         history = InstallationHistory()
         remove_id: str | None = None
         start_time = datetime.now()
-        options = {
-            "execute": execute,
-            "dry_run": dry_run,
-            "cascading": cascading,
-        }
 
         def _record_history(
             outcome: str, error_message: str | None = None, packages: list[str] | None = None
