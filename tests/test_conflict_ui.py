@@ -164,7 +164,7 @@ class TestConflictPreferenceSaving(unittest.TestCase):
         self.cli._ask_save_preference("package-a", "package-b", "package-a")
 
         # Verify preference is not in manager (uses min:max format)
-        saved = self.prefs_manager.get("conflicts.saved_resolutions")
+        saved = self.prefs_manager.get("conflicts.saved_resolutions") or {}
         conflict_key = "package-a:package-b"  # min:max format
         self.assertNotIn(conflict_key, saved)
 
