@@ -21,8 +21,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from cortex.cli import CortexCLI
-
 try:
     from rich.box import ROUNDED
     from rich.columns import Columns
@@ -50,6 +48,9 @@ try:
 except ImportError:
     GPU_LIBRARY_AVAILABLE = False
     pynvml = None
+
+# Import CortexCLI after dependency validation
+from cortex.cli import CortexCLI
 
 # HTTP requests for Ollama API
 try:
@@ -1020,44 +1021,49 @@ class UIRenderer:
                 ("Disk I/O Test", self._bench_disk),
                 ("System Info", self._bench_system_info),
             ]
-            self.installation_progress.total_steps = len(steps)
-            self.installation_progress.start_time = time.time()
-            self.installation_progress.state = InstallationState.IN_PROGRESS
+
+            # Initialize progress with lock
+            with self.state_lock:
+                self.installation_progress.total_steps = len(steps)
+                self.installation_progress.start_time = time.time()
+                self.installation_progress.state = InstallationState.IN_PROGRESS
 
             for i, (step_name, bench_func) in enumerate(steps, 1):
-                if (
-                    self.stop_event.is_set()
-                    or not self.running
-                    or not self.bench_running
-                    or self.installation_progress.state == InstallationState.FAILED
-                ):
-                    break
-                self.installation_progress.current_step = i
-                self.installation_progress.current_library = f"Running {step_name}..."
-                self.installation_progress.update_elapsed()
+                with self.state_lock:
+                    if (
+                        self.stop_event.is_set()
+                        or not self.running
+                        or not self.bench_running
+                        or self.installation_progress.state == InstallationState.FAILED
+                    ):
+                        break
+                    self.installation_progress.current_step = i
+                    self.installation_progress.current_library = f"Running {step_name}..."
+                    self.installation_progress.update_elapsed()
 
-                # Run actual benchmark
+                # Run actual benchmark (outside lock)
                 try:
                     result = bench_func()
                     bench_results.append((step_name, True, result))
                 except Exception as e:
                     bench_results.append((step_name, False, str(e)))
 
-            # Store results for display
-            self.doctor_results = bench_results
+            # Store results and finalize with lock
+            with self.state_lock:
+                self.doctor_results = bench_results
 
-            # Only mark completed if not cancelled/failed
-            if self.installation_progress.state != InstallationState.FAILED:
-                self.bench_status = "Benchmark complete - System OK"
-                self.installation_progress.state = InstallationState.COMPLETED
-                all_passed = all(r[1] for r in bench_results)
-                if all_passed:
-                    self.installation_progress.success_message = "All benchmarks passed!"
-                else:
-                    self.installation_progress.success_message = "Some benchmarks had issues."
+                # Only mark completed if not cancelled/failed
+                if self.installation_progress.state != InstallationState.FAILED:
+                    self.bench_status = "Benchmark complete - System OK"
+                    self.installation_progress.state = InstallationState.COMPLETED
+                    all_passed = all(r[1] for r in bench_results)
+                    if all_passed:
+                        self.installation_progress.success_message = "All benchmarks passed!"
+                    else:
+                        self.installation_progress.success_message = "Some benchmarks had issues."
 
-            self.installation_progress.current_library = ""
-            self.bench_running = False
+                self.installation_progress.current_library = ""
+                self.bench_running = False
 
         threading.Thread(target=run_bench, daemon=True).start()
 
@@ -1152,39 +1158,45 @@ class UIRenderer:
                 ("CPU load", cpu_ok, cpu_detail),
             ]
 
-            self.installation_progress.total_steps = len(checks)
-            self.installation_progress.start_time = time.time()
-            self.installation_progress.state = InstallationState.IN_PROGRESS
+            # Initialize progress with lock
+            with self.state_lock:
+                self.installation_progress.total_steps = len(checks)
+                self.installation_progress.start_time = time.time()
+                self.installation_progress.state = InstallationState.IN_PROGRESS
 
             for i, (name, passed, detail) in enumerate(checks, 1):
-                if (
-                    self.stop_event.is_set()
-                    or not self.running
-                    or not self.doctor_running
-                    or self.installation_progress.state == InstallationState.FAILED
-                ):
-                    break
-                self.installation_progress.current_step = i
-                self.installation_progress.current_library = f"Checking {name}..."
-                self.doctor_results.append((name, passed, detail))
-                self.installation_progress.update_elapsed()
+                with self.state_lock:
+                    if (
+                        self.stop_event.is_set()
+                        or not self.running
+                        or not self.doctor_running
+                        or self.installation_progress.state == InstallationState.FAILED
+                    ):
+                        break
+                    self.installation_progress.current_step = i
+                    self.installation_progress.current_library = f"Checking {name}..."
+                    self.doctor_results.append((name, passed, detail))
+                    self.installation_progress.update_elapsed()
+
                 time.sleep(DOCTOR_CHECK_DELAY)
 
-            # Only mark completed if not cancelled/failed
-            if self.installation_progress.state != InstallationState.FAILED:
-                all_passed = all(r[1] for r in self.doctor_results)
-                self.installation_progress.state = InstallationState.COMPLETED
-                if all_passed:
-                    self.installation_progress.success_message = (
-                        "All checks passed! System is healthy."
-                    )
-                else:
-                    self.installation_progress.success_message = (
-                        "Some checks failed. Review results above."
-                    )
+            # Finalize with lock
+            with self.state_lock:
+                # Only mark completed if not cancelled/failed
+                if self.installation_progress.state != InstallationState.FAILED:
+                    all_passed = all(r[1] for r in self.doctor_results)
+                    self.installation_progress.state = InstallationState.COMPLETED
+                    if all_passed:
+                        self.installation_progress.success_message = (
+                            "All checks passed! System is healthy."
+                        )
+                    else:
+                        self.installation_progress.success_message = (
+                            "Some checks failed. Review results above."
+                        )
 
-            self.installation_progress.current_library = ""
-            self.doctor_running = False
+                self.installation_progress.current_library = ""
+                self.doctor_running = False
 
         threading.Thread(target=run_doctor, daemon=True).start()
 
@@ -1254,9 +1266,12 @@ class UIRenderer:
         """Submit installation input"""
         if self.input_text.strip():
             package = self.input_text.strip()
-            self.installation_progress.package = package
-            self.installation_progress.state = InstallationState.PROCESSING
-            self.input_active = False
+
+            # Protect state mutations with lock
+            with self.state_lock:
+                self.installation_progress.package = package
+                self.installation_progress.state = InstallationState.PROCESSING
+                self.input_active = False
 
             if SIMULATION_MODE:
                 # TODO: Replace with actual CLI integration
@@ -1395,8 +1410,10 @@ class UIRenderer:
 
     def _confirm_installation(self) -> None:
         """User confirmed installation - execute with --execute flag"""
-        self.installation_progress.state = InstallationState.PROCESSING
-        self.stop_event.clear()
+        with self.state_lock:
+            self.installation_progress.state = InstallationState.PROCESSING
+            self.stop_event.clear()
+
         threading.Thread(target=self._execute_confirmed_install, daemon=True).start()
 
     def _execute_confirmed_install(self) -> None:
@@ -1404,24 +1421,28 @@ class UIRenderer:
         import contextlib
         import io
 
-        progress = self.installation_progress
-        package_name = progress.package
+        # Get package name with lock
+        with self.state_lock:
+            package_name = self.installation_progress.package
 
-        progress.state = InstallationState.IN_PROGRESS
-        progress.start_time = time.time()
-        progress.total_steps = 3  # Init, Execute, Complete
-        progress.current_step = 1
-        progress.current_library = "Starting installation..."
-        progress.update_elapsed()
+        # Initialize progress with lock
+        with self.state_lock:
+            self.installation_progress.state = InstallationState.IN_PROGRESS
+            self.installation_progress.start_time = time.time()
+            self.installation_progress.total_steps = 3  # Init, Execute, Complete
+            self.installation_progress.current_step = 1
+            self.installation_progress.current_library = "Starting installation..."
+            self.installation_progress.update_elapsed()
 
         try:
             if self.stop_event.is_set():
                 return
 
             # Step 2: Execute installation
-            progress.current_step = 2
-            progress.current_library = f"Installing {package_name}..."
-            progress.update_elapsed()
+            with self.state_lock:
+                self.installation_progress.current_step = 2
+                self.installation_progress.current_library = f"Installing {package_name}..."
+                self.installation_progress.update_elapsed()
 
             cli = CortexCLI()
 
@@ -1446,36 +1467,46 @@ class UIRenderer:
                 return
 
             # Step 3: Complete
-            progress.current_step = 3
-            progress.current_library = "Finalizing..."
-            progress.update_elapsed()
+            with self.state_lock:
+                self.installation_progress.current_step = 3
+                self.installation_progress.current_library = "Finalizing..."
+                self.installation_progress.update_elapsed()
 
-            if result == 0:
-                progress.state = InstallationState.COMPLETED
-                progress.success_message = f"✓ Successfully installed '{package_name}'!"
-            else:
-                progress.state = InstallationState.FAILED
-                error_msg = stderr_output.strip() or stdout_output.strip()
-                import re
-
-                clean_msg = re.sub(r"\[.*?\]", "", error_msg)
-                clean_msg = clean_msg.strip()
-                if clean_msg:
-                    lines = clean_msg.split("\n")
-                    first_line = lines[0].strip()[:80]
-                    progress.error_message = first_line or f"Failed to install '{package_name}'"
+                if result == 0:
+                    self.installation_progress.state = InstallationState.COMPLETED
+                    self.installation_progress.success_message = (
+                        f"✓ Successfully installed '{package_name}'!"
+                    )
                 else:
-                    progress.error_message = f"Installation failed for '{package_name}'"
+                    self.installation_progress.state = InstallationState.FAILED
+                    error_msg = stderr_output.strip() or stdout_output.strip()
+                    import re
+
+                    clean_msg = re.sub(r"\[.*?\]", "", error_msg)
+                    clean_msg = clean_msg.strip()
+                    if clean_msg:
+                        lines = clean_msg.split("\n")
+                        first_line = lines[0].strip()[:80]
+                        self.installation_progress.error_message = (
+                            first_line or f"Failed to install '{package_name}'"
+                        )
+                    else:
+                        self.installation_progress.error_message = (
+                            f"Installation failed for '{package_name}'"
+                        )
 
         except ImportError as e:
-            progress.state = InstallationState.FAILED
-            progress.error_message = f"Missing package: {e}"
+            with self.state_lock:
+                self.installation_progress.state = InstallationState.FAILED
+                self.installation_progress.error_message = f"Missing package: {e}"
         except Exception as e:
-            progress.state = InstallationState.FAILED
-            progress.error_message = f"Error: {str(e)[:80]}"
+            with self.state_lock:
+                self.installation_progress.state = InstallationState.FAILED
+                self.installation_progress.error_message = f"Error: {str(e)[:80]}"
         finally:
-            progress.current_library = ""
-            self._pending_commands = []
+            with self.state_lock:
+                self.installation_progress.current_library = ""
+                self._pending_commands = []
 
     def _run_real_installation(self) -> None:
         """
@@ -1726,7 +1757,8 @@ class UIRenderer:
 
                     # Update progress if in progress tab
                     if self.current_tab == DashboardTab.PROGRESS:
-                        self.installation_progress.update_elapsed()
+                        with self.state_lock:
+                            self.installation_progress.update_elapsed()
 
                 except Exception as e:
                     logger.error(f"Monitor error: {e}")
