@@ -19,7 +19,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from cortex.env_manager import get_env_manager
+
 logger = logging.getLogger(__name__)
+
+# Application name for storing cortex API keys
+CORTEX_APP_NAME = "cortex"
 
 
 class WizardStep(Enum):
@@ -786,21 +791,42 @@ Cortex is ready to use! Here are some things to try:
             return default
 
     def _save_env_var(self, name: str, value: str):
-        """Save environment variable to shell config."""
-        shell = os.environ.get("SHELL", "/bin/bash")
-        shell_name = os.path.basename(shell)
-        config_file = self._get_shell_config(shell_name)
+        """Save environment variable securely using encrypted storage.
 
-        export_line = f'\nexport {name}="{value}"\n'  # nosec - intentional user config storage
+        API keys are stored encrypted in ~/.cortex/environments/cortex.json
+        using Fernet encryption. The encryption key is stored in
+        ~/.cortex/.env_key with restricted permissions (chmod 600).
+        """
+        # Set for current session regardless of storage success
+        os.environ[name] = value
 
         try:
-            with open(config_file, "a") as f:
-                f.write(export_line)
+            env_mgr = get_env_manager()
 
-            # Also set for current session
-            os.environ[name] = value
+            # Handle brand names correctly (e.g., "OpenAI" not "Openai")
+            provider_name_raw = name.replace("_API_KEY", "")
+            if provider_name_raw == "OPENAI":
+                provider_name_display = "OpenAI"
+            elif provider_name_raw == "ANTHROPIC":
+                provider_name_display = "Anthropic"
+            else:
+                provider_name_display = provider_name_raw.replace("_", " ").title()
+
+            env_mgr.set_variable(
+                app=CORTEX_APP_NAME,
+                key=name,
+                value=value,
+                encrypt=True,
+                description=f"API key for {provider_name_display}",
+            )
+            logger.info(f"Saved {name} to encrypted storage")
+        except ImportError:
+            logger.warning(
+                f"cryptography package not installed. {name} set for current session only. "
+                "Install cryptography for persistent encrypted storage: pip install cryptography"
+            )
         except Exception as e:
-            logger.warning(f"Could not save env var: {e}")
+            logger.warning(f"Could not save env var to encrypted storage: {e}")
 
 
 # Convenience functions

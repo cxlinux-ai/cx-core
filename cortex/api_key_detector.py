@@ -7,27 +7,31 @@ without requiring user to manually set environment variables.
 Detection order (highest priority first):
 1. CORTEX_PROVIDER=ollama environment variable (for explicit Ollama mode)
 2. API key environment variables: ANTHROPIC_API_KEY, OPENAI_API_KEY
-3. Cached key location (~/.cortex/.api_key_cache)
-4. Saved Ollama provider preference in ~/.cortex/.env (CORTEX_PROVIDER=ollama)
-5. API keys in ~/.cortex/.env
-6. ~/.config/anthropic/credentials.json (Claude CLI location)
-7. ~/.config/openai/credentials.json
-8. .env in current directory
+3. Encrypted storage (~/.cortex/environments/cortex.json) - secure Fernet-encrypted storage
+4. Cached key location (~/.cortex/.api_key_cache)
+5. Saved Ollama provider preference in ~/.cortex/.env (CORTEX_PROVIDER=ollama)
+6. API keys in ~/.cortex/.env
+7. ~/.config/anthropic/credentials.json (Claude CLI location)
+8. ~/.config/openai/credentials.json
+9. .env in current directory
 
 Implements caching to avoid repeated file checks, file locking for safe
-concurrent access, and supports manual entry with optional saving to
-~/.cortex/.env.
+concurrent access, encrypted storage for sensitive keys, and supports
+manual entry with optional saving.
 
 """
 
 import fcntl
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Optional
 
 from cortex.branding import console, cx_print
+
+logger = logging.getLogger(__name__)
 
 # Constants
 CORTEX_DIR = ".cortex"
@@ -74,6 +78,14 @@ class APIKeyDetector:
         """
         Auto-detect API key from common locations.
 
+        Detection order (highest priority first):
+        1. CORTEX_PROVIDER=ollama environment variable
+        2. API key environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY)
+        3. Encrypted storage (~/.cortex/environments/cortex.json)
+        4. Cached key location
+        5. Saved Ollama provider preference
+        6. File-based locations (.env files, credentials.json)
+
         Returns:
             Tuple of (found, key, provider, source)
             - found: True if key was found
@@ -87,6 +99,11 @@ class APIKeyDetector:
 
         # Check for API keys in environment variables (highest priority)
         result = self._check_environment_api_keys()
+        if result:
+            return result
+
+        # Check encrypted storage (secure storage from first-run wizard)
+        result = self._check_encrypted_storage()
         if result:
             return result
 
@@ -111,6 +128,34 @@ class APIKeyDetector:
             value = os.environ.get(env_var)
             if value:
                 return (True, value, provider, "environment")
+        return None
+
+    def _check_encrypted_storage(self) -> tuple[bool, str, str, str] | None:
+        """Check for API keys in encrypted storage (~/.cortex/environments/cortex.json).
+
+        This is the secure storage location used by the first-run wizard.
+        Keys are stored encrypted using Fernet encryption.
+        """
+        try:
+            from cortex.env_manager import get_env_manager
+
+            env_mgr = get_env_manager()
+
+            # Check for API keys in encrypted storage
+            for env_var, provider in ENV_VAR_PROVIDERS.items():
+                value = env_mgr.get_variable(app="cortex", key=env_var, decrypt=True)
+                if value:
+                    # Set in environment for this session
+                    os.environ[env_var] = value
+                    logger.debug(f"Loaded {env_var} from encrypted storage")
+                    return (True, value, provider, "encrypted storage (~/.cortex/environments/)")
+        except ImportError:
+            # cryptography not installed, skip encrypted storage check
+            logger.debug("cryptography not installed, skipping encrypted storage check")
+        except Exception as e:
+            # Log but don't fail - other detection methods may work
+            logger.debug(f"Could not check encrypted storage: {e}")
+
         return None
 
     def _check_saved_ollama_provider(self) -> tuple[bool, str, str, str] | None:
