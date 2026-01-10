@@ -381,6 +381,84 @@ class CortexCLI:
         console.print(f"Installed {len(packages)} packages")
         return 0
 
+    # --- Network Config Validator Commands ---
+    def netconfig(self, args: argparse.Namespace) -> int:
+        """Handle `cortex netconfig` commands for network configuration validation.
+
+        Validates Netplan/NetworkManager configurations, shows diffs, and provides
+        dry-run mode with automatic revert.
+
+        Args:
+            args: Parsed command-line arguments
+
+        Returns:
+            int: Exit code (0 for success, non-zero for failure)
+        """
+        from cortex.network_config_validator import (
+            NetworkConfigValidator,
+            run_dry_run,
+            run_validation,
+            show_config_diff,
+        )
+
+        action = getattr(args, "netconfig_action", None)
+
+        if not action:
+            cx_print("\n🌐 Network Config Validator\n", "info")
+            console.print("Validates Netplan/NetworkManager configuration files.")
+            console.print("Catches YAML syntax errors and semantic issues before they cause outages.\n")
+            console.print("Usage: cortex netconfig <command> [options]")
+            console.print("\nCommands:")
+            console.print("  validate           Validate all network config files")
+            console.print("  diff <file> <new>  Show diff between current and proposed config")
+            console.print("  try [--timeout N]  Apply config temporarily with auto-revert")
+            console.print("  summary            Show current network configuration")
+            console.print("\nExamples:")
+            console.print("  cortex netconfig validate")
+            console.print("  cortex netconfig validate --verbose")
+            console.print("  cortex netconfig diff /etc/netplan/01-config.yaml new-config.yaml")
+            console.print("  cortex netconfig try --timeout 60")
+            return 0
+
+        try:
+            if action == "validate":
+                verbose = getattr(args, "verbose", False)
+                return run_validation(verbose=verbose)
+
+            elif action == "diff":
+                file_path = args.file
+                new_content_path = args.new_content
+
+                try:
+                    with open(new_content_path, encoding="utf-8") as f:
+                        new_content = f.read()
+                except (OSError, FileNotFoundError) as e:
+                    cx_print(f"Cannot read new content file: {e}", "error")
+                    return 1
+
+                return show_config_diff(file_path, new_content)
+
+            elif action == "try":
+                timeout = getattr(args, "timeout", 120)
+                return run_dry_run(timeout=timeout)
+
+            elif action == "summary":
+                validator = NetworkConfigValidator()
+                validator.print_config_summary()
+                return 0
+
+            else:
+                cx_print(f"Unknown netconfig action: {action}", "error")
+                return 1
+
+        except ImportError as e:
+            cx_print(f"Missing dependency: {e}", "error")
+            cx_print("Install with: pip install pyyaml", "info")
+            return 1
+        except (PermissionError, OSError) as e:
+            cx_print(f"File access error: {e}", "error")
+            return 1
+
     # --- Sandbox Commands (Docker-based package testing) ---
     def sandbox(self, args: argparse.Namespace) -> int:
         """Handle `cortex sandbox` commands for Docker-based package testing."""
@@ -2220,6 +2298,42 @@ def main():
     cache_subs = cache_parser.add_subparsers(dest="cache_action", help="Cache actions")
     cache_subs.add_parser("stats", help="Show cache statistics")
 
+    # --- Network Config Validator (Netplan/NetworkManager) ---
+    netconfig_parser = subparsers.add_parser(
+        "netconfig", help="Validate network configuration (Netplan/NetworkManager)"
+    )
+    netconfig_subs = netconfig_parser.add_subparsers(dest="netconfig_action", help="Actions")
+
+    # netconfig validate
+    netconfig_validate_parser = netconfig_subs.add_parser(
+        "validate", help="Validate network configuration files"
+    )
+    netconfig_validate_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show detailed output with config summary"
+    )
+
+    # netconfig diff <file> <new-content-file>
+    netconfig_diff_parser = netconfig_subs.add_parser(
+        "diff", help="Show diff between current config and proposed changes"
+    )
+    netconfig_diff_parser.add_argument("file", help="Path to the original config file")
+    netconfig_diff_parser.add_argument("new_content", help="Path to file with proposed changes")
+
+    # netconfig try [--timeout SECONDS]
+    netconfig_try_parser = netconfig_subs.add_parser(
+        "try", help="Apply config temporarily with automatic revert (dry-run mode)"
+    )
+    netconfig_try_parser.add_argument(
+        "--timeout",
+        "-t",
+        type=int,
+        default=120,
+        help="Seconds before automatic revert (default: 120)",
+    )
+
+    # netconfig summary
+    netconfig_subs.add_parser("summary", help="Show current network configuration summary")
+
     # --- Sandbox Commands (Docker-based package testing) ---
     sandbox_parser = subparsers.add_parser(
         "sandbox", help="Test packages in isolated Docker sandbox"
@@ -2529,6 +2643,8 @@ def main():
                 return cli.cache_stats()
             parser.print_help()
             return 1
+        elif args.command == "netconfig":
+            return cli.netconfig(args)
         elif args.command == "env":
             return cli.env(args)
         else:
