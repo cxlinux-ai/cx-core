@@ -132,19 +132,50 @@ class VoiceInputHandler:
         """
         from faster_whisper import WhisperModel
 
-        cx_print(f"Loading whisper model '{self.model_name}'...", "info")
+        # Model sizes in MB (int8 quantized)
+        model_sizes = {
+            "tiny.en": 39,
+            "base.en": 140,
+            "small.en": 466,
+            "medium.en": 1534,
+            "base": 290,
+            "small": 968,
+            "medium": 3090,
+        }
+
+        model_size_mb = model_sizes.get(self.model_name, "unknown")
+        size_str = f"{model_size_mb} MB" if isinstance(model_size_mb, int) else model_size_mb
+
+        cx_print(
+            f"Loading whisper model '{self.model_name}' ({size_str})...",
+            "info",
+        )
 
         # Ensure model directory exists
         os.makedirs(self.model_dir, exist_ok=True)
 
         try:
-            self._model = WhisperModel(
-                self.model_name,
-                device="cpu",
-                compute_type="int8",
-                download_root=self.model_dir,
+            # Show download progress with progress bar
+            from rich.progress import Progress
+
+            with Progress() as progress:
+                task = progress.add_task(
+                    f"[cyan]Downloading {self.model_name}...",
+                    total=None,
+                )
+
+                self._model = WhisperModel(
+                    self.model_name,
+                    device="cpu",
+                    compute_type="int8",
+                    download_root=self.model_dir,
+                )
+                progress.update(task, completed=True)
+
+            cx_print(
+                f"✓ Model '{self.model_name}' ({size_str}) loaded successfully.",
+                "success",
             )
-            cx_print(f"Model '{self.model_name}' loaded successfully.", "success")
         except Exception as e:
             raise ModelNotFoundError(
                 f"Failed to load whisper model '{self.model_name}': {e}"

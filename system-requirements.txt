@@ -1,0 +1,15 @@
+# System Dependencies for Cortex Linux
+# Install with: sudo apt update && sudo apt install -y libportaudio2 portaudio19-dev libasound2-dev
+
+# Audio support for voice feature (cortex voice)
+libportaudio2
+portaudio19-dev
+libasound2-dev
+
+# Note: These are system-level libraries required by Python packages:
+# - libportaudio2: PortAudio library (runtime)
+# - portaudio19-dev: PortAudio development files (build headers)
+# - libasound2-dev: ALSA sound library (for sounddevice audio capture)
+#
+# These are needed for the 'sounddevice' Python package to work properly
+# on Ubuntu/Debian systems.

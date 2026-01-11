@@ -174,25 +174,27 @@ class CortexCLI:
         return None
 
     def _get_provider(self) -> str:
-        # Check environment variable for explicit provider choice
+        # 1. Check explicit provider override FIRST (highest priority)
         explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
+            self._debug(f"Using explicit CORTEX_PROVIDER={explicit_provider}")
             return explicit_provider
 
-        # Use provider from auto-detection (set by _get_api_key)
+        # 2. Use provider from auto-detection (set by _get_api_key)
         detected = getattr(self, "_detected_provider", None)
         if detected == "anthropic":
             return "claude"
         elif detected == "openai":
             return "openai"
 
-        # Check env vars (may have been set by auto-detect)
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            return "claude"
-        elif os.environ.get("OPENAI_API_KEY"):
+        # 3. Check env vars (may have been set by auto-detect)
+        # NOTE: Order matters - check OpenAI first if both keys present
+        if os.environ.get("OPENAI_API_KEY"):
             return "openai"
+        elif os.environ.get("ANTHROPIC_API_KEY"):
+            return "claude"
 
-        # Fallback to Ollama for offline mode
+        # 4. Fallback to Ollama for offline mode
         return "ollama"
 
     def _print_status(self, emoji: str, message: str):
