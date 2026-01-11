@@ -1,0 +1,85 @@
+name: PR Title Check
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate-pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR Title Format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+
+            // Allowed conventional commit types
+            const types = [
+              'feat',
+              'fix',
+              'docs',
+              'style',
+              'refactor',
+              'perf',
+              'test',
+              'build',
+              'ci',
+              'chore',
+              'revert'
+            ];
+
+            const typesPattern = types.join('|');
+
+            // Pattern 1: type(scope): description OR type: description
+            // Examples: feat(api): add endpoint, fix: resolve bug
+            const conventionalPattern = new RegExp(
+              `^(${typesPattern})(\\([a-zA-Z0-9_-]+\\))?:\\s.+$`
+            );
+
+            // Pattern 2: [scope] description
+            // Examples: [env] Add shell environment analyzer
+            const bracketPattern = /^\[[a-zA-Z0-9_-]+\]\s.+$/;
+
+            const isValid = conventionalPattern.test(title) || bracketPattern.test(title);
+
+            if (!isValid) {
+              const errorMessage = `
+            ## ❌ Invalid PR Title
+
+            Your PR title: \`${title}\`
+
+            ### Allowed Formats
+
+            **Pattern 1 - Conventional Commits:**
+            \`\`\`
+            type(scope): description
+            type: description
+            \`\`\`
+
+            **Pattern 2 - Bracket Scope:**
+            \`\`\`
+            [scope] description
+            \`\`\`
+
+            ### Allowed Types
+            \`feat\`, \`fix\`, \`docs\`, \`style\`, \`refactor\`, \`perf\`, \`test\`, \`build\`, \`ci\`, \`chore\`, \`revert\`
+
+            ### Examples
+            - \`feat(auth): add OAuth2 support\`
+            - \`fix: resolve package resolution issue\`
+            - \`build(deps): bump axios from 1.0 to 1.1\`
+            - \`[env] Add shell environment analyzer\`
+            - \`[api] Implement rate limiting\`
+
+            Please update your PR title to match one of these formats.
+              `;
+
+              core.setFailed(errorMessage);
+            } else {
+              console.log(`✅ PR title is valid: ${title}`);
+            }
