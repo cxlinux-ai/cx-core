@@ -163,7 +163,7 @@ class ActionType(Enum):
 
 # Single source of truth for all dashboard actions
 # Format: key -> (label, action_type, handler_method_name)
-ACTION_MAP = {
+ACTION_MAP: dict[str, tuple[str, ActionType, str]] = {
     "1": ("Install", ActionType.INSTALL, "_start_installation"),
     "2": ("Bench", ActionType.BENCH, "_start_bench"),
     "3": ("Doctor", ActionType.DOCTOR, "_start_doctor"),
@@ -510,17 +510,26 @@ class ModelLister:
         """Get list of available (downloaded) models from Ollama."""
         if not REQUESTS_AVAILABLE:
             return []
+
+        # Respect user consent before making any network calls
+        with self.lock:
+            if not self._enabled:
+                return []
+
         try:
             response = requests.get(f"{OLLAMA_API_BASE}/api/tags", timeout=OLLAMA_API_TIMEOUT)
             if response.status_code == 200:
                 data = response.json()
-                return [
-                    {
-                        "name": m.get("name", "unknown"),
-                        "size_gb": round(m.get("size", 0) / BYTES_PER_GB, 1),
-                    }
-                    for m in data.get("models", [])[:MAX_MODELS_DISPLAYED]
-                ]
+                with self.lock:
+                    if not self._enabled:
+                        return []
+                    return [
+                        {
+                            "name": m.get("name", "unknown"),
+                            "size_gb": round(m.get("size", 0) / BYTES_PER_GB, 1),
+                        }
+                        for m in data.get("models", [])[:MAX_MODELS_DISPLAYED]
+                    ]
         except Exception:
             pass
         return []
@@ -566,13 +575,19 @@ class CommandHistory:
         ]:
             if os.path.exists(history_file):
                 try:
+                    new_entries: list[str] = []
                     with open(history_file, encoding="utf-8", errors="ignore") as f:
                         for line in f.readlines()[-self.max_size :]:
                             cmd = line.strip()
                             if cmd and not cmd.startswith(":"):
+                                new_entries.append(cmd)
+
+                    if new_entries:
+                        with self.lock:
+                            for cmd in new_entries:
                                 self.history.append(cmd)
-                    self._loaded = True
-                    break
+                            self._loaded = True
+                            break
                 except Exception as e:
                     logger.warning(f"Could not read history file {history_file}: {e}")
 
@@ -1126,7 +1141,7 @@ class UIRenderer:
                 disk_ok = disk_percent < DISK_WARNING_THRESHOLD
                 disk_detail = f"{disk_percent:.1f}% used"
             except Exception:
-                disk_ok = True
+                disk_ok = False
                 disk_detail = CHECK_UNAVAILABLE_MSG
 
             try:
@@ -1134,7 +1149,7 @@ class UIRenderer:
                 mem_ok = mem_percent < MEMORY_WARNING_THRESHOLD
                 mem_detail = f"{mem_percent:.1f}% used"
             except Exception:
-                mem_ok = True
+                mem_ok = False
                 mem_detail = CHECK_UNAVAILABLE_MSG
 
             try:
@@ -1142,7 +1157,7 @@ class UIRenderer:
                 cpu_ok = cpu_load < CPU_WARNING_THRESHOLD
                 cpu_detail = f"{cpu_load:.1f}% load"
             except Exception:
-                cpu_ok = True
+                cpu_ok = False
                 cpu_detail = CHECK_UNAVAILABLE_MSG
 
             checks = [
