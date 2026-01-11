@@ -588,7 +588,7 @@ class CortexCLI:
     def _sandbox_exec(self, sandbox, args: argparse.Namespace) -> int:
         """Execute command in sandbox."""
         name = args.name
-        command = args.command
+        command = args.cmd
 
         result = sandbox.exec_command(name, command)
 
@@ -2267,7 +2267,7 @@ def main():
     # sandbox exec <name> <command...>
     sandbox_exec_parser = sandbox_subs.add_parser("exec", help="Execute command in sandbox")
     sandbox_exec_parser.add_argument("name", help="Sandbox name")
-    sandbox_exec_parser.add_argument("command", nargs="+", help="Command to execute")
+    sandbox_exec_parser.add_argument("cmd", nargs="+", help="Command to execute")
     # --------------------------
 
     # --- Environment Variable Management Commands ---
