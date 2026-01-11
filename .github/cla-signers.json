@@ -194,10 +194,16 @@
       ],
       "signed_date": "2026-01-09",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Krishna Shukla",
+      "github_username": "KrishnaShuk",
+      "emails": [
+        "shuklakrishna.kris@gmail.com"
+      ],
+      "signed_date": "2026-01-11",
+      "cla_version": "1.0"
     }
-    
-
-
   ],
   "corporations": {
     "AI Venture Holdings LLC": {
