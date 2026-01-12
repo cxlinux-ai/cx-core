@@ -171,6 +171,10 @@ class QuizContext(BaseModel):
         """Create QuizContext from raw results."""
         if total < 1:
             raise ValueError("total must be at least 1")
+        if correct < 0:
+            raise ValueError("correct must be non-negative")
+        if correct > total:
+            raise ValueError("correct cannot exceed total")
         score = (correct / total) * 100
         return cls(
             package_name=package_name,

@@ -7,6 +7,7 @@ Implements the Plan→Act→Reflect pattern for interactive tutoring.
 from typing import Literal
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from cortex.tutor.agents.tutor_agent.state import (
     TutorAgentState,
@@ -327,7 +328,7 @@ def route_after_act(state: TutorAgentState) -> Literal["reflect", "fail"]:
 # ==================== Graph Builder ====================
 
 
-def create_tutor_graph() -> StateGraph:
+def create_tutor_graph() -> CompiledStateGraph:
     """
     Create the LangGraph workflow for the Tutor Agent.
 
@@ -387,10 +388,10 @@ def create_tutor_graph() -> StateGraph:
 
 
 # Create singleton graph instance
-_graph = None
+_graph: CompiledStateGraph | None = None
 
 
-def get_tutor_graph() -> StateGraph:
+def get_tutor_graph() -> CompiledStateGraph:
     """
     Get the singleton Tutor Agent graph.
 
