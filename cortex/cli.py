@@ -188,11 +188,10 @@ class CortexCLI:
             return "openai"
 
         # 3. Check env vars (may have been set by auto-detect)
-        # NOTE: Order matters - check OpenAI first if both keys present
-        if os.environ.get("OPENAI_API_KEY"):
-            return "openai"
-        elif os.environ.get("ANTHROPIC_API_KEY"):
+        if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
+        elif os.environ.get("OPENAI_API_KEY"):
+            return "openai"
 
         # 4. Fallback to Ollama for offline mode
         return "ollama"
@@ -856,6 +855,17 @@ class CortexCLI:
                         software = text[len(verb) :].strip()
                         break
 
+                # Validate software name
+                if not software or len(software) > 200:
+                    cx_print("Invalid software name", "error")
+                    return
+
+                # Check for dangerous characters that shouldn't be in package names
+                dangerous_chars = [";", "&", "|", "`", "$", "(", ")"]
+                if any(char in software for char in dangerous_chars):
+                    cx_print("Invalid characters detected in software name", "error")
+                    return
+
                 cx_print(f"Installing: {software}", "info")
 
                 # Ask user for confirmation
@@ -905,6 +915,12 @@ class CortexCLI:
         except KeyboardInterrupt:
             cx_print("\nVoice mode exited.", "info")
             return 0
+        finally:
+            # Ensure cleanup even if exceptions occur
+            try:
+                handler.stop()
+            except Exception:
+                pass  # Ignore cleanup errors
 
     def install(
         self,

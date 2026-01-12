@@ -12,10 +12,12 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-
-import numpy as np
+from typing import TYPE_CHECKING, Any
 
 from cortex.branding import console, cx_print
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 class VoiceInputError(Exception):
@@ -72,7 +74,7 @@ class VoiceInputHandler:
 
         # Recording state
         self._is_recording = False
-        self._audio_buffer: list[np.ndarray] = []
+        self._audio_buffer: list[Any] = []  # numpy arrays when recording
         self._recording_thread: threading.Thread | None = None
         self._stop_recording = threading.Event()
         self._stream = None
@@ -207,37 +209,51 @@ class VoiceInputHandler:
 
     def _start_recording(self) -> None:
         """Start recording audio from microphone."""
+        import numpy as np  # Import locally for optional dependency
         import sounddevice as sd
 
         self._audio_buffer = []
         self._stop_recording.clear()
         self._is_recording = True
+        self._numpy = np  # Store for use in callback
 
         def audio_callback(indata, frames, time_info, status):
             if status:
                 logging.debug("Audio status: %s", status)
             if self._is_recording:
-                self._audio_buffer.append(indata.copy())
+                # Limit buffer size to prevent memory issues (max ~60 seconds)
+                if len(self._audio_buffer) < 60 * self.sample_rate // 1024:
+                    self._audio_buffer.append(indata.copy())
+                else:
+                    self._stop_recording.set()
 
         try:
             self._stream = sd.InputStream(
                 samplerate=self.sample_rate,
                 channels=1,
-                dtype=np.float32,
+                dtype=self._numpy.float32,
                 callback=audio_callback,
                 blocksize=1024,
             )
             self._stream.start()
+        except PermissionError as e:
+            self._is_recording = False
+            raise MicrophoneNotFoundError(
+                "Permission denied to access microphone. "
+                "On Linux, add user to 'audio' group: sudo usermod -a -G audio $USER"
+            ) from e
         except Exception as e:
             self._is_recording = False
             raise MicrophoneNotFoundError(f"Failed to start recording: {e}") from e
 
-    def _stop_recording_stream(self) -> np.ndarray:
+    def _stop_recording_stream(self) -> Any:
         """Stop recording and return the audio data.
 
         Returns:
             Numpy array of recorded audio samples.
         """
+        import numpy as np
+
         self._is_recording = False
 
         if hasattr(self, "_stream") and self._stream:
@@ -254,7 +270,7 @@ class VoiceInputHandler:
 
         return audio_data.flatten()
 
-    def transcribe(self, audio_data: np.ndarray) -> str:
+    def transcribe(self, audio_data: Any) -> str:
         """Transcribe audio data to text.
 
         Args:
@@ -266,6 +282,8 @@ class VoiceInputHandler:
         Raises:
             ModelNotFoundError: If model is not loaded.
         """
+        import numpy as np
+
         if self._model is None:
             self._load_model()
 
