@@ -1309,6 +1309,7 @@ class UIRenderer:
         """Execute dry-run to get commands, then show confirmation"""
         import contextlib
         import io
+
         from cortex.cli import CortexCLI
 
         progress = self.installation_progress
@@ -1432,6 +1433,7 @@ class UIRenderer:
         """Execute the confirmed installation with execute=True"""
         import contextlib
         import io
+
         from cortex.cli import CortexCLI
 
         # Get package name with lock
@@ -1531,6 +1533,7 @@ class UIRenderer:
         """Execute actual CLI installation in background thread"""
         import contextlib
         import io
+
         from cortex.cli import CortexCLI
 
         progress = self.installation_progress
