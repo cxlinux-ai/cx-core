@@ -1030,9 +1030,7 @@ class CortexCLI:
 
     def _get_parallel_error_msg(self, parallel_tasks: list) -> str:
         """Extract error message from failed parallel tasks."""
-        failed_tasks = [
-            t for t in parallel_tasks if getattr(t.status, "value", "") == "failed"
-        ]
+        failed_tasks = [t for t in parallel_tasks if getattr(t.status, "value", "") == "failed"]
         return failed_tasks[0].error if failed_tasks else self.INSTALL_FAIL_MSG
 
     def _handle_sequential_execution(
@@ -1336,13 +1334,9 @@ class CortexCLI:
 
             print("\nExecuting commands...")
             if parallel:
-                return self._handle_parallel_execution(
-                    commands, software, install_id, history
-                )
+                return self._handle_parallel_execution(commands, software, install_id, history)
 
-            return self._handle_sequential_execution(
-                commands, software, install_id, history
-            )
+            return self._handle_sequential_execution(commands, software, install_id, history)
 
         except ValueError as e:
             if install_id:
