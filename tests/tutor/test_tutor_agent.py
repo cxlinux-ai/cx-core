@@ -44,7 +44,7 @@ class TestTutorAgentState:
         assert state["input"]["session_type"] == "lesson"
         assert state["force_fresh"] is False
         assert state["errors"] == []
-        assert state["cost_gbp"] == 0.0
+        assert state["cost_gbp"] == pytest.approx(0.0)
 
     def test_create_initial_state_qa_mode(self):
         """Test creating initial state for Q&A."""
@@ -82,7 +82,7 @@ class TestTutorAgentState:
         add_cost(state, 0.02)
         add_cost(state, 0.01)
 
-        assert state["cost_gbp"] == 0.03
+        assert state["cost_gbp"] == pytest.approx(0.03)
 
     def test_has_critical_error_false(self):
         """Test has_critical_error returns False when no critical errors."""
@@ -207,7 +207,7 @@ class TestGraphNodes:
         result = reflect_node(state)
 
         assert result["output"]["validation_passed"] is True
-        assert result["output"]["cost_gbp"] == 0.02
+        assert result["output"]["cost_gbp"] == pytest.approx(0.02)
 
     def test_reflect_node_failure(self):
         """Test reflect_node with missing results."""

@@ -96,7 +96,7 @@ class TestLessonContext:
         )
 
         assert lesson.package_name == "docker"
-        assert lesson.confidence == 0.9
+        assert lesson.confidence == pytest.approx(0.9)
         assert len(lesson.use_cases) == 2
 
     def test_lesson_context_with_examples(self):
@@ -134,7 +134,7 @@ class TestLessonContext:
         restored = LessonContext.from_json(json_str)
 
         assert restored.package_name == "docker"
-        assert restored.confidence == 0.85
+        assert restored.confidence == pytest.approx(0.85)
 
     def test_lesson_context_display_dict(self):
         """Test to_display_dict method."""
@@ -208,13 +208,13 @@ class TestBranding:
     def test_tutor_print_success(self, capsys):
         """Test tutor_print with success status."""
         tutor_print("Test message", "success")
-        captured = capsys.readouterr()
+        _captured = capsys.readouterr()
         # Rich console output is complex, just ensure no errors
 
     def test_tutor_print_error(self, capsys):
         """Test tutor_print with error status."""
         tutor_print("Error message", "error")
-        captured = capsys.readouterr()
+        _captured = capsys.readouterr()
 
     def test_console_exists(self):
         """Test console is properly initialized."""

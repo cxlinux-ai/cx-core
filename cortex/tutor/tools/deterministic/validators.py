@@ -210,12 +210,12 @@ def validate_learning_style(style: str) -> tuple[bool, str | None]:
     return True, None
 
 
-def sanitize_input(input_text: str) -> str:
+def sanitize_input(input_text: str | None) -> str:
     """
     Sanitize user input by removing potentially dangerous content.
 
     Args:
-        input_text: The input to sanitize.
+        input_text: The input to sanitize (can be None).
 
     Returns:
         Sanitized input string.
@@ -236,12 +236,12 @@ def sanitize_input(input_text: str) -> str:
     return sanitized
 
 
-def extract_package_name(input_text: str) -> str | None:
+def extract_package_name(input_text: str | None) -> str | None:
     """
     Extract a potential package name from user input.
 
     Args:
-        input_text: User input that may contain a package name.
+        input_text: User input that may contain a package name (can be None).
 
     Returns:
         Extracted package name or None.

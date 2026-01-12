@@ -210,9 +210,12 @@ def cmd_question(package: str, question: str, verbose: bool = False) -> int:
         return 1
 
 
-def cmd_list_packages(verbose: bool = False) -> int:
+def cmd_list_packages(_verbose: bool = False) -> int:
     """
     List packages that have been studied.
+
+    Args:
+        _verbose: Enable verbose output (reserved for future use).
 
     Returns:
         Exit code.
@@ -240,71 +243,70 @@ def cmd_list_packages(verbose: bool = False) -> int:
         return 1
 
 
-def cmd_progress(package: str | None = None, verbose: bool = False) -> int:
+def _show_package_progress(store: SQLiteStore, package: str) -> None:
+    """Display progress for a specific package."""
+    stats = store.get_completion_stats(package)
+    if stats:
+        print_progress_summary(
+            stats.get("completed", 0),
+            stats.get("total", 0) or DEFAULT_TUTOR_TOPICS,
+            package,
+        )
+        console.print(f"[dim]Average score: {stats.get('avg_score', 0):.0%}[/dim]")
+        console.print(
+            f"[dim]Total time: {stats.get('total_time_seconds', 0) // 60} minutes[/dim]"
+        )
+    else:
+        tutor_print(f"No progress found for {package}", "info")
+
+
+def _show_all_progress(store: SQLiteStore) -> bool:
+    """Display progress for all packages. Returns True if progress exists."""
+    progress_list = store.get_all_progress()
+
+    if not progress_list:
+        tutor_print("No learning progress yet.", "info")
+        return False
+
+    # Group by package (progress_list contains Pydantic models)
+    by_package: dict[str, list] = {}
+    for p in progress_list:
+        pkg = p.package_name
+        if pkg not in by_package:
+            by_package[pkg] = []
+        by_package[pkg].append(p)
+
+    # Build table rows
+    rows = []
+    for pkg, topics in by_package.items():
+        completed = sum(1 for t in topics if t.completed)
+        total = len(topics)
+        avg_score = sum(t.score for t in topics) / total if total else 0
+        rows.append([pkg, f"{completed}/{total}", f"{avg_score:.0%}"])
+
+    print_table(["Package", "Progress", "Avg Score"], rows, "Learning Progress")
+    return True
+
+
+def cmd_progress(package: str | None = None, _verbose: bool = False) -> int:
     """
     Show learning progress.
 
     Args:
         package: Optional package filter.
+        _verbose: Enable verbose output (reserved for future use).
 
     Returns:
         Exit code.
     """
     try:
-        # Use SQLiteStore directly - no API key needed
         config = Config.from_env(require_api_key=False)
         store = SQLiteStore(config.get_db_path())
 
         if package:
-            # Show progress for specific package
-            stats = store.get_completion_stats(package)
-            if stats:
-                print_progress_summary(
-                    stats.get("completed", 0),
-                    stats.get("total", 0) or DEFAULT_TUTOR_TOPICS,
-                    package,
-                )
-                console.print(f"[dim]Average score: {stats.get('avg_score', 0):.0%}[/dim]")
-                console.print(
-                    f"[dim]Total time: {stats.get('total_time_seconds', 0) // 60} minutes[/dim]"
-                )
-            else:
-                tutor_print(f"No progress found for {package}", "info")
+            _show_package_progress(store, package)
         else:
-            # Show all progress
-            progress_list = store.get_all_progress()
-
-            if not progress_list:
-                tutor_print("No learning progress yet.", "info")
-                return 0
-
-            # Group by package (progress_list contains Pydantic models)
-            by_package = {}
-            for p in progress_list:
-                pkg = p.package_name
-                if pkg not in by_package:
-                    by_package[pkg] = []
-                by_package[pkg].append(p)
-
-            # Display table
-            rows = []
-            for pkg, topics in by_package.items():
-                completed = sum(1 for t in topics if t.completed)
-                total = len(topics)
-                avg_score = sum(t.score for t in topics) / total if total else 0
-                rows.append(
-                    [
-                        pkg,
-                        f"{completed}/{total}",
-                        f"{avg_score:.0%}",
-                    ]
-                )
-
-            print_table(
-                ["Package", "Progress", "Avg Score"],
-                rows,
-                "Learning Progress",
-            )
+            _show_all_progress(store)
 
         return 0
 
@@ -313,12 +315,13 @@ def cmd_progress(package: str | None = None, verbose: bool = False) -> int:
         return 1
 
 
-def cmd_reset(package: str | None = None, verbose: bool = False) -> int:
+def cmd_reset(package: str | None = None, _verbose: bool = False) -> int:
     """
     Reset learning progress.
 
     Args:
         package: Optional package to reset. If None, resets all.
+        _verbose: Enable verbose output (reserved for future use).
 
     Returns:
         Exit code.

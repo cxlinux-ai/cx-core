@@ -42,6 +42,9 @@ class ProgressTrackerTool(BaseTool):
 
     store: SQLiteStore | None = Field(default=None, exclude=True)
 
+    # Error message constants
+    _ERR_PKG_TOPIC_REQUIRED: str = "package_name and topic required"
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -124,7 +127,7 @@ class ProgressTrackerTool(BaseTool):
     ) -> dict[str, Any]:
         """Get progress for a specific package/topic."""
         if not package_name or not topic:
-            return {"success": False, "error": "package_name and topic required"}
+            return {"success": False, "error": self._ERR_PKG_TOPIC_REQUIRED}
 
         progress = self.store.get_progress(package_name, topic)
         if progress:
@@ -172,7 +175,7 @@ class ProgressTrackerTool(BaseTool):
     ) -> dict[str, Any]:
         """Mark a topic as completed."""
         if not package_name or not topic:
-            return {"success": False, "error": "package_name and topic required"}
+            return {"success": False, "error": self._ERR_PKG_TOPIC_REQUIRED}
 
         self.store.mark_topic_completed(package_name, topic, score or 1.0)
         return {
@@ -192,7 +195,7 @@ class ProgressTrackerTool(BaseTool):
     ) -> dict[str, Any]:
         """Update progress for a topic."""
         if not package_name or not topic:
-            return {"success": False, "error": "package_name and topic required"}
+            return {"success": False, "error": self._ERR_PKG_TOPIC_REQUIRED}
 
         # Get existing progress to preserve values
         existing = self.store.get_progress(package_name, topic)

@@ -102,6 +102,9 @@ class SQLiteStore:
     CREATE INDEX IF NOT EXISTS idx_cache_package ON lesson_cache(package_name);
     """
 
+    # SQL query constants to avoid duplication
+    _SELECT_PROFILE = "SELECT * FROM student_profile LIMIT 1"
+
     def __init__(self, db_path: Path) -> None:
         """
         Initialize SQLite store.
@@ -354,7 +357,7 @@ class SQLiteStore:
             StudentProfile record.
         """
         with self._get_connection() as conn:
-            cursor = conn.execute("SELECT * FROM student_profile LIMIT 1")
+            cursor = conn.execute(self._SELECT_PROFILE)
             row = cursor.fetchone()
             if row:
                 return StudentProfile(
@@ -385,7 +388,7 @@ class SQLiteStore:
             )
             conn.commit()
             # Re-fetch to return actual profile (in case another thread created it)
-            cursor = conn.execute("SELECT * FROM student_profile LIMIT 1")
+            cursor = conn.execute(self._SELECT_PROFILE)
             row = cursor.fetchone()
             if row:
                 return StudentProfile(
@@ -434,11 +437,11 @@ class SQLiteStore:
         now = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             # Atomic read-modify-write within single connection
-            cursor = conn.execute("SELECT * FROM student_profile LIMIT 1")
+            cursor = conn.execute(self._SELECT_PROFILE)
             row = cursor.fetchone()
             if not row:
                 self._create_default_profile()
-                cursor = conn.execute("SELECT * FROM student_profile LIMIT 1")
+                cursor = conn.execute(self._SELECT_PROFILE)
                 row = cursor.fetchone()
 
             mastered = json.loads(row["mastered_concepts"])
@@ -470,11 +473,11 @@ class SQLiteStore:
         now = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             # Atomic read-modify-write within single connection
-            cursor = conn.execute("SELECT * FROM student_profile LIMIT 1")
+            cursor = conn.execute(self._SELECT_PROFILE)
             row = cursor.fetchone()
             if not row:
                 self._create_default_profile()
-                cursor = conn.execute("SELECT * FROM student_profile LIMIT 1")
+                cursor = conn.execute(self._SELECT_PROFILE)
                 row = cursor.fetchone()
 
             mastered = json.loads(row["mastered_concepts"])

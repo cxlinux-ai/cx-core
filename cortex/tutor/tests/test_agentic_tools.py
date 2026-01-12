@@ -44,7 +44,7 @@ class TestLessonGeneratorStructure:
         assert result["package_name"] == "docker"
         assert result["summary"] == "Docker is a platform."
         assert len(result["use_cases"]) == 2
-        assert result["confidence"] == 0.9
+        assert result["confidence"] == pytest.approx(0.9)
 
     @patch("cortex.tutor.tools.agentic.lesson_generator.get_config")
     @patch("cortex.tutor.tools.agentic.lesson_generator.ChatAnthropic")

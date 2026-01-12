@@ -36,6 +36,9 @@ class QAHandlerTool(BaseTool):
     llm: ChatAnthropic | None = Field(default=None, exclude=True)
     model_name: str = Field(default="claude-sonnet-4-20250514")
 
+    # Constants for default values
+    _NONE_SPECIFIED: str = "none specified"
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -94,8 +97,8 @@ class QAHandlerTool(BaseTool):
                     "package_name": package_name,
                     "question": question,
                     "learning_style": learning_style,
-                    "mastered_concepts": ", ".join(mastered_concepts or []) or "none specified",
-                    "weak_concepts": ", ".join(weak_concepts or []) or "none specified",
+                    "mastered_concepts": ", ".join(mastered_concepts or []) or self._NONE_SPECIFIED,
+                    "weak_concepts": ", ".join(weak_concepts or []) or self._NONE_SPECIFIED,
                     "lesson_context": lesson_context or "starting fresh",
                 }
             )
@@ -140,8 +143,8 @@ class QAHandlerTool(BaseTool):
                     "package_name": package_name,
                     "question": question,
                     "learning_style": learning_style,
-                    "mastered_concepts": ", ".join(mastered_concepts or []) or "none specified",
-                    "weak_concepts": ", ".join(weak_concepts or []) or "none specified",
+                    "mastered_concepts": ", ".join(mastered_concepts or []) or self._NONE_SPECIFIED,
+                    "weak_concepts": ", ".join(weak_concepts or []) or self._NONE_SPECIFIED,
                     "lesson_context": lesson_context or "starting fresh",
                 }
             )

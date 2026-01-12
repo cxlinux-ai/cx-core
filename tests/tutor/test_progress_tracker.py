@@ -49,7 +49,7 @@ class TestSQLiteStore:
 
     def test_init_creates_database(self, temp_db):
         """Test database is created on init."""
-        store = SQLiteStore(temp_db)
+        _store = SQLiteStore(temp_db)
         assert temp_db.exists()
 
     def test_upsert_and_get_progress(self, store):
@@ -66,7 +66,7 @@ class TestSQLiteStore:
         assert result is not None
         assert result.package_name == "docker"
         assert result.completed is True
-        assert result.score == 0.9
+        assert result.score == pytest.approx(0.9)
 
     def test_upsert_updates_existing(self, store):
         """Test upsert updates existing record."""
@@ -90,7 +90,7 @@ class TestSQLiteStore:
 
         result = store.get_progress("docker", "basics")
         assert result.completed is True
-        assert result.score == 0.9
+        assert result.score == pytest.approx(0.9)
 
     def test_get_all_progress(self, store):
         """Test getting all progress records."""
@@ -114,7 +114,7 @@ class TestSQLiteStore:
 
         result = store.get_progress("docker", "tutorial")
         assert result.completed is True
-        assert result.score == 0.85
+        assert result.score == pytest.approx(0.85)
 
     def test_get_completion_stats(self, store):
         """Test getting completion statistics."""
@@ -128,7 +128,7 @@ class TestSQLiteStore:
         stats = store.get_completion_stats("docker")
         assert stats["total"] == 2
         assert stats["completed"] == 1
-        assert stats["avg_score"] == 0.7
+        assert stats["avg_score"] == pytest.approx(0.7)
 
     def test_quiz_results(self, store):
         """Test adding and retrieving quiz results."""
@@ -238,7 +238,7 @@ class TestProgressTrackerTool:
             score=0.85,
         )
         assert result["success"]
-        assert result["score"] == 0.85
+        assert result["score"] == pytest.approx(0.85)
 
     def test_get_stats_action(self, tracker):
         """Test get_stats action."""
@@ -309,7 +309,7 @@ class TestConvenienceFunctions:
             progress = get_learning_progress("docker", "basics")
             assert progress is not None
             assert progress["completed"] is True
-            assert progress["score"] == 0.85
+            assert progress["score"] == pytest.approx(0.85)
 
     def test_mark_topic_completed(self, temp_db):
         """Test mark_topic_completed function."""
@@ -347,4 +347,4 @@ class TestConvenienceFunctions:
             stats = get_package_stats("nginx")
             assert stats["total"] == 2
             assert stats["completed"] == 2
-            assert stats["avg_score"] == 0.8  # (0.9 + 0.7) / 2
+            assert stats["avg_score"] == pytest.approx(0.8)  # (0.9 + 0.7) / 2

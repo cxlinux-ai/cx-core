@@ -215,12 +215,12 @@ def get_user_input(prompt: str, default: str | None = None) -> str:
         return ""
 
 
-def create_progress_bar(description: str = "Processing") -> Progress:
+def create_progress_bar(_description: str = "Processing") -> Progress:
     """
     Create a Rich progress bar for long-running operations.
 
     Args:
-        description: Description text for the progress bar.
+        _description: Description text for the progress bar (reserved for future use).
 
     Returns:
         Progress: Configured Rich Progress instance.

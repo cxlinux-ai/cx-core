@@ -420,28 +420,28 @@ class TestMain:
     def test_list_command(self, mock_list):
         """Test list command."""
         mock_list.return_value = 0
-        result = main(["--list"])
+        _result = main(["--list"])
         mock_list.assert_called_once()
 
     @patch("cortex.tutor.cli.cmd_progress")
     def test_progress_command(self, mock_progress):
         """Test progress command."""
         mock_progress.return_value = 0
-        result = main(["--progress"])
+        _result = main(["--progress"])
         mock_progress.assert_called_once()
 
     @patch("cortex.tutor.cli.cmd_reset")
     def test_reset_command(self, mock_reset):
         """Test reset command."""
         mock_reset.return_value = 0
-        result = main(["--reset"])
+        _result = main(["--reset"])
         mock_reset.assert_called_once()
 
     @patch("cortex.tutor.cli.cmd_question")
     def test_question_command(self, mock_question):
         """Test question command."""
         mock_question.return_value = 0
-        result = main(["docker", "-q", "What is Docker?"])
+        _result = main(["docker", "-q", "What is Docker?"])
         mock_question.assert_called_once()
 
     @patch("cortex.tutor.cli.cmd_teach")
@@ -449,6 +449,6 @@ class TestMain:
     def test_teach_command(self, mock_banner, mock_teach):
         """Test teach command."""
         mock_teach.return_value = 0
-        result = main(["docker"])
+        _result = main(["docker"])
         mock_teach.assert_called_once()
         mock_banner.assert_called_once()

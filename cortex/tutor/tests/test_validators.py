@@ -52,7 +52,7 @@ class TestValidatePackageName:
 
     def test_whitespace_only(self):
         """Test whitespace-only input fails."""
-        is_valid, error = validate_package_name("   ")
+        is_valid, _ = validate_package_name("   ")
         assert not is_valid
 
     def test_too_long_package_name(self):
@@ -85,7 +85,7 @@ class TestValidatePackageName:
             "has#hash",
         ]
         for name in invalid_names:
-            is_valid, error = validate_package_name(name)
+            is_valid, _ = validate_package_name(name)
             assert not is_valid, f"Expected {name} to be invalid"
 
 
@@ -100,12 +100,12 @@ class TestValidateInput:
 
     def test_empty_input_not_allowed(self):
         """Test empty input fails by default."""
-        is_valid, error = validate_input("")
+        is_valid, _ = validate_input("")
         assert not is_valid
 
     def test_empty_input_allowed(self):
         """Test empty input passes when allowed."""
-        is_valid, error = validate_input("", allow_empty=True)
+        is_valid, _ = validate_input("", allow_empty=True)
         assert is_valid
 
     def test_max_length(self):
@@ -117,7 +117,7 @@ class TestValidateInput:
 
     def test_custom_max_length(self):
         """Test custom max length works."""
-        is_valid, error = validate_input("hello", max_length=3)
+        is_valid, _ = validate_input("hello", max_length=3)
         assert not is_valid
 
     def test_blocked_patterns_in_input(self):
@@ -132,12 +132,12 @@ class TestValidateQuestion:
 
     def test_valid_question(self):
         """Test valid questions pass."""
-        is_valid, error = validate_question("What is the difference between Docker and VMs?")
+        is_valid, _ = validate_question("What is the difference between Docker and VMs?")
         assert is_valid
 
     def test_empty_question(self):
         """Test empty question fails."""
-        is_valid, error = validate_question("")
+        is_valid, _ = validate_question("")
         assert not is_valid
 
 
@@ -153,12 +153,12 @@ class TestValidateTopic:
             "best-practices",
         ]
         for topic in valid_topics:
-            is_valid, error = validate_topic(topic)
+            is_valid, _ = validate_topic(topic)
             assert is_valid, f"Expected {topic} to be valid"
 
     def test_empty_topic(self):
         """Test empty topic fails."""
-        is_valid, error = validate_topic("")
+        is_valid, _ = validate_topic("")
         assert not is_valid
 
 
@@ -169,14 +169,14 @@ class TestValidateScore:
         """Test valid scores pass."""
         valid_scores = [0.0, 0.5, 1.0, 0.75]
         for score in valid_scores:
-            is_valid, error = validate_score(score)
+            is_valid, _ = validate_score(score)
             assert is_valid
 
     def test_out_of_range_scores(self):
         """Test out-of-range scores fail."""
         invalid_scores = [-0.1, 1.1, -1, 2]
         for score in invalid_scores:
-            is_valid, error = validate_score(score)
+            is_valid, _ = validate_score(score)
             assert not is_valid
 
 
@@ -187,12 +187,12 @@ class TestValidateLearningStyle:
         """Test valid learning styles pass."""
         valid_styles = ["visual", "reading", "hands-on"]
         for style in valid_styles:
-            is_valid, error = validate_learning_style(style)
+            is_valid, _ = validate_learning_style(style)
             assert is_valid
 
     def test_invalid_style(self):
         """Test invalid styles fail."""
-        is_valid, error = validate_learning_style("invalid")
+        is_valid, _ = validate_learning_style("invalid")
         assert not is_valid
 
 

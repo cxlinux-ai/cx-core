@@ -178,7 +178,7 @@ class TestLessonGeneratorTool:
         assert "summary" in result
         assert "explanation" in result
         assert len(result["code_examples"]) == 1
-        assert result["confidence"] == 0.9
+        assert result["confidence"] == pytest.approx(0.9)
 
     def test_structure_response_handles_missing_fields(self):
         """Test structure_response handles missing fields gracefully."""
