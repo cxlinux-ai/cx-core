@@ -296,16 +296,14 @@ class TestLearningTracker(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.temp_file = Path(self.temp_dir) / "learning_history.json"
-        # Patch the PROGRESS_FILE to use temp location
-        self.patcher = patch.object(LearningTracker, "PROGRESS_FILE", self.temp_file)
-        self.patcher.start()
         self.tracker = LearningTracker()
+        # Set the progress file to use temp location
+        self.tracker._progress_file = self.temp_file
 
     def tearDown(self):
         """Clean up temporary files."""
         import shutil
 
-        self.patcher.stop()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -421,14 +419,11 @@ class TestAskHandlerLearning(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.temp_file = Path(self.temp_dir) / "learning_history.json"
-        self.patcher = patch.object(LearningTracker, "PROGRESS_FILE", self.temp_file)
-        self.patcher.start()
 
     def tearDown(self):
         """Clean up temporary files."""
         import shutil
 
-        self.patcher.stop()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -437,6 +432,8 @@ class TestAskHandlerLearning(unittest.TestCase):
         os.environ["CORTEX_FAKE_RESPONSE"] = "Docker is a containerization platform..."
         handler = AskHandler(api_key="fake-key", provider="fake")
         handler.cache = None
+        # Set the progress file to use temp location
+        handler.learning_tracker._progress_file = self.temp_file
 
         handler.ask("explain how docker works")
 
@@ -448,6 +445,7 @@ class TestAskHandlerLearning(unittest.TestCase):
         os.environ["CORTEX_FAKE_RESPONSE"] = "Your disk is 80% full."
         handler = AskHandler(api_key="fake-key", provider="fake")
         handler.cache = None
+        handler.learning_tracker._progress_file = self.temp_file
 
         handler.ask("why is my disk full")
 
@@ -459,6 +457,7 @@ class TestAskHandlerLearning(unittest.TestCase):
         os.environ["CORTEX_FAKE_RESPONSE"] = "Test response"
         handler = AskHandler(api_key="fake-key", provider="fake")
         handler.cache = None
+        handler.learning_tracker._progress_file = self.temp_file
 
         handler.ask("explain kubernetes")
         handler.ask("what is docker")

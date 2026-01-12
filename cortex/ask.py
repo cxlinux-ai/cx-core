@@ -141,7 +141,7 @@ class SystemInfoGatherer:
 class LearningTracker:
     """Tracks educational topics the user has explored."""
 
-    PROGRESS_FILE = Path.home() / ".cortex" / "learning_history.json"
+    _progress_file: Path | None = None
 
     # Patterns that indicate educational questions
     EDUCATIONAL_PATTERNS = [
@@ -163,6 +163,21 @@ class LearningTracker:
     def __init__(self):
         """Initialize the learning tracker."""
         self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.EDUCATIONAL_PATTERNS]
+
+    @property
+    def progress_file(self) -> Path:
+        """Lazily compute the progress file path to avoid import-time errors."""
+        if self._progress_file is None:
+            try:
+                self._progress_file = Path.home() / ".cortex" / "learning_history.json"
+            except RuntimeError:
+                # Fallback for restricted environments where home is inaccessible
+                import tempfile
+
+                self._progress_file = (
+                    Path(tempfile.gettempdir()) / ".cortex" / "learning_history.json"
+                )
+        return self._progress_file
 
     def is_educational_query(self, question: str) -> bool:
         """Determine if a question is educational in nature."""
@@ -245,11 +260,11 @@ class LearningTracker:
 
     def _load_history(self) -> dict[str, Any]:
         """Load learning history from file."""
-        if not self.PROGRESS_FILE.exists():
+        if not self.progress_file.exists():
             return {"topics": {}, "total_queries": 0}
 
         try:
-            with open(self.PROGRESS_FILE) as f:
+            with open(self.progress_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return {"topics": {}, "total_queries": 0}
@@ -257,8 +272,8 @@ class LearningTracker:
     def _save_history(self, history: dict[str, Any]) -> None:
         """Save learning history to file."""
         try:
-            self.PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.PROGRESS_FILE, "w") as f:
+            self.progress_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.progress_file, "w") as f:
                 json.dump(history, f, indent=2)
         except OSError:
             pass  # Silently fail if we can't write
