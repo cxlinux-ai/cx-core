@@ -346,6 +346,7 @@ def main():
         "sonarqubecloud",
         "175728472+copilot@users.noreply.github.com",
         "noreply@github.com",
+        "noreply@anthropic.com",
     ]
 
     for author in authors:

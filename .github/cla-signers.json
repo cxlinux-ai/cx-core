@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-03",
+  "last_updated": "2026-01-12",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -118,7 +118,7 @@
       "name": "Shree Milind Jejurikar",
       "github_username": "ShreeJejurikar",
       "emails": [
-        "shreemj0407@gmail.com"
+        "shreemj8@gmail.com"
       ],
       "signed_date": "2026-01-02",
       "cla_version": "1.0"
@@ -176,9 +176,61 @@
       ],
       "signed_date": "2026-01-07",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Omkar Gaikwad",
+      "github_username": "Omkar1701",
+      "emails": [
+        "omkargaik495@gmail.com"
+      ],
+      "signed_date": "2026-01-09",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Jay Surse",
+      "github_username": "jaysurse",
+      "emails": [
+        "jaysurse07@gmail.com"
+      ],
+      "signed_date": "2026-01-09",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Krishna Shukla",
+      "github_username": "KrishnaShuk",
+      "emails": [
+        "shuklakrishna.kris@gmail.com"
+      ],
+      "signed_date": "2026-01-11",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Piyush Rathore",
+      "github_username": "Piyushrathoree",
+      "emails": [
+        "meonpath008@gmail.com"
+      ],
+      "signed_date": "2026-01-12",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Jeremy Longshore",
+      "github_username": "jeremylongshore",
+      "emails": [
+        "jeremylongshore@gmail.com"
+      ],
+      "signed_date": "2026-01-11",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Doddi Sri Krishna Vamsi",
+      "github_username": "srikrishnavansi",
+      "emails": [
+        "srikrishnavamsi1403@gmail.com"
+      ],
+      "signed_date": "2026-01-12",
+      "cla_version": "1.0"
     }
-
-
   ],
   "corporations": {
     "AI Venture Holdings LLC": {
