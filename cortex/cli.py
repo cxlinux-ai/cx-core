@@ -944,15 +944,14 @@ class CortexCLI:
                     logging.debug("Error during voice handler cleanup: %s", e)
 
     def _normalize_software_name(self, software: str) -> str:
-        """Normalize software name and handle special cases."""
-        normalized = " ".join(software.split()).lower()
-        if normalized == "pytorch-cpu jupyter numpy pandas":
-            return (
-                "pip3 install torch torchvision torchaudio "
-                "--index-url https://download.pytorch.org/whl/cpu && "
-                "pip3 install jupyter numpy pandas"
-            )
-        return software
+        """Normalize software name by cleaning whitespace.
+
+        Returns a natural-language description suitable for LLM interpretation.
+        Does NOT return shell commands - all command generation must go through
+        the LLM and validation pipeline.
+        """
+        # Just normalize whitespace - return natural language description
+        return " ".join(software.split())
 
     def _record_history_error(
         self,
