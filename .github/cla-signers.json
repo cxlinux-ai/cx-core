@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-03",
+  "last_updated": "2026-01-12",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -220,6 +220,15 @@
         "jeremylongshore@gmail.com"
       ],
       "signed_date": "2026-01-11",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Doddi Sri Krishna Vamsi",
+      "github_username": "srikrishnavansi",
+      "emails": [
+        "srikrishnavamsi1403@gmail.com"
+      ],
+      "signed_date": "2026-01-12",
       "cla_version": "1.0"
     }
   ],
