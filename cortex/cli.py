@@ -893,6 +893,7 @@ class CortexCLI:
                 cx_print(f"Question: {text}", "info")
                 self.ask(text)
 
+        handler = None
         try:
             handler = VoiceInputHandler()
 
@@ -917,10 +918,12 @@ class CortexCLI:
             return 0
         finally:
             # Ensure cleanup even if exceptions occur
-            try:
-                handler.stop()
-            except Exception:
-                pass  # Ignore cleanup errors
+            if handler is not None:
+                try:
+                    handler.stop()
+                except Exception as e:
+                    # Log cleanup errors but don't raise
+                    logging.debug("Error during voice handler cleanup: %s", e)
 
     def install(
         self,

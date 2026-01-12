@@ -257,18 +257,24 @@ class VoiceInputHandler:
         self._is_recording = False
 
         if hasattr(self, "_stream") and self._stream:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception as e:
+                logging.debug("Error closing stream: %s", e)
+            finally:
+                self._stream = None
 
         if not self._audio_buffer:
             return np.array([], dtype=np.float32)
 
         # Concatenate all audio chunks
-        audio_data = np.concatenate(self._audio_buffer, axis=0)
-        self._audio_buffer = []
-
-        return audio_data.flatten()
+        try:
+            audio_data = np.concatenate(self._audio_buffer, axis=0)
+            return audio_data.flatten()
+        finally:
+            # Always clear buffer to prevent memory leaks
+            self._audio_buffer = []
 
     def transcribe(self, audio_data: Any) -> str:
         """Transcribe audio data to text.
