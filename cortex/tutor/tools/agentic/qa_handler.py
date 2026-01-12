@@ -67,9 +67,7 @@ class QAHandlerTool(BaseTool):
             )
         return self.llm
 
-    def _validate_inputs(
-        self, package_name: str, question: str
-    ) -> tuple[bool, str | None]:
+    def _validate_inputs(self, package_name: str, question: str) -> tuple[bool, str | None]:
         """Validate package name and question inputs."""
         is_valid, error = validate_package_name(package_name)
         if not is_valid:
@@ -105,8 +103,7 @@ class QAHandlerTool(BaseTool):
             "package_name": package_name,
             "question": question,
             "learning_style": learning_style,
-            "mastered_concepts": ", ".join(mastered_concepts or [])
-            or self._NONE_SPECIFIED,
+            "mastered_concepts": ", ".join(mastered_concepts or []) or self._NONE_SPECIFIED,
             "weak_concepts": ", ".join(weak_concepts or []) or self._NONE_SPECIFIED,
             "lesson_context": lesson_context or "starting fresh",
         }
