@@ -493,6 +493,8 @@ sudo apt install nginx
                 system_prompt=system_prompt,
             )
             if cached is not None and len(cached) > 0:
+                # Track topic access even for cached responses
+                self.learning_tracker.record_topic(question)
                 return cached[0]
 
         # Call LLM
