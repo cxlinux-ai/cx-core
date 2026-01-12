@@ -253,9 +253,7 @@ def _show_package_progress(store: SQLiteStore, package: str) -> None:
             package,
         )
         console.print(f"[dim]Average score: {stats.get('avg_score', 0):.0%}[/dim]")
-        console.print(
-            f"[dim]Total time: {stats.get('total_time_seconds', 0) // 60} minutes[/dim]"
-        )
+        console.print(f"[dim]Total time: {stats.get('total_time_seconds', 0) // 60} minutes[/dim]")
     else:
         tutor_print(f"No progress found for {package}", "info")
 
