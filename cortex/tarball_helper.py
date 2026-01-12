@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 from rich import box
 from rich.panel import Panel
@@ -48,7 +47,7 @@ class Dependency:
 
     name: str
     dep_type: str  # library, header, tool, pkg-config
-    apt_package: Optional[str] = None
+    apt_package: str | None = None
     required: bool = True
     found: bool = False
 
@@ -463,7 +462,7 @@ class TarballHelper:
             return False
         return True
 
-    def find_alternative(self, name: str) -> Optional[str]:
+    def find_alternative(self, name: str) -> str | None:
         """Check if there's a packaged alternative to building from source.
 
         Args:
