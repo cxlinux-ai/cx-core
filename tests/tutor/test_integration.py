@@ -179,8 +179,8 @@ class TestProgressContext:
             topics=topics,
         )
 
-        assert package.completion_percentage == 50.0
-        assert package.average_score == 0.7
+        assert package.completion_percentage == pytest.approx(50.0)
+        assert package.average_score == pytest.approx(0.7)
         assert not package.is_complete()
         assert package.get_next_topic() == "advanced"
 
