@@ -203,6 +203,15 @@
       ],
       "signed_date": "2026-01-11",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Jeremy Longshore",
+      "github_username": "jeremylongshore",
+      "emails": [
+        "jeremylongshore@gmail.com"
+      ],
+      "signed_date": "2026-01-11",
+      "cla_version": "1.0"
     }
   ],
   "corporations": {
