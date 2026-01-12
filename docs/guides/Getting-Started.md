@@ -12,8 +12,8 @@
 git clone https://github.com/cortexlinux/cortex.git
 cd cortex
 
-# Install dependencies
-pip install -r requirements.txt
+# Install Cortex
+pip install -e .
 
 # Configure API key
 export ANTHROPIC_API_KEY="your-key-here"
