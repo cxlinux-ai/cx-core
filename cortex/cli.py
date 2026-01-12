@@ -2029,7 +2029,7 @@ class CortexCLI:
 
         elif action == "diagnose":
             try:
-                run_diagnose_command(args.service)
+                run_diagnose_command(args.service, lines=args.lines)
                 return 0
             except RuntimeError as e:
                 console.print(f"[red]Error: {e}[/red]")

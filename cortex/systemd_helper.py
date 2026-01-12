@@ -5,16 +5,14 @@ failure diagnostics, and dependency visualization.
 """
 
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
-from rich import box
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
-from rich.table import Table
 from rich.tree import Tree
 
 from cortex.branding import console
@@ -117,12 +115,19 @@ class SystemdHelper:
         if not service_name.endswith(".service"):
             service_name = f"{service_name}.service"
 
-        result = subprocess.run(
-            ["systemctl", "show", service_name, "--no-pager"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        try:
+            result = subprocess.run(
+                ["systemctl", "show", service_name, "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to get service status for {service_name}: {result.stderr.strip()}"
+                )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Timeout getting service status for {service_name}")
 
         properties = {}
         for line in result.stdout.strip().split("\n"):
@@ -350,14 +355,18 @@ class SystemdHelper:
         if not service_name.endswith(".service"):
             service_name = f"{service_name}.service"
 
-        result = subprocess.run(
-            ["systemctl", "list-dependencies", service_name, "--no-pager"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
         tree = Tree(f"[bold cyan]{service_name}[/bold cyan]")
+
+        try:
+            result = subprocess.run(
+                ["systemctl", "list-dependencies", service_name, "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            tree.add("[yellow]Timed out fetching dependencies[/yellow]")
+            return tree
 
         lines = result.stdout.strip().split("\n")[1:]  # Skip header
 
@@ -454,7 +463,13 @@ class SystemdHelper:
 
         if environment:
             for key, value in environment.items():
-                lines.append(f"Environment={key}={value}")
+                # Quote values that contain spaces or special characters
+                if " " in value or '"' in value or "'" in value or "\\" in value:
+                    # Escape existing double quotes and backslashes
+                    escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
+                    lines.append(f'Environment={key}="{escaped_value}"')
+                else:
+                    lines.append(f"Environment={key}={value}")
 
         if restart:
             lines.append("Restart=on-failure")
@@ -548,14 +563,15 @@ def run_status_command(service_name: str) -> None:
     console.print(Panel(explanation, title="Service Status", border_style="cyan"))
 
 
-def run_diagnose_command(service_name: str) -> None:
+def run_diagnose_command(service_name: str, lines: int = 50) -> None:
     """Run the diagnostic command for a failed service.
 
     Args:
         service_name: Name of the service to diagnose.
+        lines: Number of log lines to analyze.
     """
     helper = SystemdHelper()
-    report = helper.diagnose_failure(service_name)
+    report = helper.diagnose_failure(service_name, lines=lines)
     console.print(report)
 
 
