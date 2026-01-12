@@ -77,14 +77,14 @@
     "config_readonly": "Файл конфигурации доступен только для чтения"
   },
   "errors": {
-    "network": "Ошибка сети: {error}",
+    "network": "Ошибка сети: {details}",
     "permission": "Доступ запрещен: {details}",
     "invalid_package": "Пакет '{package}' не найден",
     "disk_space": "Недостаточно свободного места на диске",
     "api_key_missing": "Ключ API не установлен. Установите его в конфигурации.",
     "timeout": "Истекло время ожидания {operation}",
     "parse_error": "Ошибка при разборе ответа: {details}",
-    "invalid_input": "Неверный ввод: {error}",
+    "invalid_input": "Неверный ввод: {details}",
     "operation_failed": "Операция не выполнена: {details}",
     "unexpected": "Произошла неожиданная ошибка. Пожалуйста, попробуйте снова.",
     "permission_denied": "Доступ запрещен",

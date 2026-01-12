@@ -74,14 +74,14 @@
     "config_readonly": "Konfigurationsdatei ist schreibgeschützt"
   },
   "errors": {
-    "network": "Netzwerkfehler: {error}",
+    "network": "Netzwerkfehler: {details}",
     "permission": "Zugriff verweigert: {details}",
     "invalid_package": "Paket '{package}' nicht gefunden",
     "disk_space": "Nicht genug Speicherplatz verfügbar",
     "api_key_missing": "API-Schlüssel nicht gesetzt. Bitte in der Konfiguration setzen.",
     "timeout": "Zeitüberschreitung bei {operation}",
     "parse_error": "Antwort konnte nicht verarbeitet werden: {details}",
-    "invalid_input": "Ungültige Eingabe: {error}",
+    "invalid_input": "Ungültige Eingabe: {details}",
     "operation_failed": "Vorgang fehlgeschlagen: {details}",
     "unexpected": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
     "permission_denied": "Berechtigung verweigert",

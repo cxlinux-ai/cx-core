@@ -44,8 +44,9 @@ class CortexCLI:
         self.spinner_idx = 0
         self.verbose = verbose
 
-        # Initialize language manager and translator
-        self.lang_manager = LanguageManager()
+        # Initialize language manager with ConfigManager for saved preferences
+        config_mgr = ConfigManager()
+        self.lang_manager = LanguageManager(prefs_manager=config_mgr)
         detected_language = language or self.lang_manager.detect_language()
         from cortex.i18n import get_translator
 
@@ -1449,8 +1450,13 @@ class CortexCLI:
         lang_mgr = LanguageManager()
         new_language = getattr(args, "language_code", None)
 
-        # Load current preferences
-        prefs = config_mgr.load_preferences()
+        # Load current preferences with error handling
+        try:
+            prefs = config_mgr.load_preferences()
+        except (OSError, ValueError) as e:
+            self._print_error(f"Failed to read configuration: {e}")
+            return 1
+
         current_lang = prefs.get("language", "en")
 
         if new_language:
@@ -1463,9 +1469,13 @@ class CortexCLI:
                     console.print(f"  [green]{code}[/green] - {name}")
                 return 1
 
-            # Save preference
+            # Save preference with error handling
             prefs["language"] = resolved
-            config_mgr.save_preferences(prefs)
+            try:
+                config_mgr.save_preferences(prefs)
+            except (OSError, ValueError) as e:
+                self._print_error(f"Failed to save configuration: {e}")
+                return 1
 
             lang_name = lang_mgr.get_language_name(resolved)
             cx_print(f"✓ Language set to {lang_name} ({resolved})", "success")
@@ -2603,7 +2613,7 @@ def main():
         return 0
 
     # Initialize the CLI handler
-    cli = CortexCLI(verbose=args.verbose)
+    cli = CortexCLI(verbose=args.verbose, language=args.language)
 
     try:
         # Route the command to the appropriate method inside the cli object

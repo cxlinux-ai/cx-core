@@ -74,14 +74,14 @@
     "config_readonly": "配置文件为只读"
   },
   "errors": {
-    "network": "网络错误：{error}",
+    "network": "网络错误：{details}",
     "permission": "权限被拒绝：{details}",
     "invalid_package": "未找到软件包 '{package}'",
     "disk_space": "磁盘空间不足",
     "api_key_missing": "未设置 API 密钥。请在配置中设置。",
     "timeout": "{operation} 超时",
     "parse_error": "解析响应失败：{details}",
-    "invalid_input": "输入无效：{error}",
+    "invalid_input": "输入无效：{details}",
     "operation_failed": "操作失败：{details}",
     "unexpected": "发生意外错误。请重试。",
     "permission_denied": "权限被拒绝",

@@ -128,7 +128,7 @@ Keep this format in translated versions:
 
 ### Right-to-Left (RTL) Languages
 
-Arabic and Hebrew need special handling:
+Arabic needs special handling:
 - Text will be automatically formatted by the system
 - Don't add RTL markers manually
 - Just translate the text normally
@@ -301,8 +301,8 @@ Contributors are recognized in:
 ## Contact
 
 - Discord: [Cortex Linux Community](https://discord.gg/uCqHvxjU83)
-- Email: translations@cortexlinux.com
-- Issues: Use label `[i18n]` on GitHub
+- Email: [translations@cortexlinux.com](mailto:translations@cortexlinux.com)
+- Issues: [Use label `[i18n]` on GitHub](https://github.com/cortexlinux/cortex/issues?q=label%3Ai18n)
 
 ---
 

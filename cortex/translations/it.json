@@ -77,14 +77,14 @@
     "config_readonly": "Il file di configurazione è di sola lettura"
   },
   "errors": {
-    "network": "Errore di rete: {error}",
+    "network": "Errore di rete: {details}",
     "permission": "Permesso negato: {details}",
     "invalid_package": "Pacchetto '{package}' non trovato",
     "disk_space": "Spazio su disco insufficiente",
     "api_key_missing": "Chiave API non impostata. Impostarla nella configurazione.",
     "timeout": "Timeout per {operation}",
     "parse_error": "Impossibile analizzare la risposta: {details}",
-    "invalid_input": "Input non valido: {error}",
+    "invalid_input": "Input non valido: {details}",
     "operation_failed": "Operazione fallita: {details}",
     "unexpected": "Si è verificato un errore imprevisto. Riprova.",
     "permission_denied": "Permesso negato",
