@@ -105,7 +105,7 @@ class TestVoiceInputHandler:
             result = handler._ensure_dependencies()
             assert result is False
 
-    def test_check_microphone_available(self, handler):
+    def test_check_microphone_available(self):
         """Test microphone check when device is available."""
         mock_sd = MagicMock()
         mock_devices = [{"max_input_channels": 2, "name": "Test Mic"}]
@@ -126,7 +126,7 @@ class TestVoiceInputHandler:
                 result = handler._check_microphone()
                 assert result is True
 
-    def test_check_microphone_not_available(self, handler):
+    def test_check_microphone_not_available(self):
         """Test microphone check when no device available."""
         mock_sd = MagicMock()
         mock_sd.query_devices.return_value = []
