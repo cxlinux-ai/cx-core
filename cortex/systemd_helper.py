@@ -21,7 +21,7 @@ JOURNALCTL_TIMEOUT = 30
 VERSION_CHECK_TIMEOUT = 5
 
 # Valid service name pattern
-SERVICE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_@.-]+$')
+SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_@.-]+$")
 
 
 class ServiceState(Enum):
@@ -634,9 +634,7 @@ class SystemdHelper:
 
         # Installation instructions
         console.print("\n[bold]Installation Instructions:[/bold]")
-        console.print(
-            f"1. Save to: sudo tee /etc/systemd/system/{service_name}.service"
-        )
+        console.print(f"1. Save to: sudo tee /etc/systemd/system/{service_name}.service")
         console.print("2. Reload systemd: sudo systemctl daemon-reload")
         if start_on_boot:
             console.print(f"3. Enable service: sudo systemctl enable {service_name}")

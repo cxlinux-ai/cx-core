@@ -9,17 +9,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cortex.systemd_helper import (
+    JOURNALCTL_TIMEOUT,
     SERVICE_NAME_PATTERN,
     SYSTEMCTL_TIMEOUT,
-    JOURNALCTL_TIMEOUT,
     ServiceState,
     ServiceStatus,
     SystemdHelper,
     _validate_service_name,
-    run_status_command,
-    run_diagnose_command,
     run_deps_command,
+    run_diagnose_command,
     run_generate_command,
+    run_status_command,
 )
 
 
@@ -336,12 +336,26 @@ class TestExplainExitCode:
 
         # Test specific exit codes
         assert "General error" in helper._explain_exit_code(1)
-        assert "Misuse" in helper._explain_exit_code(2) or "invalid" in helper._explain_exit_code(2).lower()
-        assert "not executable" in helper._explain_exit_code(126) or "permission" in helper._explain_exit_code(126).lower()
+        assert (
+            "Misuse" in helper._explain_exit_code(2)
+            or "invalid" in helper._explain_exit_code(2).lower()
+        )
+        assert (
+            "not executable" in helper._explain_exit_code(126)
+            or "permission" in helper._explain_exit_code(126).lower()
+        )
         assert "not found" in helper._explain_exit_code(127)
-        assert "SIGKILL" in helper._explain_exit_code(137) or "killed" in helper._explain_exit_code(137).lower()
-        assert "Segmentation" in helper._explain_exit_code(139) or "SIGSEGV" in helper._explain_exit_code(139)
-        assert "SIGTERM" in helper._explain_exit_code(143) or "terminated" in helper._explain_exit_code(143).lower()
+        assert (
+            "SIGKILL" in helper._explain_exit_code(137)
+            or "killed" in helper._explain_exit_code(137).lower()
+        )
+        assert "Segmentation" in helper._explain_exit_code(
+            139
+        ) or "SIGSEGV" in helper._explain_exit_code(139)
+        assert (
+            "SIGTERM" in helper._explain_exit_code(143)
+            or "terminated" in helper._explain_exit_code(143).lower()
+        )
 
     def test_signal_calculation(self):
         helper = self._create_helper()
@@ -372,7 +386,9 @@ SubState=failed
 ExecMainStatus=1
 """
         # Second call: journalctl
-        log_output = "Jan 01 12:00:00 server myapp[1234]: Error: permission denied opening /var/log/app.log"
+        log_output = (
+            "Jan 01 12:00:00 server myapp[1234]: Error: permission denied opening /var/log/app.log"
+        )
 
         def mock_run(cmd, *args, **kwargs):
             result = MagicMock()
