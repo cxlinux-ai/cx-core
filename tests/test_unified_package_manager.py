@@ -399,7 +399,7 @@ class TestUnifiedPackageManager(unittest.TestCase):
         """Test successful restore of snap redirects from backup."""
         # backup exists, config doesn't exist
         mock_exists.side_effect = lambda: True  # backup exists
-        
+
         with patch("pathlib.Path.exists") as mock_path_exists:
             # First call for backup_path.exists() = True, second for config_path.exists() = False
             mock_path_exists.side_effect = [True, False]

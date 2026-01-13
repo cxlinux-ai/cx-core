@@ -3029,6 +3029,7 @@ class CortexCLI:
 
             # Record to installation history
             from datetime import datetime
+
             history = InstallationHistory()
             start_time = datetime.now()
 

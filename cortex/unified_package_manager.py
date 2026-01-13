@@ -7,7 +7,7 @@ Provides a unified interface for managing packages across multiple formats:
 - Snap (Canonical's universal packages)
 - Flatpak (cross-distribution application packages)
 
-""" 
+"""
 
 import logging
 import os
@@ -151,7 +151,7 @@ class UnifiedPackageManager:
         )
 
         if success and "install ok installed" in stdout:
-            parts = stdout.strip().split("|",2)
+            parts = stdout.strip().split("|", 2)
             version = parts[1] if len(parts) > 1 else ""
             size = int(parts[2]) * 1024 if len(parts) > 2 and parts[2].isdigit() else 0
             return PackageInfo(
@@ -575,7 +575,9 @@ class UnifiedPackageManager:
 
         return permissions
 
-    def modify_snap_permission(self, snap_name: str, interface: str, action: str, slot: str | None = None) -> tuple[bool, str]:
+    def modify_snap_permission(
+        self, snap_name: str, interface: str, action: str, slot: str | None = None
+    ) -> tuple[bool, str]:
         """
         Modify a snap permission (connect/disconnect an interface).
 
@@ -715,7 +717,10 @@ class UnifiedPackageManager:
             if backup:
                 backup_path = config_path.with_suffix(".conf.disabled")
                 if backup_path.exists():
-                    return True, f"Snap redirects already disabled. Existing backup preserved at: {backup_path}"
+                    return (
+                        True,
+                        f"Snap redirects already disabled. Existing backup preserved at: {backup_path}",
+                    )
                 shutil.move(str(config_path), str(backup_path))
                 return True, f"Snap redirects disabled. Backup saved to: {backup_path}"
             else:
