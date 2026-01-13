@@ -581,6 +581,11 @@ class UnifiedPackageManager:
         """
         Modify a snap permission (connect/disconnect an interface).
 
+        Note:
+            This operation may require elevated privileges (sudo) for system-level
+            interface modifications. The caller (CLI layer) should request user
+            confirmation before invoking this method with privilege escalation.
+
         Args:
             snap_name: Name of the snap package
             interface: Interface/plug to modify
@@ -590,7 +595,8 @@ class UnifiedPackageManager:
                   For connecting to slots in other snaps, use format "snap-name:slot-name".
 
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message). On permission errors, success=False with
+            an error message indicating privilege requirements.
 
         Example:
             # Connect to system slot (most common case)
