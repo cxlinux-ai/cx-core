@@ -109,12 +109,15 @@ class CommandInterpreter:
             # Fake provider uses predefined commands from environment
             self.client = None  # No client needed for fake provider
 
-    def _get_system_prompt(self, simplified: bool = False, domain: str | None = None) -> str:
+    def _get_system_prompt(
+        self, simplified: bool = False, domain: str | None = None, install_mode: str | None = None
+    ) -> str:
         """Get system prompt for command interpretation.
 
         Args:
             simplified: If True, return a shorter prompt optimized for local models
             domain: Optional domain context to guide command generation
+            install_mode: Type of installation ('system', 'python', 'mixed')
         """
         domain_context = ""
         if domain and domain != "unknown":
@@ -123,6 +126,13 @@ class CommandInterpreter:
                 f"Generate commands specific to this domain only. "
                 f"Avoid installing unrelated packages."
             )
+
+        # Add install mode constraint
+        install_mode_constraint = ""
+        if install_mode == "python":
+            install_mode_constraint = "\n⚠️ CONSTRAINT: This is a Python package installation. ALWAYS use 'pip install' or 'pip3 install'. NEVER use 'apt install'."
+        elif install_mode == "mixed":
+            install_mode_constraint = "\n⚠️ CONSTRAINT: Use 'pip install' for Python packages and 'apt install' for system-level tools only."
 
         common_rules = """
     Execution environment:
@@ -157,7 +167,7 @@ class CommandInterpreter:
     Example input: install nginx
     Example output:
     {{"commands": ["sudo apt update", "sudo apt install -y nginx"]}}
-    {domain_context}
+    {domain_context}{install_mode_constraint}
     """
 
         return f"""You are a Linux system command expert.
@@ -183,7 +193,7 @@ class CommandInterpreter:
     "sudo apt install -y nvidia-docker2",
     "sudo systemctl restart docker"
     ]}}
-    {domain_context}
+    {domain_context}{install_mode_constraint}
     """
 
     def _extract_intent_ollama(self, user_input: str) -> dict:
@@ -263,12 +273,19 @@ Response format (JSON only):
 }
 """
 
-    def _call_openai(self, user_input: str, domain: str | None = None) -> list[str]:
+    def _call_openai(
+        self, user_input: str, domain: str | None = None, install_mode: str | None = None
+    ) -> list[str]:
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self._get_system_prompt(domain=domain)},
+                    {
+                        "role": "system",
+                        "content": self._get_system_prompt(
+                            domain=domain, install_mode=install_mode
+                        ),
+                    },
                     {"role": "user", "content": user_input},
                 ],
                 temperature=0.3,
@@ -334,13 +351,15 @@ Response format (JSON only):
             "confidence": 0.0,
         }
 
-    def _call_claude(self, user_input: str, domain: str | None = None) -> list[str]:
+    def _call_claude(
+        self, user_input: str, domain: str | None = None, install_mode: str | None = None
+    ) -> list[str]:
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1000,
                 temperature=0.3,
-                system=self._get_system_prompt(domain=domain),
+                system=self._get_system_prompt(domain=domain, install_mode=install_mode),
                 messages=[{"role": "user", "content": user_input}],
             )
 
@@ -349,7 +368,9 @@ Response format (JSON only):
         except Exception as e:
             raise RuntimeError(f"Claude API call failed: {str(e)}")
 
-    def _call_ollama(self, user_input: str, domain: str | None = None) -> list[str]:
+    def _call_ollama(
+        self, user_input: str, domain: str | None = None, install_mode: str | None = None
+    ) -> list[str]:
         """Call local Ollama instance using OpenAI-compatible API."""
         try:
             # For local models, be extremely explicit in the user message
@@ -363,7 +384,9 @@ Respond with ONLY this JSON format (no explanations):
                 messages=[
                     {
                         "role": "system",
-                        "content": self._get_system_prompt(simplified=True, domain=domain),
+                        "content": self._get_system_prompt(
+                            simplified=True, domain=domain, install_mode=install_mode
+                        ),
                     },
                     {"role": "user", "content": enhanced_input},
                 ],
@@ -511,8 +534,20 @@ Respond with ONLY this JSON format (no explanations):
         if not user_input or not user_input.strip():
             raise ValueError("User input cannot be empty")
 
+        # Extract intent first to determine install_mode constraint
+        try:
+            intent = self.extract_intent(user_input)
+            install_mode = intent.get("install_mode", "system")
+            if not domain:
+                domain = intent.get("domain", "unknown")
+                if domain == "unknown":
+                    domain = None
+        except Exception:
+            install_mode = "system"
+
         cache_system_prompt = (
-            self._get_system_prompt(domain=domain) + f"\n\n[cortex-cache-validate={bool(validate)}]"
+            self._get_system_prompt(domain=domain, install_mode=install_mode)
+            + f"\n\n[cortex-cache-validate={bool(validate)}]"
         )
 
         if self.cache is not None:
@@ -526,11 +561,11 @@ Respond with ONLY this JSON format (no explanations):
                 return cached
 
         if self.provider == APIProvider.OPENAI:
-            commands = self._call_openai(user_input, domain=domain)
+            commands = self._call_openai(user_input, domain=domain, install_mode=install_mode)
         elif self.provider == APIProvider.CLAUDE:
-            commands = self._call_claude(user_input, domain=domain)
+            commands = self._call_claude(user_input, domain=domain, install_mode=install_mode)
         elif self.provider == APIProvider.OLLAMA:
-            commands = self._call_ollama(user_input, domain=domain)
+            commands = self._call_ollama(user_input, domain=domain, install_mode=install_mode)
         elif self.provider == APIProvider.FAKE:
             commands = self._call_fake(user_input)
         else:
