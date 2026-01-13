@@ -1,8 +1,7 @@
 """
 Intelligent Tutor - AI-Powered Installation Tutor for Cortex Linux.
 
-An interactive AI tutor that teaches users about packages and best practices
-using LangChain, LangGraph, and Claude API.
+An interactive AI tutor that teaches users about packages and best practices.
 """
 
 __version__ = "0.1.0"

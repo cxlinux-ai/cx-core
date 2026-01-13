@@ -24,7 +24,6 @@ class TestInteractiveTutorInit:
 
         assert tutor.package_name == "docker"
         assert tutor.lesson is None
-        assert tutor.current_step == 0
 
 
 class TestInteractiveTutorStart:

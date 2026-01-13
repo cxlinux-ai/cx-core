@@ -1,10 +1,7 @@
 """
-Tutor Agent - Main LangGraph workflow for interactive tutoring.
-
-Implements Plan→Act→Reflect pattern for package education.
+Tutor Agent - Main orchestrator for interactive tutoring.
 """
 
-from cortex.tutor.agents.tutor_agent.state import TutorAgentState
 from cortex.tutor.agents.tutor_agent.tutor_agent import InteractiveTutor, TutorAgent
 
-__all__ = ["TutorAgent", "TutorAgentState", "InteractiveTutor"]
+__all__ = ["TutorAgent", "InteractiveTutor"]

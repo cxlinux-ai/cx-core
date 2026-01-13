@@ -57,11 +57,6 @@ dependencies = [
     "rich>=13.0.0",
     # Type hints for older Python versions
     "typing-extensions>=4.0.0",
-    # AI Tutor Dependencies (Issue #131)
-    "langchain>=0.3.0,<2.0.0",
-    "langchain-anthropic>=0.3.0,<2.0.0",
-    "langgraph>=0.2.0,<2.0.0",
-    "pydantic>=2.0.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -103,7 +98,7 @@ Discussions = "https://github.com/cortexlinux/cortex/discussions"
 Changelog = "https://github.com/cortexlinux/cortex/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
-packages = ["cortex", "cortex.sandbox", "cortex.utils", "cortex.llm", "cortex.kernel_features", "cortex.kernel_features.ebpf", "cortex.tutor", "cortex.tutor.agents", "cortex.tutor.agents.tutor_agent", "cortex.tutor.contracts", "cortex.tutor.memory", "cortex.tutor.tools", "cortex.tutor.tools.agentic", "cortex.tutor.tools.deterministic"]
+packages = ["cortex", "cortex.sandbox", "cortex.utils", "cortex.llm", "cortex.kernel_features", "cortex.kernel_features.ebpf", "cortex.tutor", "cortex.tutor.agents", "cortex.tutor.agents.tutor_agent", "cortex.tutor.contracts", "cortex.tutor.memory", "cortex.tutor.tools", "cortex.tutor.tools.deterministic"]
 include-package-data = true
 
 [tool.setuptools.package-data]
