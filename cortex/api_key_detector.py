@@ -1,27 +1,37 @@
 """
 API Key Auto-Detection Module
 
-Automatically detects API keys from common locations without requiring
-user to set environment variables. Searches in order:
+Automatically detects API keys and provider preferences from common locations
+without requiring user to manually set environment variables.
 
-1. Environment variables: ANTHROPIC_API_KEY, OPENAI_API_KEY
-2. ~/.cortex/.env
-3. ~/.config/anthropic (Claude CLI location)
-4. ~/.config/openai
-5. .env in current directory
+Detection order (highest priority first):
+1. CORTEX_PROVIDER=ollama environment variable (for explicit Ollama mode)
+2. API key environment variables: ANTHROPIC_API_KEY, OPENAI_API_KEY
+3. Encrypted storage (~/.cortex/environments/cortex.json) - secure Fernet-encrypted storage
+4. Cached key location (~/.cortex/.api_key_cache)
+5. Saved Ollama provider preference in ~/.cortex/.env (CORTEX_PROVIDER=ollama)
+6. API keys in ~/.cortex/.env
+7. ~/.config/anthropic/credentials.json (Claude CLI location)
+8. ~/.config/openai/credentials.json
+9. .env in current directory
 
-Implements caching to avoid repeated file checks and supports manual entry
-with optional saving to ~/.cortex/.env.
+Implements caching to avoid repeated file checks, file locking for safe
+concurrent access, encrypted storage for sensitive keys, and supports
+manual entry with optional saving.
 
 """
 
+import fcntl
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Optional
 
 from cortex.branding import console, cx_print
+
+logger = logging.getLogger(__name__)
 
 # Constants
 CORTEX_DIR = ".cortex"
@@ -68,6 +78,14 @@ class APIKeyDetector:
         """
         Auto-detect API key from common locations.
 
+        Detection order (highest priority first):
+        1. CORTEX_PROVIDER=ollama environment variable
+        2. API key environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY)
+        3. Encrypted storage (~/.cortex/environments/cortex.json)
+        4. Cached key location
+        5. Saved Ollama provider preference
+        6. File-based locations (.env files, credentials.json)
+
         Returns:
             Tuple of (found, key, provider, source)
             - found: True if key was found
@@ -75,14 +93,87 @@ class APIKeyDetector:
             - provider: "anthropic" or "openai" (or None)
             - source: Where the key was found (or None)
         """
-        # Check cached location first
+        # Check for explicit CORTEX_PROVIDER=ollama in environment variable first
+        if os.environ.get("CORTEX_PROVIDER", "").lower() == "ollama":
+            return (True, "ollama-local", "ollama", "environment")
+
+        # Check for API keys in environment variables (highest priority)
+        result = self._check_environment_api_keys()
+        if result:
+            return result
+
+        # Check encrypted storage (secure storage from first-run wizard)
+        result = self._check_encrypted_storage()
+        if result:
+            return result
+
+        # Check cached location
         result = self._check_cached_key()
         if result:
             return result
 
-        # Check in priority order
+        # Check for saved Ollama provider preference in config file
+        # (only if no API keys found in environment)
+        result = self._check_saved_ollama_provider()
+        if result:
+            return result
+
+        # Check other locations for API keys
         result = self._check_all_locations()
         return result or (False, None, None, None)
+
+    def _check_environment_api_keys(self) -> tuple[bool, str, str, str] | None:
+        """Check for API keys in environment variables."""
+        for env_var, provider in ENV_VAR_PROVIDERS.items():
+            value = os.environ.get(env_var)
+            if value:
+                return (True, value, provider, "environment")
+        return None
+
+    def _check_encrypted_storage(self) -> tuple[bool, str, str, str] | None:
+        """Check for API keys in encrypted storage (~/.cortex/environments/cortex.json).
+
+        This is the secure storage location used by the first-run wizard.
+        Keys are stored encrypted using Fernet encryption.
+        """
+        try:
+            from cortex.env_manager import get_env_manager
+
+            env_mgr = get_env_manager()
+
+            # Check for API keys in encrypted storage
+            for env_var, provider in ENV_VAR_PROVIDERS.items():
+                value = env_mgr.get_variable(app="cortex", key=env_var, decrypt=True)
+                if value:
+                    # Set in environment for this session
+                    os.environ[env_var] = value
+                    logger.debug(f"Loaded {env_var} from encrypted storage")
+                    return (True, value, provider, "encrypted storage (~/.cortex/environments/)")
+        except ImportError:
+            # cryptography not installed, skip encrypted storage check
+            logger.debug("cryptography not installed, skipping encrypted storage check")
+        except Exception as e:
+            # Log but don't fail - other detection methods may work
+            logger.debug(f"Could not check encrypted storage: {e}")
+
+        return None
+
+    def _check_saved_ollama_provider(self) -> tuple[bool, str, str, str] | None:
+        """Check if Ollama was previously selected as the provider in config file."""
+        env_file = Path.home() / CORTEX_DIR / CORTEX_ENV_FILE
+        if env_file.exists():
+            try:
+                content = env_file.read_text()
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line.startswith("CORTEX_PROVIDER="):
+                        value = line.split("=", 1)[1].strip().strip("\"'").lower()
+                        if value == "ollama":
+                            return (True, "ollama-local", "ollama", str(env_file))
+            except OSError:
+                # Ignore errors reading env file; treat as no configured provider
+                pass
+        return None
 
     def _check_cached_key(self) -> tuple[bool, str | None, str | None, str | None] | None:
         """Check if we have a cached key that still works."""
@@ -173,6 +264,7 @@ class APIKeyDetector:
             return (False, None, None)
 
         if provider == "ollama":
+            self._ask_to_save_ollama_preference()
             return (True, "ollama-local", "ollama")
 
         key = self._get_and_validate_key(provider)
@@ -181,6 +273,30 @@ class APIKeyDetector:
 
         self._ask_to_save_key(key, provider)
         return (True, key, provider)
+
+    def _ask_to_save_ollama_preference(self) -> None:
+        """Ask user if they want to save Ollama as their default provider."""
+        print(
+            f"\nSave Ollama as default provider to ~/{CORTEX_DIR}/{CORTEX_ENV_FILE}? [Y/n] ", end=""
+        )
+        try:
+            response = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            response = "n"
+
+        if response != "n":
+            self._save_provider_to_env("ollama")
+            cx_print(f"✓ Provider preference saved to ~/{CORTEX_DIR}/{CORTEX_ENV_FILE}", "success")
+
+    def _save_provider_to_env(self, provider: str) -> None:
+        """Save provider preference to ~/.cortex/.env with file locking."""
+        try:
+            env_file = Path.home() / CORTEX_DIR / CORTEX_ENV_FILE
+            self._locked_read_modify_write(
+                env_file, self._update_or_append_key, "CORTEX_PROVIDER", provider
+            )
+        except Exception as e:
+            cx_print(f"Warning: Could not save provider to ~/.cortex/.env: {e}", "warning")
 
     def _get_provider_choice(self) -> str | None:
         """Get user's provider choice."""
@@ -407,6 +523,40 @@ class APIKeyDetector:
         temp_file.chmod(0o600)
         temp_file.replace(target_file)
 
+    def _locked_read_modify_write(self, env_file: Path, modifier_func: callable, *args) -> None:
+        """
+        Perform a locked read-modify-write operation on a file.
+
+        Uses file locking to prevent race conditions when multiple processes
+        try to modify the same file concurrently.
+
+        Args:
+            env_file: The file to modify
+            modifier_func: Function that takes (existing_content, *args) and returns new content
+            *args: Additional arguments to pass to modifier_func
+        """
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = env_file.with_suffix(".lock")
+
+        # Create lock file if it doesn't exist
+        lock_file.touch(exist_ok=True)
+
+        with open(lock_file, "r+") as lock_fd:
+            # Acquire exclusive lock (blocks until available)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            try:
+                # Read current content
+                existing = env_file.read_text() if env_file.exists() else ""
+
+                # Apply modification
+                updated = modifier_func(existing, *args)
+
+                # Write atomically
+                self._atomic_write(env_file, updated)
+            finally:
+                # Release lock
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
     def _cache_key_location(self, key: str, provider: str, source: str):
         """
         Cache the location where a key was found.
@@ -487,7 +637,8 @@ class APIKeyDetector:
         """
         Save API key to ~/.cortex/.env.
 
-        Uses atomic write operations to prevent corruption from concurrent access.
+        Uses file locking and atomic write operations to prevent corruption
+        and lost updates from concurrent access.
 
         Args:
             key: The API key to save
@@ -496,10 +647,7 @@ class APIKeyDetector:
         try:
             env_file = Path.home() / CORTEX_DIR / CORTEX_ENV_FILE
             var_name = self._get_env_var_name(provider)
-            existing = self._read_env_file(env_file)
-            updated = self._update_or_append_key(existing, var_name, key)
-
-            self._atomic_write(env_file, updated)
+            self._locked_read_modify_write(env_file, self._update_or_append_key, var_name, key)
 
         except Exception as e:
             # If save fails, print warning but don't crash

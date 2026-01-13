@@ -12,6 +12,8 @@ import sqlite3
 import subprocess
 from typing import Any
 
+from cortex.config_utils import get_ollama_model
+
 
 class SystemInfoGatherer:
     """Gathers local system information for context-aware responses."""
@@ -169,10 +171,17 @@ class AskHandler:
         elif self.provider == "claude":
             return "claude-sonnet-4-20250514"
         elif self.provider == "ollama":
-            return "llama3.2"
+            return self._get_ollama_model()
         elif self.provider == "fake":
             return "fake"
         return "gpt-4"
+
+    def _get_ollama_model(self) -> str:
+        """Determine which Ollama model to use.
+
+        Delegates to the shared ``get_ollama_model()`` utility function.
+        """
+        return get_ollama_model()
 
     def _initialize_client(self):
         if self.provider == "openai":

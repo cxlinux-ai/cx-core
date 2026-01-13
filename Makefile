@@ -18,8 +18,7 @@ help:
 
 dev:
 	$(PYTHON) -m pip install -U pip
-	$(PYTHON) -m pip install -e .
-	$(PYTHON) -m pip install -r requirements-dev.txt
+	$(PYTHON) -m pip install -e ".[dev]"
 	@echo "✅ Dev environment ready"
 
 test:

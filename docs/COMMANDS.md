@@ -15,6 +15,7 @@ This document provides a comprehensive reference for all commands available in t
 | `cortex rollback <id>` | Undo an installation |
 | `cortex stack <name>` | Install a pre-built package stack |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
+| `cortex docker permissions` | Fix Docker bind-mount permissions |
 | `cortex cache stats` | Show LLM cache statistics |
 | `cortex notify` | Manage desktop notifications |
 
@@ -316,6 +317,44 @@ cortex sandbox create debian-test --image debian:12
 - Promotion runs fresh `apt install` on host (not container export)
 - Some commands (`systemctl`, `service`) are blocked in sandbox
 - See [SANDBOX.md](SANDBOX.md) for full documentation
+
+---
+
+### `cortex docker`
+
+Manage Docker-related utilities and system configurations.
+
+**Usage:**
+```bash
+cortex docker  [options]
+```
+
+**Actions:**
+
+| Action | Description |
+|--------|-------------|
+| `permissions` | Fix ownership issues for files created by containers in bind-mounted directories. |
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-y, --yes` | Skip the confirmation prompt for permission repairs. |
+
+**Examples:**
+```bash
+# Scan and fix permission issues interactively
+cortex docker permissions
+
+# Fix permissions without a prompt (non-interactive)
+cortex docker permissions --yes
+```
+
+**Notes:**
+
+- This command identifies files owned by `root` or other container UIDs and returns ownership to the host user.
+- It automatically excludes standard environment directories like `.git`, `node_modules`, and `venv`.
+- The tool also validates `docker-compose.yml` and suggests correct `user:` mapping if missing.
 
 ---
 

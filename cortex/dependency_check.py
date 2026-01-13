@@ -43,7 +43,7 @@ def format_installation_instructions(missing: list[str]) -> str:
 ╰─────────────────────────────────────────────────────────────────╯
 
 Cortex requires the following packages that are not installed:
-  {', '.join(missing)}
+  {", ".join(missing)}
 
 To fix this, run ONE of the following:
 

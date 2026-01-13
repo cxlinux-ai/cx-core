@@ -3,7 +3,8 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from cortex.api_key_detector import setup_api_key
 from cortex.ask import AskHandler
@@ -35,6 +36,9 @@ from cortex.ui import (
 )
 from cortex.validators import validate_install_request
 
+if TYPE_CHECKING:
+    from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
+
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
@@ -46,6 +50,84 @@ class CortexCLI:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self._detected_provider: str | None = None
+
+    # Define a method to handle Docker-specific permission repairs
+    def docker_permissions(self, args: argparse.Namespace) -> int:
+        """Handle the diagnosis and repair of Docker file permissions.
+
+        This method coordinates the environment-aware scanning of the project
+        directory and applies ownership reclamation logic. It ensures that
+        administrative actions (sudo) are never performed without user
+        acknowledgment unless the non-interactive flag is present.
+
+        Args:
+            args: The parsed command-line arguments containing the execution
+                context and safety flags.
+
+        Returns:
+            int: 0 if successful or the operation was gracefully cancelled,
+                1 if a system or logic error occurred.
+        """
+        from cortex.permission_manager import PermissionManager
+
+        try:
+            manager = PermissionManager(os.getcwd())
+            cx_print("🔍 Scanning for Docker-related permission issues...", "info")
+
+            # Validate Docker Compose configurations for missing user mappings
+            # to help prevent future permission drift.
+            manager.check_compose_config()
+
+            # Retrieve execution context from argparse.
+            execute_flag = getattr(args, "execute", False)
+            yes_flag = getattr(args, "yes", False)
+
+            # SAFETY GUARD: If executing repairs, prompt for confirmation unless
+            # the --yes flag was provided. This follows the project safety
+            # standard: 'No silent sudo execution'.
+            if execute_flag and not yes_flag:
+                mismatches = manager.diagnose()
+                if mismatches:
+                    cx_print(
+                        f"⚠️ Found {len(mismatches)} paths requiring ownership reclamation.",
+                        "warning",
+                    )
+                    try:
+                        # Interactive confirmation prompt for administrative repair.
+                        response = console.input(
+                            "[bold cyan]Reclaim ownership using sudo? (y/n): [/bold cyan]"
+                        )
+                        if response.lower() not in ("y", "yes"):
+                            cx_print("Operation cancelled", "info")
+                            return 0
+                    except (EOFError, KeyboardInterrupt):
+                        # Graceful handling of terminal exit or manual interruption.
+                        console.print()
+                        cx_print("Operation cancelled", "info")
+                        return 0
+
+            # Delegate repair logic to PermissionManager. If execute is False,
+            # a dry-run report is generated. If True, repairs are batched to
+            # avoid system ARG_MAX shell limits.
+            if manager.fix_permissions(execute=execute_flag):
+                if execute_flag:
+                    cx_print("✨ Permissions fixed successfully!", "success")
+                return 0
+
+            return 1
+
+        except (PermissionError, FileNotFoundError, OSError) as e:
+            # Handle system-level access issues or missing project files.
+            cx_print(f"❌ Permission check failed: {e}", "error")
+            return 1
+        except NotImplementedError as e:
+            # Report environment incompatibility (e.g., native Windows).
+            cx_print(f"❌ {e}", "error")
+            return 1
+        except Exception as e:
+            # Safety net for unexpected runtime exceptions to prevent CLI crashes.
+            cx_print(f"❌ Unexpected error: {e}", "error")
+            return 1
 
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
@@ -615,7 +697,7 @@ class CortexCLI:
     def _sandbox_exec(self, sandbox, args: argparse.Namespace) -> int:
         """Execute command in sandbox."""
         name = args.name
-        command = args.command
+        command = args.cmd
 
         result = sandbox.exec_command(name, command)
 
@@ -1108,7 +1190,7 @@ class CortexCLI:
         if not action:
             self._print_error(
                 "Please specify a subcommand "
-                "(set/get/list/delete/export/import/clear/template/apps/load)"
+                "(set/get/list/delete/export/import/clear/template/audit/check/path)"
             )
             return 1
 
@@ -1133,6 +1215,13 @@ class CortexCLI:
                 return self._env_list_apps(env_mgr, args)
             elif action == "load":
                 return self._env_load(env_mgr, args)
+            # Shell environment analyzer commands
+            elif action == "audit":
+                return self._env_audit(args)
+            elif action == "check":
+                return self._env_check(args)
+            elif action == "path":
+                return self._env_path(args)
             else:
                 self._print_error(f"Unknown env subcommand: {action}")
                 return 1
@@ -1536,6 +1625,384 @@ class CortexCLI:
 
         return 0
 
+    # --- Shell Environment Analyzer Commands ---
+    def _env_audit(self, args: argparse.Namespace) -> int:
+        """Audit shell environment variables and show their sources."""
+        from cortex.shell_env_analyzer import Shell, ShellEnvironmentAnalyzer
+
+        shell = None
+        if hasattr(args, "shell") and args.shell:
+            shell = Shell(args.shell)
+
+        analyzer = ShellEnvironmentAnalyzer(shell=shell)
+        include_system = not getattr(args, "no_system", False)
+        as_json = getattr(args, "json", False)
+
+        audit = analyzer.audit(include_system=include_system)
+
+        if as_json:
+            import json
+
+            print(json.dumps(audit.to_dict(), indent=2))
+            return 0
+
+        # Display audit results
+        cx_header(f"Environment Audit ({audit.shell.value} shell)")
+
+        console.print("\n[bold]Config Files Scanned:[/bold]")
+        for f in audit.config_files_scanned:
+            console.print(f"  • {f}")
+
+        if audit.variables:
+            console.print("\n[bold]Variables with Definitions:[/bold]")
+            # Sort by number of sources (most definitions first)
+            sorted_vars = sorted(audit.variables.items(), key=lambda x: len(x[1]), reverse=True)
+            for var_name, sources in sorted_vars[:20]:  # Limit to top 20
+                console.print(f"\n  [cyan]{var_name}[/cyan] ({len(sources)} definition(s))")
+                for src in sources:
+                    console.print(f"    [dim]{src.file}:{src.line_number}[/dim]")
+                    # Show truncated value
+                    val_preview = src.value[:50] + "..." if len(src.value) > 50 else src.value
+                    console.print(f"      → {val_preview}")
+
+            if len(audit.variables) > 20:
+                console.print(f"\n  [dim]... and {len(audit.variables) - 20} more variables[/dim]")
+
+        if audit.conflicts:
+            console.print("\n[bold]⚠️  Conflicts Detected:[/bold]")
+            for conflict in audit.conflicts:
+                severity_color = {
+                    "info": "blue",
+                    "warning": "yellow",
+                    "error": "red",
+                }.get(conflict.severity.value, "white")
+                console.print(
+                    f"  [{severity_color}]{conflict.severity.value.upper()}[/{severity_color}]: {conflict.description}"
+                )
+
+        console.print(f"\n[dim]Total: {len(audit.variables)} variable(s) found[/dim]")
+        return 0
+
+    def _env_check(self, args: argparse.Namespace) -> int:
+        """Check for environment variable conflicts and issues."""
+        from cortex.shell_env_analyzer import Shell, ShellEnvironmentAnalyzer
+
+        shell = None
+        if hasattr(args, "shell") and args.shell:
+            shell = Shell(args.shell)
+
+        analyzer = ShellEnvironmentAnalyzer(shell=shell)
+        audit = analyzer.audit()
+
+        cx_header(f"Environment Health Check ({audit.shell.value})")
+
+        issues_found = 0
+
+        # Check for conflicts
+        if audit.conflicts:
+            console.print("\n[bold]Variable Conflicts:[/bold]")
+            for conflict in audit.conflicts:
+                issues_found += 1
+                severity_color = {
+                    "info": "blue",
+                    "warning": "yellow",
+                    "error": "red",
+                }.get(conflict.severity.value, "white")
+                console.print(
+                    f"  [{severity_color}]●[/{severity_color}] {conflict.variable_name}: {conflict.description}"
+                )
+                for src in conflict.sources:
+                    console.print(f"      [dim]• {src.file}:{src.line_number}[/dim]")
+
+        # Check PATH
+        duplicates = analyzer.get_path_duplicates()
+        missing = analyzer.get_missing_paths()
+
+        if duplicates:
+            console.print("\n[bold]PATH Duplicates:[/bold]")
+            for dup in duplicates:
+                issues_found += 1
+                console.print(f"  [yellow]●[/yellow] {dup}")
+
+        if missing:
+            console.print("\n[bold]Missing PATH Entries:[/bold]")
+            for m in missing:
+                issues_found += 1
+                console.print(f"  [red]●[/red] {m}")
+
+        if issues_found == 0:
+            cx_print("\n✓ No issues found! Environment looks healthy.", "success")
+            return 0
+        else:
+            console.print(f"\n[yellow]Found {issues_found} issue(s)[/yellow]")
+            cx_print("Run 'cortex env path dedupe' to fix PATH duplicates", "info")
+            return 1
+
+    def _env_path(self, args: argparse.Namespace) -> int:
+        """Handle PATH management subcommands."""
+        from cortex.shell_env_analyzer import Shell, ShellEnvironmentAnalyzer
+
+        path_action = getattr(args, "path_action", None)
+
+        if not path_action:
+            self._print_error("Please specify a path action (list/add/remove/dedupe/clean)")
+            return 1
+
+        shell = None
+        if hasattr(args, "shell") and args.shell:
+            shell = Shell(args.shell)
+
+        analyzer = ShellEnvironmentAnalyzer(shell=shell)
+
+        if path_action == "list":
+            return self._env_path_list(analyzer, args)
+        elif path_action == "add":
+            return self._env_path_add(analyzer, args)
+        elif path_action == "remove":
+            return self._env_path_remove(analyzer, args)
+        elif path_action == "dedupe":
+            return self._env_path_dedupe(analyzer, args)
+        elif path_action == "clean":
+            return self._env_path_clean(analyzer, args)
+        else:
+            self._print_error(f"Unknown path action: {path_action}")
+            return 1
+
+    def _env_path_list(self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace) -> int:
+        """List PATH entries with status."""
+        as_json = getattr(args, "json", False)
+
+        current_path = os.environ.get("PATH", "")
+        entries = current_path.split(os.pathsep)
+
+        # Get analysis
+        audit = analyzer.audit()
+
+        if as_json:
+            import json
+
+            print(json.dumps([e.to_dict() for e in audit.path_entries], indent=2))
+            return 0
+
+        cx_header("PATH Entries")
+
+        seen: set = set()
+        for i, entry in enumerate(entries, 1):
+            if not entry:
+                continue
+
+            status_icons = []
+
+            # Check if exists
+            if not Path(entry).exists():
+                status_icons.append("[red]✗ missing[/red]")
+
+            # Check if duplicate
+            if entry in seen:
+                status_icons.append("[yellow]⚠ duplicate[/yellow]")
+            seen.add(entry)
+
+            status = " ".join(status_icons) if status_icons else "[green]✓[/green]"
+            console.print(f"  {i:2d}. {entry}  {status}")
+
+        duplicates = analyzer.get_path_duplicates()
+        missing = analyzer.get_missing_paths()
+
+        console.print()
+        console.print(
+            f"[dim]Total: {len(entries)} entries, {len(duplicates)} duplicates, {len(missing)} missing[/dim]"
+        )
+
+        return 0
+
+    def _env_path_add(self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace) -> int:
+        """Add a path entry."""
+        import os
+        from pathlib import Path
+
+        new_path = args.path
+        prepend = not getattr(args, "append", False)
+        persist = getattr(args, "persist", False)
+
+        # Resolve to absolute path
+        new_path = str(Path(new_path).expanduser().resolve())
+
+        if persist:
+            # When persisting, check the config file, not current PATH
+            try:
+                config_path = analyzer.get_shell_config_path()
+                # Check if already in config
+                config_content = ""
+                if os.path.exists(config_path):
+                    with open(config_path) as f:
+                        config_content = f.read()
+
+                # Check if path is in a cortex-managed block
+                if (
+                    f'export PATH="{new_path}:$PATH"' in config_content
+                    or f'export PATH="$PATH:{new_path}"' in config_content
+                ):
+                    cx_print(f"'{new_path}' is already in {config_path}", "info")
+                    return 0
+
+                analyzer.add_path_to_config(new_path, prepend=prepend)
+                cx_print(f"✓ Added '{new_path}' to {config_path}", "success")
+                console.print(f"[dim]To use in current shell: source {config_path}[/dim]")
+            except Exception as e:
+                self._print_error(f"Failed to persist: {e}")
+                return 1
+        else:
+            # Check if already in current PATH (for non-persist mode)
+            current_path = os.environ.get("PATH", "")
+            if new_path in current_path.split(os.pathsep):
+                cx_print(f"'{new_path}' is already in PATH", "info")
+                return 0
+
+            # Only modify current process env (won't persist across commands)
+            updated = analyzer.safe_add_path(new_path, prepend=prepend)
+            os.environ["PATH"] = updated
+            position = "prepended to" if prepend else "appended to"
+            cx_print(f"✓ '{new_path}' {position} PATH (this process only)", "success")
+            cx_print("Note: Add --persist to make this permanent", "info")
+
+        return 0
+
+    def _env_path_remove(
+        self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace
+    ) -> int:
+        """Remove a path entry."""
+        import os
+
+        target_path = args.path
+        persist = getattr(args, "persist", False)
+
+        if persist:
+            # When persisting, remove from config file
+            try:
+                config_path = analyzer.get_shell_config_path()
+                result = analyzer.remove_path_from_config(target_path)
+                if result:
+                    cx_print(f"✓ Removed '{target_path}' from {config_path}", "success")
+                    console.print(f"[dim]To update current shell: source {config_path}[/dim]")
+                else:
+                    cx_print(f"'{target_path}' was not in cortex-managed config block", "info")
+            except Exception as e:
+                self._print_error(f"Failed to persist removal: {e}")
+                return 1
+        else:
+            # Only modify current process env (won't persist across commands)
+            current_path = os.environ.get("PATH", "")
+            if target_path not in current_path.split(os.pathsep):
+                cx_print(f"'{target_path}' is not in current PATH", "info")
+                return 0
+
+            updated = analyzer.safe_remove_path(target_path)
+            os.environ["PATH"] = updated
+            cx_print(f"✓ Removed '{target_path}' from PATH (this process only)", "success")
+            cx_print("Note: Add --persist to make this permanent", "info")
+
+        return 0
+
+    def _env_path_dedupe(
+        self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace
+    ) -> int:
+        """Remove duplicate PATH entries."""
+        import os
+
+        dry_run = getattr(args, "dry_run", False)
+        persist = getattr(args, "persist", False)
+
+        duplicates = analyzer.get_path_duplicates()
+
+        if not duplicates:
+            cx_print("✓ No duplicate PATH entries found", "success")
+            return 0
+
+        cx_header("PATH Deduplication")
+        console.print(f"[yellow]Found {len(duplicates)} duplicate(s):[/yellow]")
+        for dup in duplicates:
+            console.print(f"  • {dup}")
+
+        if dry_run:
+            console.print("\n[dim]Dry run - no changes made[/dim]")
+            clean_path = analyzer.dedupe_path()
+            console.print("\n[bold]Cleaned PATH would be:[/bold]")
+            for entry in clean_path.split(os.pathsep)[:10]:
+                console.print(f"  {entry}")
+            if len(clean_path.split(os.pathsep)) > 10:
+                console.print("  [dim]... and more[/dim]")
+            return 0
+
+        # Apply deduplication
+        clean_path = analyzer.dedupe_path()
+        os.environ["PATH"] = clean_path
+        cx_print(f"✓ Removed {len(duplicates)} duplicate(s) from PATH (current session)", "success")
+
+        if persist:
+            script = analyzer.generate_path_fix_script()
+            console.print("\n[bold]Add this to your shell config for persistence:[/bold]")
+            console.print(f"[dim]{script}[/dim]")
+
+        return 0
+
+    def _env_path_clean(
+        self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace
+    ) -> int:
+        """Clean PATH by removing duplicates and optionally missing paths."""
+        import os
+
+        remove_missing = getattr(args, "remove_missing", False)
+        dry_run = getattr(args, "dry_run", False)
+
+        duplicates = analyzer.get_path_duplicates()
+        missing = analyzer.get_missing_paths() if remove_missing else []
+
+        total_issues = len(duplicates) + len(missing)
+
+        if total_issues == 0:
+            cx_print("✓ PATH is already clean", "success")
+            return 0
+
+        cx_header("PATH Cleanup")
+
+        if duplicates:
+            console.print(f"[yellow]Duplicates ({len(duplicates)}):[/yellow]")
+            for d in duplicates[:5]:
+                console.print(f"  • {d}")
+            if len(duplicates) > 5:
+                console.print(f"  [dim]... and {len(duplicates) - 5} more[/dim]")
+
+        if missing:
+            console.print(f"\n[red]Missing paths ({len(missing)}):[/red]")
+            for m in missing[:5]:
+                console.print(f"  • {m}")
+            if len(missing) > 5:
+                console.print(f"  [dim]... and {len(missing) - 5} more[/dim]")
+
+        if dry_run:
+            clean_path = analyzer.clean_path(remove_missing=remove_missing)
+            console.print("\n[dim]Dry run - no changes made[/dim]")
+            console.print(
+                f"[bold]Would reduce PATH from {len(os.environ.get('PATH', '').split(os.pathsep))} to {len(clean_path.split(os.pathsep))} entries[/bold]"
+            )
+            return 0
+
+        # Apply cleanup
+        clean_path = analyzer.clean_path(remove_missing=remove_missing)
+        old_count = len(os.environ.get("PATH", "").split(os.pathsep))
+        new_count = len(clean_path.split(os.pathsep))
+        os.environ["PATH"] = clean_path
+
+        cx_print(f"✓ Cleaned PATH: {old_count} → {new_count} entries", "success")
+
+        # Show fix script
+        script = analyzer.generate_path_fix_script()
+        if "no fixes needed" not in script:
+            console.print("\n[bold]To make permanent, add to your shell config:[/bold]")
+            console.print(f"[dim]{script}[/dim]")
+
+        return 0
+
     # --- Import Dependencies Command ---
     def import_deps(self, args: argparse.Namespace) -> int:
         """Import and install dependencies from package manager files.
@@ -1805,7 +2272,12 @@ class CortexCLI:
 
     # --------------------------
 def show_rich_help():
-    """Display beautifully formatted help using Rich"""
+    """Display a beautifully formatted help table using the Rich library.
+
+    This function outputs the primary command menu, providing descriptions
+    for all core Cortex utilities including installation, environment
+    management, and container tools.
+    """
     show_banner(show_version=True)
     console.print()
 
@@ -1906,6 +2378,7 @@ def main():
 
     subparsers.add_parser("demo", help="See Cortex in action")
     subparsers.add_parser("wizard", help="Configure API key interactively")
+    
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
 
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
@@ -2007,7 +2480,7 @@ def main():
     # sandbox exec <name> <command...>
     sandbox_exec_parser = sandbox_subs.add_parser("exec")
     sandbox_exec_parser.add_argument("name")
-    sandbox_exec_parser.add_argument("command",  nargs=argparse.REMAINDER,)
+    sandbox_exec_parser.add_argument("cmd",  nargs="+") #maybe needs update here
 
 
     # --- Environment Variable Management Commands ---
@@ -2079,21 +2552,31 @@ def main():
     env_template_show_parser.add_argument("template_name")
 
     # env template apply <template> <app> [KEY=VALUE...] [--encrypt-keys KEYS]
+    # need to update things here if needed 
     env_template_apply_parser = env_template_subs.add_parser("apply")
     env_template_apply_parser.add_argument("template_name")
     env_template_apply_parser.add_argument("app")
     env_template_apply_parser.add_argument("values", nargs="*")
-    env_template_apply_parser.add_argument("--encrypt-keys")
+    env_template_apply_parser.add_argument("--encrypt-keys") 
 
     args = parser.parse_args()
 
+    # The Guard: Check for empty commands before starting the CLI
     if not args.command:
         show_rich_help()
         return 0
 
+    # Initialize the CLI handler
     cli = CortexCLI(verbose=args.verbose)
 
     try:
+        # Route the command to the appropriate method inside the cli object
+        if args.command == "docker":
+            if args.docker_action == "permissions":
+                return cli.docker_permissions(args)
+            parser.print_help()
+            return 1
+
         if args.command == "demo":
             return cli.demo()
         elif args.command == "wizard":

@@ -5,8 +5,8 @@
 <h1 align="center">Cortex Linux</h1>
 
 <p align="center">
-  <strong>AI-Powered Package Manager for Debian/Ubuntu</strong><br>
-  Install software using natural language. No more memorizing package names.
+  <strong>Cortex is an AI layer for Linux Debian/Ubuntu</strong><br>
+ Instead of memorizing commands, googling errors, and copy-pasting from Stack Overflow — describe what you need.
 </p>
 
 <p align="center">
@@ -40,8 +40,8 @@
 
 ## What is Cortex?
 
-Cortex is an AI-native package manager that understands what you want to install, even when you don't know the exact package name.
-
+<strong>Cortex is an AI layer for Linux Debian/Ubuntu</strong><br>
+Instead of memorizing commands, googling errors, and copy-pasting from Stack Overflow — describe what you need.
 ```bash
 # Instead of googling "what's the package name for PDF editing on Ubuntu?"
 cortex install "something to edit PDFs"
@@ -67,6 +67,7 @@ cortex install "tools for video compression"
 | **Dry-Run Default** | Preview all commands before execution |
 | **Sandboxed Execution** | Commands run in Firejail isolation |
 | **Full Rollback** | Undo any installation with `cortex rollback` |
+| **Docker Permission Fixer** | Fix root-owned bind mount issues automatically |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
 | **Multi-LLM Support** | Works with Claude, GPT-4, or local Ollama models |
@@ -93,7 +94,11 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 3. Install Cortex
+# Using pyproject.toml (recommended)
 pip install -e .
+
+# Or install with dev dependencies
+pip install -e ".[dev]"
 
 # 4. Configure AI Provider (choose one):
 
@@ -147,6 +152,7 @@ cortex rollback <installation-id>
 | `cortex install <query>` | Install packages matching natural language query |
 | `cortex install <query> --dry-run` | Preview installation plan (default) |
 | `cortex install <query> --execute` | Execute the installation |
+| `cortex docker permissions` | Fix file ownership for Docker bind mounts |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
@@ -336,6 +342,7 @@ pip install -e .
 - [x] Hardware detection (GPU/CPU/Memory)
 - [x] Firejail sandboxing
 - [x] Dry-run preview mode
+- [x] Docker bind-mount permission fixer
 
 ### In Progress
 - [ ] Conflict resolution UI
