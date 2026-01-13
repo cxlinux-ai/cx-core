@@ -1,12 +1,12 @@
 """
-Cortex Interactive Demo - Production Version
+Cortex Interactive Demo
 Interactive 5-minute tutorial showcasing all major Cortex features
 """
 
 import secrets
 import sys
 import time
-from typing import Optional
+from datetime import datetime, timedelta
 
 from rich.console import Console
 from rich.panel import Panel
@@ -33,6 +33,12 @@ class CortexDemo:
     def _generate_id(self) -> str:
         """Generate a fake installation ID for demo"""
         return secrets.token_hex(8)
+
+    def _generate_past_date(self, days_ago: int, hours: int = 13, minutes: int = 11) -> str:
+        """Generate a date string for N days ago"""
+        past = datetime.now() - timedelta(days=days_ago)
+        past = past.replace(hour=hours, minute=minutes, second=51)
+        return past.strftime("%Y-%m-%d %H:%M:%S")
 
     def run(self) -> int:
         """Main demo entry point"""
@@ -446,16 +452,32 @@ Install a complete stack with: [cyan]cortex stack webdev[/cyan]
         history_table.add_column("Status", style="green", width=10)
 
         history_table.add_row(
-            self.installation_id, "2025-12-26 13:11:51", "install", "nginx, nodejs +2", "success"
+            self.installation_id,
+            self._generate_past_date(0),
+            "install",
+            "nginx, nodejs +2",
+            "success",
         )
         history_table.add_row(
-            "7f914a8ed74598c0", "2025-12-25 13:13:53", "install", "docker", "success"
+            self._generate_id(),
+            self._generate_past_date(1, 13, 13),
+            "install",
+            "docker",
+            "success",
         )
         history_table.add_row(
-            "a0788433fdfbd7bd", "2025-12-25 13:13:46", "install", "python3-dev", "success"
+            self._generate_id(),
+            self._generate_past_date(1, 13, 13),
+            "install",
+            "python3-dev",
+            "success",
         )
         history_table.add_row(
-            "961c36aef79c04ba", "2025-12-24 18:29:44", "install", "postgresql", "success"
+            self._generate_id(),
+            self._generate_past_date(2, 18, 29),
+            "install",
+            "postgresql",
+            "success",
         )
 
         self.console.print(history_table)
