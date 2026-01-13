@@ -127,7 +127,6 @@ cortex ask "how do I install and configure Redis"
 
 **Notes:**
 - Educational responses are longer and include code examples with syntax highlighting
-- The `--offline` flag can be used to only return cached responses
 - Learning history helps track what topics you've explored over time
 
 ---

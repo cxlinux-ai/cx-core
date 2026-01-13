@@ -1,6 +1,5 @@
 """Unit tests for the ask module."""
 
-import json
 import os
 import sys
 import tempfile
@@ -411,6 +410,34 @@ class TestLearningTracker(unittest.TestCase):
         history = self.tracker.get_history()
         self.assertEqual(history["total_queries"], 2)
 
+    def test_load_history_with_malformed_json(self):
+        """Test that _load_history gracefully handles malformed JSON."""
+        # Write invalid JSON to the file
+        self.tracker._progress_file = self.temp_file
+        self.temp_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.temp_file, "w") as f:
+            f.write("{invalid json}")
+
+        # Should return empty history instead of crashing
+        history = self.tracker._load_history()
+        self.assertEqual(history, {"topics": {}, "total_queries": 0})
+
+    def test_progress_file_fallback_on_home_error(self):
+        """Test that progress_file property falls back to tempdir when Path.home() fails."""
+        tracker = LearningTracker()
+
+        # Mock Path.home() to raise RuntimeError
+        with patch("pathlib.Path.home", side_effect=RuntimeError("HOME not set")):
+            # Reset the cached progress file so it re-evaluates
+            tracker._progress_file = None
+
+            # Should fall back to tempfile location without crashing
+            progress_file = tracker.progress_file
+            self.assertIsNotNone(progress_file)
+            self.assertIn("cortex", str(progress_file))
+            # Verify it's in the temp directory, not trying to use home
+            self.assertIn(tempfile.gettempdir(), str(progress_file))
+
 
 class TestAskHandlerLearning(unittest.TestCase):
     """Tests for AskHandler learning features."""
@@ -421,11 +448,16 @@ class TestAskHandlerLearning(unittest.TestCase):
         self.temp_file = Path(self.temp_dir) / "learning_history.json"
 
     def tearDown(self):
-        """Clean up temporary files."""
+        """Clean up temporary files and environment variables."""
         import shutil
 
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
+
+        # Clean up any environment variables set during tests to prevent pollution
+        # when test order changes or new tests are added
+        if "CORTEX_FAKE_RESPONSE" in os.environ:
+            del os.environ["CORTEX_FAKE_RESPONSE"]
 
     def test_ask_records_educational_topic(self):
         """Test that educational questions are recorded."""

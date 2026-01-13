@@ -6,17 +6,21 @@ educational content and tracks learning progress.
 """
 
 import json
+import logging
 import os
 import platform
 import re
 import shutil
 import sqlite3
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from cortex.config_utils import get_ollama_model
+
+# Module logger for debug diagnostics
+logger = logging.getLogger(__name__)
 
 
 class SystemInfoGatherer:
@@ -160,9 +164,18 @@ class LearningTracker:
         r"^basics\s+of\b",
     ]
 
-    def __init__(self):
-        """Initialize the learning tracker."""
-        self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.EDUCATIONAL_PATTERNS]
+    # Compiled patterns shared across all instances for efficiency
+    _compiled_patterns: list[re.Pattern[str]] = [
+        re.compile(p, re.IGNORECASE) for p in EDUCATIONAL_PATTERNS
+    ]
+
+    def __init__(self) -> None:
+        """Initialize the learning tracker.
+
+        Uses pre-compiled educational patterns for efficient matching
+        across multiple queries. Patterns are shared as class variables
+        to avoid recompilation overhead.
+        """
 
     @property
     def progress_file(self) -> Path:
@@ -181,10 +194,7 @@ class LearningTracker:
 
     def is_educational_query(self, question: str) -> bool:
         """Determine if a question is educational in nature."""
-        for pattern in self._compiled_patterns:
-            if pattern.search(question):
-                return True
-        return False
+        return any(pattern.search(question) for pattern in self._compiled_patterns)
 
     def extract_topic(self, question: str) -> str:
         """Extract the main topic from an educational question."""
@@ -211,13 +221,28 @@ class LearningTracker:
 
         # Clean up and truncate
         topic = topic.strip("? ").strip()
-        # Take first 50 chars as topic identifier
+
+        # Truncate at word boundaries to keep topic identifier meaningful
+        # If topic exceeds 50 chars, truncate at the last space within those 50 chars
+        # to preserve whole words. If the first 50 chars contain no spaces,
+        # keep the full 50-char prefix.
         if len(topic) > 50:
-            topic = topic[:50].rsplit(" ", 1)[0]
+            truncated = topic[:50]
+            # Try to split at word boundary; keep full 50 chars if no spaces found
+            words = truncated.rsplit(" ", 1)
+            topic = words[0]
+
         return topic
 
     def record_topic(self, question: str) -> None:
-        """Record that the user explored an educational topic."""
+        """Record that the user explored an educational topic.
+
+        Note: This method performs a read-modify-write cycle on the history file
+        without file locking. If multiple cortex ask processes run concurrently,
+        concurrent updates could theoretically be lost. This is acceptable for a
+        single-user CLI tool where concurrent invocations are rare and learning
+        history is non-critical, but worth noting for future enhancements.
+        """
         if not self.is_educational_query(question):
             return
 
@@ -227,15 +252,18 @@ class LearningTracker:
 
         history = self._load_history()
 
+        # Use UTC timestamps for consistency and accurate sorting
+        utc_now = datetime.now(timezone.utc).isoformat()
+
         # Update or add topic
         if topic in history["topics"]:
             history["topics"][topic]["count"] += 1
-            history["topics"][topic]["last_accessed"] = datetime.now().isoformat()
+            history["topics"][topic]["last_accessed"] = utc_now
         else:
             history["topics"][topic] = {
                 "count": 1,
-                "first_accessed": datetime.now().isoformat(),
-                "last_accessed": datetime.now().isoformat(),
+                "first_accessed": utc_now,
+                "last_accessed": utc_now,
             }
 
         history["total_queries"] = history.get("total_queries", 0) + 1
@@ -264,19 +292,28 @@ class LearningTracker:
             return {"topics": {}, "total_queries": 0}
 
         try:
-            with open(self.progress_file) as f:
+            with open(self.progress_file, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return {"topics": {}, "total_queries": 0}
 
     def _save_history(self, history: dict[str, Any]) -> None:
-        """Save learning history to file."""
+        """Save learning history to file.
+
+        Silently handles save failures to keep CLI clean, but logs at debug level
+        for diagnostics. Failures may occur due to permission issues or disk space.
+        """
         try:
             self.progress_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.progress_file, "w") as f:
+            with open(self.progress_file, "w", encoding="utf-8") as f:
                 json.dump(history, f, indent=2)
-        except OSError:
-            pass  # Silently fail if we can't write
+        except OSError as e:
+            # Log at debug level to help diagnose permission/disk issues
+            # without breaking CLI output or crashing the application
+            logger.debug(
+                f"Failed to save learning history to {self.progress_file}: {e}",
+                exc_info=False,
+            )
 
 
 class AskHandler:
@@ -358,11 +395,12 @@ class AskHandler:
 System Context:
 {json.dumps(context, indent=2)}
 
-## Query Type Detection
+**Query Type Detection**
 
 Automatically detect the type of question and respond appropriately:
 
-### Educational Questions (tutorials, explanations, learning)
+**Educational Questions (tutorials, explanations, learning)**
+
 Triggered by questions like: "explain...", "teach me...", "how does X work", "what is...", "best practices for...", "tutorial on...", "learn about...", "guide to..."
 
 For educational questions:
@@ -374,7 +412,8 @@ For educational questions:
 6. Mention related topics the user might want to explore next
 7. Tailor examples to the user's system when relevant (e.g., use apt for Debian-based systems)
 
-### Diagnostic Questions (system-specific, troubleshooting)
+**Diagnostic Questions (system-specific, troubleshooting)**
+
 Triggered by questions about: current system state, "why is my...", "what packages...", "check my...", specific errors, system status
 
 For diagnostic questions:
@@ -383,7 +422,8 @@ For diagnostic questions:
 3. Be concise but informative
 4. If you don't have enough information, say so clearly
 
-## Output Formatting Rules (CRITICAL - Follow exactly)
+**Output Formatting Rules (CRITICAL - Follow exactly)**
+
 1. NEVER use markdown headings (# or ##) - they render poorly in terminals
 2. For section titles, use **Bold Text** on its own line instead
 3. Use bullet points (-) for lists
@@ -455,7 +495,7 @@ sudo apt install nginx
                 "model": self.model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0.3},
+                "options": {"temperature": 0.3, "num_predict": 2000},
             }
         ).encode("utf-8")
 
