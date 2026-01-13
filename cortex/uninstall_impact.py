@@ -274,8 +274,8 @@ class DependencyGraphBuilder:
                     # Handle alternatives (package1 | package2)
                     if "|" in dep:
                         dep = dep.split("|")[0].strip()
-                    # Remove version constraints
-                    dep = re.sub(r"\s*[(<].*?[)>]", "", dep).strip()
+                    # Remove version constraints (using negated char class to prevent ReDoS)
+                    dep = re.sub(r"\s*\([^)]*\)|\s*<[^>]*>", "", dep).strip()
                     if dep and not dep.startswith("<"):
                         dependencies.add(dep)
 
