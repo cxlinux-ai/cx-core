@@ -24,7 +24,7 @@ from cortex.tutor.branding import (
     print_table,
     tutor_print,
 )
-from cortex.tutor.config import Config, DEFAULT_TUTOR_TOPICS
+from cortex.tutor.config import DEFAULT_TUTOR_TOPICS, Config
 from cortex.tutor.memory.sqlite_store import SQLiteStore
 from cortex.tutor.tools.deterministic.validators import validate_package_name
 
