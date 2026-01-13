@@ -15,7 +15,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import Field
 
 from cortex.tutor.config import get_config
-from cortex.tutor.contracts.lesson_context import CodeExample, LessonContext, TutorialStep
 
 
 # Load prompt template

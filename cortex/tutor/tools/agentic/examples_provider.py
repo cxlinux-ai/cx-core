@@ -4,7 +4,6 @@ Examples Provider Tool - Agentic tool for generating code examples.
 This tool uses LLM (Claude via LangChain) to generate contextual code examples.
 """
 
-from pathlib import Path
 from typing import Any
 
 from langchain.tools import BaseTool

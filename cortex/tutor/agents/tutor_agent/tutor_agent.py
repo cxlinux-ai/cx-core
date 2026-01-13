@@ -10,7 +10,6 @@ from cortex.tutor.agents.tutor_agent.graph import get_tutor_graph
 from cortex.tutor.agents.tutor_agent.state import TutorAgentState, create_initial_state
 from cortex.tutor.branding import console, tutor_print
 from cortex.tutor.config import DEFAULT_TUTOR_TOPICS
-from cortex.tutor.contracts.lesson_context import LessonContext
 from cortex.tutor.tools.deterministic.progress_tracker import ProgressTrackerTool
 from cortex.tutor.tools.deterministic.validators import (
     validate_package_name,
@@ -172,6 +171,9 @@ class TutorAgent:
         Returns:
             True if successful.
         """
+        valid_styles = {"visual", "reading", "hands-on"}
+        if style not in valid_styles:
+            return False
         result = self.progress_tool._run("update_profile", learning_style=style)
         return result.get("success", False)
 
@@ -187,6 +189,8 @@ class TutorAgent:
         Returns:
             True if successful.
         """
+        if not 0.0 <= score <= 1.0:
+            return False
         result = self.progress_tool._run(
             "mark_completed",
             package_name=package_name,

@@ -93,7 +93,6 @@ all = [
 
 [project.scripts]
 cortex = "cortex.cli:main"
-tutor = "cortex.tutor.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/cortexlinux/cortex"
