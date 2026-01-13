@@ -273,7 +273,7 @@ class CortexCLI:
         """Handle daemon commands"""
         if not args.daemon_action:
             self._print_error(
-                "Please specify a daemon action (status/health/install/uninstall/alerts/reload-config)"
+                "Please specify a daemon action (version/status/health/install/uninstall/alerts/config/reload-config/llm)"
             )
             return 1
 
