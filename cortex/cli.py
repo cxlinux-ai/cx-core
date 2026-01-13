@@ -28,6 +28,7 @@ from cortex.validators import validate_api_key, validate_install_request
 
 if TYPE_CHECKING:
     from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
+    from cortex.unified_package_manager import UnifiedPackageManager
 
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
