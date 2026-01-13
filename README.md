@@ -94,7 +94,11 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 3. Install Cortex
+# Using pyproject.toml (recommended)
 pip install -e .
+
+# Or install with dev dependencies
+pip install -e ".[dev]"
 
 # 4. Configure AI Provider (choose one):
 
