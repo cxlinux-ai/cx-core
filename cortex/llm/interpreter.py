@@ -310,7 +310,7 @@ Response format (JSON only):
                 max_tokens=300,
             )
 
-            content = response.choices[0].message.content.strip()
+            content = (response.choices[0].message.content or "").strip()
             return self._parse_intent_from_text(content)
         except Exception as e:
             return {
@@ -611,7 +611,7 @@ Respond with ONLY this JSON format (no explanations):
                 messages=[{"role": "user", "content": user_input}],
             )
 
-            content = response.content[0].text.strip()
+            content = (response.content[0].text or "").strip()
             return self._parse_intent_from_text(content)
         except Exception as e:
             return {
