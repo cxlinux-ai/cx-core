@@ -262,7 +262,7 @@ class TestServiceImpactMapper(unittest.TestCase):
         """Test getting services for a known package"""
         mock_status.return_value = ServiceStatus.RUNNING
         services = self.mapper.get_services_for_package("nginx")
-        self.assertTrue(len(services) > 0)
+        self.assertGreater(len(services), 0)
         self.assertEqual(services[0].name, "nginx")
 
     @patch.object(ServiceImpactMapper, "get_service_status")
@@ -270,7 +270,7 @@ class TestServiceImpactMapper(unittest.TestCase):
         """Test getting affected services for multiple packages"""
         mock_status.return_value = ServiceStatus.RUNNING
         services = self.mapper.get_affected_services(["nginx", "mysql-server"])
-        self.assertTrue(len(services) > 0)
+        self.assertGreater(len(services), 0)
 
 
 class TestRecommendationEngine(unittest.TestCase):
@@ -510,7 +510,7 @@ class TestUninstallImpactAnalyzer(unittest.TestCase):
     def test_get_removal_plan(self, mock_plan):
         """Test getting removal plan"""
         mock_plan.return_value = RemovalPlan(target_package="test")
-        plan = self.analyzer.get_removal_plan("test", purge=True)
+        self.analyzer.get_removal_plan("test", purge=True)
         mock_plan.assert_called_once_with("test", True)
 
     def test_format_impact_report_safe(self):

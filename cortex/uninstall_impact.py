@@ -25,6 +25,9 @@ from pathlib import Path
 from typing import Any
 
 logging.basicConfig(level=logging.INFO)
+# Constants
+SERVICE_SUFFIX = ".service"
+
 logger = logging.getLogger(__name__)
 
 
@@ -247,7 +250,7 @@ class DependencyGraphBuilder:
         if len(parts) >= 2:
             node = PackageNode(
                 name=parts[0],
-                version=parts[1] if len(parts) > 1 else None,
+                version=parts[1],
                 is_installed=package_name in self._installed_packages,
                 is_essential=package_name in self._essential_packages,
                 is_manually_installed=package_name in self._manual_packages,
@@ -268,19 +271,28 @@ class DependencyGraphBuilder:
 
         if success:
             for line in stdout.split("\n"):
-                line = line.strip()
-                if line.startswith(("Depends:", "PreDepends:")):
-                    dep = line.split(":", 1)[1].strip()
-                    # Handle alternatives (package1 | package2)
-                    if "|" in dep:
-                        dep = dep.split("|")[0].strip()
-                    # Remove version constraints (using negated char class to prevent ReDoS)
-                    dep = re.sub(r"\s*\([^)]*\)|\s*<[^>]*>", "", dep).strip()
-                    if dep and not dep.startswith("<"):
-                        dependencies.add(dep)
+                dep = self._parse_dependency_line(line.strip())
+                if dep:
+                    dependencies.add(dep)
 
         self._forward_graph[package_name] = dependencies
         return list(dependencies)
+
+    def _parse_dependency_line(self, line: str) -> str | None:
+        """Parse a single dependency line and return cleaned package name."""
+        if not line.startswith(("Depends:", "PreDepends:")):
+            return None
+
+        dep = line.split(":", 1)[1].strip()
+        # Handle alternatives (package1 | package2) - take first option
+        if "|" in dep:
+            dep = dep.split("|")[0].strip()
+        # Remove version constraints (using negated char class to prevent ReDoS)
+        dep = re.sub(r"\s*\([^)]*\)|\s*<[^>]*>", "", dep).strip()
+
+        if dep and not dep.startswith("<"):
+            return dep
+        return None
 
     def get_reverse_dependencies(self, package_name: str) -> list[str]:
         """Get reverse dependencies (what depends on this package)"""
@@ -410,7 +422,7 @@ class ServiceImpactMapper:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             return (result.returncode == 0, result.stdout, result.stderr)
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             return (False, "", str(e))
 
     def get_service_status(self, service_name: str) -> ServiceStatus:
@@ -462,8 +474,8 @@ class ServiceImpactMapper:
             for line in stdout.split("\n"):
                 line = line.strip()
                 # Look for systemd service files
-                if "/systemd/" in line and line.endswith(".service"):
-                    service_name = line.split("/")[-1].replace(".service", "")
+                if "/systemd/" in line and line.endswith(SERVICE_SUFFIX):
+                    service_name = line.split("/")[-1].replace(SERVICE_SUFFIX, "")
                     services.append(service_name)
 
         return services
@@ -480,7 +492,7 @@ class ServiceImpactMapper:
         if success:
             for line in stdout.split("\n"):
                 if line.strip():
-                    service_name = line.split()[0].replace(".service", "")
+                    service_name = line.split()[0].replace(SERVICE_SUFFIX, "")
                     if base_pattern in service_name:
                         services.append(service_name)
 
@@ -719,7 +731,7 @@ class ImpactAnalyzer:
         result.cascade_packages = self._get_cascade_packages(package_name)
 
         # Get orphaned packages
-        result.orphaned_packages = self._get_orphaned_packages(package_name)
+        result.orphaned_packages = self._get_orphaned_packages()
 
         # Get affected services
         packages_to_check = [package_name] + list(all_affected)
@@ -756,7 +768,7 @@ class ImpactAnalyzer:
 
         return cascade
 
-    def _get_orphaned_packages(self, package_name: str) -> list[str]:
+    def _get_orphaned_packages(self) -> list[str]:
         """Get packages that would become orphaned after removal"""
         orphaned = []
 
@@ -809,7 +821,7 @@ class ImpactAnalyzer:
         plan.packages_to_remove.insert(0, package_name)
 
         # Get autoremove candidates
-        plan.autoremove_candidates = self._get_orphaned_packages(package_name)
+        plan.autoremove_candidates = self._get_orphaned_packages()
 
         # Get config files
         plan.config_files_affected = self._get_config_files(package_name)
@@ -900,69 +912,73 @@ class UninstallImpactAnalyzer:
         lines.append(f"\n{icon} Impact Analysis: {result.target_package}")
         lines.append("=" * 60)
 
-        # Warnings first
-        if result.warnings:
+        # Build report sections
+        self._format_warnings(lines, result.warnings)
+        self._format_package_section(
+            lines, "📦 Direct dependents", result.direct_dependents, 10, show_empty=True
+        )
+        self._format_services_section(lines, result.affected_services)
+        self._format_summary_section(lines, result)
+        self._format_package_section(lines, "🗑️  Cascade removal", result.cascade_packages, 5)
+        self._format_package_section(lines, "👻 Would become orphaned", result.orphaned_packages, 5)
+        self._format_list_section(lines, "💡 Recommendations", result.recommendations)
+
+        # Final verdict
+        lines.append("\n" + "=" * 60)
+        verdict = (
+            "✅ Safe to remove"
+            if result.safe_to_remove
+            else "⚠️  Review recommendations before proceeding"
+        )
+        lines.append(verdict)
+
+        return "\n".join(lines)
+
+    def _format_warnings(self, lines: list, warnings: list) -> None:
+        """Format warnings section."""
+        if warnings:
             lines.append("\n⚠️  Warnings:")
-            for warning in result.warnings:
+            for warning in warnings:
                 lines.append(f"   {warning}")
 
-        # Direct dependents
-        if result.direct_dependents:
-            lines.append(f"\n📦 Direct dependents ({len(result.direct_dependents)}):")
-            for dep in result.direct_dependents[:10]:
-                lines.append(f"   • {dep}")
-            if len(result.direct_dependents) > 10:
-                lines.append(f"   ... and {len(result.direct_dependents) - 10} more")
-        else:
-            lines.append("\n📦 Direct dependents: None")
+    def _format_package_section(
+        self, lines: list, title: str, packages: list, limit: int, show_empty: bool = False
+    ) -> None:
+        """Format a package list section with truncation."""
+        if packages:
+            lines.append(f"\n{title} ({len(packages)}):")
+            for pkg in packages[:limit]:
+                lines.append(f"   • {pkg}")
+            if len(packages) > limit:
+                lines.append(f"   ... and {len(packages) - limit} more")
+        elif show_empty:
+            lines.append(f"\n{title}: None")
 
-        # Affected services
-        if result.affected_services:
-            lines.append(f"\n🔧 Affected services ({len(result.affected_services)}):")
-            for service in result.affected_services:
+    def _format_services_section(self, lines: list, services: list) -> None:
+        """Format affected services section."""
+        if services:
+            lines.append(f"\n🔧 Affected services ({len(services)}):")
+            for service in services:
                 status_icon = "🟢" if service.status == ServiceStatus.RUNNING else "⚪"
                 critical_marker = " [CRITICAL]" if service.is_critical else ""
                 lines.append(f"   {status_icon} {service.name}{critical_marker}")
         else:
             lines.append("\n🔧 Affected services: None")
 
-        # Impact summary
+    def _format_summary_section(self, lines: list, result: ImpactResult) -> None:
+        """Format impact summary section."""
         lines.append("\n📊 Impact Summary:")
         lines.append(f"   • Total packages affected: {result.total_affected}")
         lines.append(f"   • Cascade depth: {result.cascade_depth}")
         lines.append(f"   • Services at risk: {len(result.affected_services)}")
         lines.append(f"   • Severity: {result.severity.value.upper()}")
 
-        # Cascade packages
-        if result.cascade_packages:
-            lines.append(f"\n🗑️  Cascade removal ({len(result.cascade_packages)}):")
-            for pkg in result.cascade_packages[:5]:
-                lines.append(f"   • {pkg}")
-            if len(result.cascade_packages) > 5:
-                lines.append(f"   ... and {len(result.cascade_packages) - 5} more")
-
-        # Orphaned packages
-        if result.orphaned_packages:
-            lines.append(f"\n👻 Would become orphaned ({len(result.orphaned_packages)}):")
-            for pkg in result.orphaned_packages[:5]:
-                lines.append(f"   • {pkg}")
-            if len(result.orphaned_packages) > 5:
-                lines.append(f"   ... and {len(result.orphaned_packages) - 5} more")
-
-        # Recommendations
-        if result.recommendations:
-            lines.append("\n💡 Recommendations:")
-            for rec in result.recommendations:
-                lines.append(f"   • {rec}")
-
-        # Final verdict
-        lines.append("\n" + "=" * 60)
-        if result.safe_to_remove:
-            lines.append("✅ Safe to remove")
-        else:
-            lines.append("⚠️  Review recommendations before proceeding")
-
-        return "\n".join(lines)
+    def _format_list_section(self, lines: list, title: str, items: list) -> None:
+        """Format a simple list section."""
+        if items:
+            lines.append(f"\n{title}:")
+            for item in items:
+                lines.append(f"   • {item}")
 
 
 # CLI Interface for standalone usage

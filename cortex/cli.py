@@ -27,6 +27,9 @@ from cortex.stack_manager import StackManager
 from cortex.uninstall_impact import ImpactSeverity, ServiceStatus, UninstallImpactAnalyzer
 from cortex.validators import validate_api_key, validate_install_request
 
+# CLI Help Constants
+HELP_SKIP_CONFIRM = "Skip confirmation prompt"
+
 if TYPE_CHECKING:
     from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
 
@@ -889,35 +892,62 @@ class CortexCLI:
         force = getattr(args, "force", False)
         json_output = getattr(args, "json", False)
 
-        # Initialize impact analyzer
+        # Initialize and analyze
+        result = self._analyze_package_removal(package)
+        if result is None:
+            return 1
+
+        # Check if package doesn't exist at all (not in repos)
+        if self._check_package_not_found(result):
+            return 1
+
+        # Output results
+        self._output_impact_result(result, json_output)
+
+        # Dry-run mode - stop here
+        if dry_run:
+            console.print()
+            cx_print("Dry run mode - no changes made", "info")
+            cx_print(f"To proceed with removal: cortex remove {package} --execute", "info")
+            return 0
+
+        # Safety check and confirmation
+        if not self._can_proceed_with_removal(result, force, args, package, purge):
+            return self._removal_blocked_or_cancelled(result, force)
+
+        return self._execute_removal(package, purge)
+
+    def _analyze_package_removal(self, package: str):
+        """Initialize analyzer and perform impact analysis. Returns None on failure."""
         try:
             analyzer = UninstallImpactAnalyzer()
         except Exception as e:
             self._print_error(f"Failed to initialize impact analyzer: {e}")
-            return 1
+            return None
 
-        # Perform impact analysis
         cx_print(f"Analyzing impact of removing '{package}'...", "info")
-
         try:
-            result = analyzer.analyze(package)
+            return analyzer.analyze(package)
         except Exception as e:
             self._print_error(f"Impact analysis failed: {e}")
             if self.verbose:
                 import traceback
 
                 traceback.print_exc()
-            return 1
+            return None
 
-        # Check if package doesn't exist at all (not in repos)
+    def _check_package_not_found(self, result) -> bool:
+        """Check if package doesn't exist in repos and print warnings."""
         if result.warnings and "not found in repositories" in str(result.warnings):
             for warning in result.warnings:
                 cx_print(warning, "warning")
             for rec in result.recommendations:
                 cx_print(rec, "info")
-            return 1
+            return True
+        return False
 
-        # Output results
+    def _output_impact_result(self, result, json_output: bool) -> None:
+        """Output the impact result in JSON or rich format."""
         if json_output:
             import json as json_module
 
@@ -945,17 +975,37 @@ class CortexCLI:
             }
             console.print(json_module.dumps(data, indent=2))
         else:
-            # Rich formatted output
             self._display_impact_report(result)
 
-        # Dry-run mode - stop here
-        if dry_run:
-            console.print()
-            cx_print("Dry run mode - no changes made", "info")
-            cx_print(f"To proceed with removal: cortex remove {package} --execute", "info")
-            return 0
+    def _can_proceed_with_removal(
+        self, result, force: bool, args, package: str, purge: bool
+    ) -> bool:
+        """Check safety and get user confirmation. Returns True if can proceed."""
+        if not result.safe_to_remove and not force:
+            return False
 
-        # Safety check for non-safe removals
+        skip_confirm = getattr(args, "yes", False)
+        if skip_confirm:
+            return True
+
+        return self._confirm_removal(package, purge)
+
+    def _confirm_removal(self, package: str, purge: bool) -> bool:
+        """Prompt user for removal confirmation."""
+        console.print()
+        confirm_msg = f"Remove '{package}'"
+        if purge:
+            confirm_msg += " and purge configuration"
+        confirm_msg += "? [y/N]: "
+        try:
+            response = input(confirm_msg).strip().lower()
+            return response in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return False
+
+    def _removal_blocked_or_cancelled(self, result, force: bool) -> int:
+        """Handle blocked or cancelled removal."""
         if not result.safe_to_remove and not force:
             console.print()
             self._print_error(
@@ -963,27 +1013,8 @@ class CortexCLI:
                 "or address the recommendations first."
             )
             return 1
-
-        # Confirm removal (unless --yes flag)
-        skip_confirm = getattr(args, "yes", False)
-        if not skip_confirm:
-            console.print()
-            confirm_msg = f"Remove '{package}'"
-            if purge:
-                confirm_msg += " and purge configuration"
-            confirm_msg += "? [y/N]: "
-            try:
-                response = input(confirm_msg).strip().lower()
-                if response not in ("y", "yes"):
-                    cx_print("Removal cancelled", "info")
-                    return 0
-            except (EOFError, KeyboardInterrupt):
-                console.print()
-                cx_print("Removal cancelled", "info")
-                return 0
-
-        # Execute removal
-        return self._execute_removal(package, purge)
+        cx_print("Removal cancelled", "info")
+        return 0
 
     def _display_impact_report(self, result) -> None:
         """Display formatted impact analysis report"""
@@ -1003,85 +1034,17 @@ class CortexCLI:
         # Header
         console.print()
         console.print(
-            Panel(
-                f"[bold]{icon} Impact Analysis: {result.target_package}[/bold]",
-                style=style,
-            )
+            Panel(f"[bold]{icon} Impact Analysis: {result.target_package}[/bold]", style=style)
         )
 
-        # Warnings (styled based on type)
-        if result.warnings:
-            for warning in result.warnings:
-                if "not currently installed" in warning:
-                    console.print(f"\n[bold yellow]ℹ️  {warning}[/bold yellow]")
-                    console.print(
-                        "[dim]   Showing potential impact analysis for this package.[/dim]"
-                    )
-                else:
-                    console.print(f"\n[bold red]⚠️  {warning}[/bold red]")
-
-        # Direct dependents
-        if result.direct_dependents:
-            console.print(
-                f"\n[bold cyan]📦 Direct dependents ({len(result.direct_dependents)}):[/bold cyan]"
-            )
-            for dep in result.direct_dependents[:10]:
-                console.print(f"   • {dep}")
-            if len(result.direct_dependents) > 10:
-                console.print(f"   [dim]... and {len(result.direct_dependents) - 10} more[/dim]")
-        else:
-            console.print("\n[bold cyan]📦 Direct dependents:[/bold cyan] None")
-
-        # Affected services
-        if result.affected_services:
-            console.print(
-                f"\n[bold magenta]🔧 Affected services ({len(result.affected_services)}):[/bold magenta]"
-            )
-            for service in result.affected_services:
-                status_icon = "🟢" if service.status == ServiceStatus.RUNNING else "⚪"
-                critical_marker = " [red][CRITICAL][/red]" if service.is_critical else ""
-                console.print(f"   {status_icon} {service.name}{critical_marker}")
-        else:
-            console.print("\n[bold magenta]🔧 Affected services:[/bold magenta] None")
-
-        # Impact summary table
-        summary_table = Table(show_header=False, box=None, padding=(0, 2))
-        summary_table.add_column("Metric", style="dim")
-        summary_table.add_column("Value")
-
-        summary_table.add_row("Total packages affected", str(result.total_affected))
-        summary_table.add_row("Cascade depth", str(result.cascade_depth))
-        summary_table.add_row("Services at risk", str(len(result.affected_services)))
-        summary_table.add_row("Severity", f"[{style}]{result.severity.value.upper()}[/{style}]")
-
-        console.print("\n[bold]📊 Impact Summary:[/bold]")
-        console.print(summary_table)
-
-        # Cascade packages
-        if result.cascade_packages:
-            console.print(
-                f"\n[bold yellow]🗑️  Cascade removal ({len(result.cascade_packages)}):[/bold yellow]"
-            )
-            for pkg in result.cascade_packages[:5]:
-                console.print(f"   • {pkg}")
-            if len(result.cascade_packages) > 5:
-                console.print(f"   [dim]... and {len(result.cascade_packages) - 5} more[/dim]")
-
-        # Orphaned packages
-        if result.orphaned_packages:
-            console.print(
-                f"\n[bold]👻 Would become orphaned ({len(result.orphaned_packages)}):[/bold]"
-            )
-            for pkg in result.orphaned_packages[:5]:
-                console.print(f"   • {pkg}")
-            if len(result.orphaned_packages) > 5:
-                console.print(f"   [dim]... and {len(result.orphaned_packages) - 5} more[/dim]")
-
-        # Recommendations
-        if result.recommendations:
-            console.print("\n[bold green]💡 Recommendations:[/bold green]")
-            for rec in result.recommendations:
-                console.print(f"   • {rec}")
+        # Display sections
+        self._display_warnings(result.warnings)
+        self._display_package_list(result.direct_dependents, "cyan", "📦 Direct dependents", 10)
+        self._display_services(result.affected_services)
+        self._display_summary_table(result, style, Table)
+        self._display_package_list(result.cascade_packages, "yellow", "🗑️  Cascade removal", 5)
+        self._display_package_list(result.orphaned_packages, "white", "👻 Would become orphaned", 5)
+        self._display_recommendations(result.recommendations)
 
         # Final verdict
         console.print()
@@ -1089,6 +1052,56 @@ class CortexCLI:
             console.print("[bold green]✅ Safe to remove[/bold green]")
         else:
             console.print("[bold yellow]⚠️  Review recommendations before proceeding[/bold yellow]")
+
+    def _display_warnings(self, warnings: list) -> None:
+        """Display warnings with appropriate styling."""
+        for warning in warnings:
+            if "not currently installed" in warning:
+                console.print(f"\n[bold yellow]ℹ️  {warning}[/bold yellow]")
+                console.print("[dim]   Showing potential impact analysis for this package.[/dim]")
+            else:
+                console.print(f"\n[bold red]⚠️  {warning}[/bold red]")
+
+    def _display_package_list(self, packages: list, color: str, title: str, limit: int) -> None:
+        """Display a list of packages with truncation."""
+        if packages:
+            console.print(f"\n[bold {color}]{title} ({len(packages)}):[/bold {color}]")
+            for pkg in packages[:limit]:
+                console.print(f"   • {pkg}")
+            if len(packages) > limit:
+                console.print(f"   [dim]... and {len(packages) - limit} more[/dim]")
+        elif "dependents" in title:
+            console.print(f"\n[bold {color}]{title}:[/bold {color}] None")
+
+    def _display_services(self, services: list) -> None:
+        """Display affected services."""
+        if services:
+            console.print(f"\n[bold magenta]🔧 Affected services ({len(services)}):[/bold magenta]")
+            for service in services:
+                status_icon = "🟢" if service.status == ServiceStatus.RUNNING else "⚪"
+                critical_marker = " [red][CRITICAL][/red]" if service.is_critical else ""
+                console.print(f"   {status_icon} {service.name}{critical_marker}")
+        else:
+            console.print("\n[bold magenta]🔧 Affected services:[/bold magenta] None")
+
+    def _display_summary_table(self, result, style: str, Table) -> None:
+        """Display the impact summary table."""
+        summary_table = Table(show_header=False, box=None, padding=(0, 2))
+        summary_table.add_column("Metric", style="dim")
+        summary_table.add_column("Value")
+        summary_table.add_row("Total packages affected", str(result.total_affected))
+        summary_table.add_row("Cascade depth", str(result.cascade_depth))
+        summary_table.add_row("Services at risk", str(len(result.affected_services)))
+        summary_table.add_row("Severity", f"[{style}]{result.severity.value.upper()}[/{style}]")
+        console.print("\n[bold]📊 Impact Summary:[/bold]")
+        console.print(summary_table)
+
+    def _display_recommendations(self, recommendations: list) -> None:
+        """Display recommendations."""
+        if recommendations:
+            console.print("\n[bold green]💡 Recommendations:[/bold green]")
+            for rec in recommendations:
+                console.print(f"   • {rec}")
 
     def _execute_removal(self, package: str, purge: bool = False) -> int:
         """Execute the actual package removal"""
@@ -2371,7 +2384,7 @@ def main():
     )
 
     # Provide an option to skip the manual confirmation prompt
-    perm_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    perm_parser.add_argument("--yes", "-y", action="store_true", help=HELP_SKIP_CONFIRM)
 
     perm_parser.add_argument(
         "--execute", "-e", action="store_true", help="Apply ownership changes (default: dry-run)"
@@ -2434,7 +2447,7 @@ def main():
         "-y",
         "--yes",
         action="store_true",
-        help="Skip confirmation prompt",
+        help=HELP_SKIP_CONFIRM,
     )
     remove_parser.add_argument(
         "--json",
@@ -2549,9 +2562,7 @@ def main():
     sandbox_promote_parser.add_argument(
         "--dry-run", action="store_true", help="Show command without executing"
     )
-    sandbox_promote_parser.add_argument(
-        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
-    )
+    sandbox_promote_parser.add_argument("-y", "--yes", action="store_true", help=HELP_SKIP_CONFIRM)
 
     # sandbox cleanup <name> [--force]
     sandbox_cleanup_parser = sandbox_subs.add_parser("cleanup", help="Remove a sandbox environment")
