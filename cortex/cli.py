@@ -3034,6 +3034,7 @@ class CortexCLI:
             history = InstallationHistory()
             start_time = datetime.now()
 
+            install_id = None
             try:
                 install_id = history.record_installation(
                     operation_type=InstallationType.REMOVE,
@@ -3054,7 +3055,8 @@ class CortexCLI:
                 return 0 if success else 1
 
             except Exception as e:
-                history.update_installation(install_id, InstallationStatus.FAILED, str(e))
+                if install_id is not None:
+                    history.update_installation(install_id, InstallationStatus.FAILED, str(e))
                 self._print_error(f"Failed to disable snap redirects: {e}")
                 return 1
 
