@@ -129,11 +129,12 @@ class ProgressTrackerTool:
         if not package_name or not topic:
             return {"success": False, "error": self._ERR_PKG_TOPIC_REQUIRED}
 
-        self.store.mark_topic_completed(package_name, topic, score or 1.0)
+        effective_score = score if score is not None else 1.0
+        self.store.mark_topic_completed(package_name, topic, effective_score)
         return {
             "success": True,
             "message": f"Marked {package_name}/{topic} as completed",
-            "score": score or 1.0,
+            "score": effective_score,
         }
 
     def _update_progress(
@@ -155,8 +156,8 @@ class ProgressTrackerTool:
         progress = LearningProgress(
             package_name=package_name,
             topic=topic,
-            completed=completed,
-            score=score or (existing.score if existing else 0.0),
+            completed=completed if completed else (existing.completed if existing else False),
+            score=score if score is not None else (existing.score if existing else 0.0),
             total_time_seconds=total_time,
         )
         row_id = self.store.upsert_progress(progress)
