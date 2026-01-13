@@ -146,9 +146,7 @@ Cortex is an AI-powered universal package manager that:
         except (KeyboardInterrupt, EOFError):
             return False
 
-    def _simulate_cortex_output(
-        self, command: str, packages: list[str], show_execution: bool = False
-    ) -> None:
+    def _simulate_cortex_output(self, packages: list[str], show_execution: bool = False) -> None:
         """Simulate real Cortex output with CX branding"""
 
         # Understanding phase
@@ -261,9 +259,7 @@ Install a complete stack with: [cyan]cortex stack webdev[/cyan]
             return False
 
         # Simulate the actual output
-        self._simulate_cortex_output(
-            'cortex install "docker nodejs"', ["docker.io", "nodejs"], show_execution=False
-        )
+        self._simulate_cortex_output(["docker.io", "nodejs"], show_execution=False)
 
         self.console.print("[bold green]🔒 Transparency & Safety:[/bold green]")
         self.console.print(
@@ -420,9 +416,7 @@ Install a complete stack with: [cyan]cortex stack webdev[/cyan]
         self.console.print("🚀 Installing stack: [bold]Web Development[/bold]\n")
 
         # Simulate full stack installation
-        self._simulate_cortex_output(
-            "cortex stack webdev", ["nodejs", "npm", "nginx", "postgresql"], show_execution=True
-        )
+        self._simulate_cortex_output(["nodejs", "npm", "nginx", "postgresql"], show_execution=True)
 
         self.console.print(" [cyan]CX[/cyan]  [green]✓[/green] ")
         self.console.print("[green]✅ Stack 'Web Development' installed successfully![/green]")
@@ -548,7 +542,7 @@ Install a complete stack with: [cyan]cortex stack webdev[/cyan]
         self.console.print("\n[bold]Why Cortex is Different:[/bold]\n")
 
         comparison_table = Table(
-            title="🆚 Cortex vs Traditional Package Managers", show_header=True, border_style="cyan"
+            title="Cortex vs Traditional Package Managers", show_header=True, border_style="cyan"
         )
         comparison_table.add_column("Feature", style="cyan", width=20)
         comparison_table.add_column("Traditional (apt/brew)", style="yellow", width=25)
@@ -591,8 +585,7 @@ Essential commands:
   $ [cyan]cortex doctor[/cyan]                   # Check system health
   $ [cyan]cortex --help[/cyan]                   # See all commands
 
-[dim]GitHub: github.com/cortexlinux/cortex
-Documentation: docs.cortex.dev[/dim]
+[dim]GitHub: github.com/cortexlinux/cortex[/dim]
         """
 
         self.console.print(Panel(summary, border_style="green", title="🚀 Next Steps"))
