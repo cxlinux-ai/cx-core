@@ -538,23 +538,25 @@ class UnifiedPackageManager:
         current_section = ""
 
         for line in stdout.strip().split("\n"):
+        for line in stdout.strip().split("\n"):
             if not line:
                 continue
 
             if line.startswith("[") and line.endswith("]"):
                 current_section = line[1:-1]
-                permissions[current_section] = {}
             elif "=" in line and current_section:
-                key, value = line.split("=", 1)
-                permissions[current_section][key] = value
+                if current_section not in permissions:
+                    permissions[current_section] = {}
+                
+                if isinstance(permissions[current_section], dict):
+                    key, value = line.split("=", 1)
+                    permissions[current_section][key] = value
             elif current_section:
-                # Single value without key
                 if current_section not in permissions:
                     permissions[current_section] = []
+                
                 if isinstance(permissions[current_section], list):
                     permissions[current_section].append(line)
-
-        return permissions
 
     def modify_snap_permission(
         self, snap_name: str, interface: str, action: str, slot: str | None = None
