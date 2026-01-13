@@ -139,6 +139,10 @@ class CommandInterpreter:
     - Avoid destructive operations unless explicitly requested
     - Use apt for system packages on Debian/Ubuntu
     - Add sudo only for system-level commands
+    IMPORTANT:
+    - Python libraries (e.g., numpy, pandas, scikit-learn, tensorflow, torch)
+    MUST be installed using pip, not apt.
+    - Use apt ONLY for system-level tools and OS packages.
     """
 
         if simplified:
