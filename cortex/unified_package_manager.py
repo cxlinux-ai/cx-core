@@ -92,9 +92,7 @@ class UnifiedPackageManager:
         """Check if a command is available on the system."""
         return shutil.which(command) is not None
 
-    def _run_command(
-        self, cmd: list[str], timeout: int = 30
-    ) -> tuple[bool, str, str]:
+    def _run_command(self, cmd: list[str], timeout: int = 30) -> tuple[bool, str, str]:
         """
         Run a shell command and return success status, stdout, stderr.
 
@@ -531,9 +529,7 @@ class UnifiedPackageManager:
         if not self._flatpak_available:
             return {"error": "Flatpak is not available on this system"}
 
-        success, stdout, _ = self._run_command(
-            ["flatpak", "info", "--show-permissions", app_id]
-        )
+        success, stdout, _ = self._run_command(["flatpak", "info", "--show-permissions", app_id])
 
         if not success:
             return {"error": f"Could not get permissions for {app_id}"}
@@ -648,25 +644,31 @@ class UnifiedPackageManager:
             success, stdout, _ = self._run_command(["apt-cache", "show", pkg])
             if success:
                 if "dummy" in stdout.lower() or "transitional" in stdout.lower():
-                    redirects.append({
-                        "package": pkg,
-                        "type": "transitional",
-                        "reason": "APT package is a dummy that installs snap version",
-                    })
+                    redirects.append(
+                        {
+                            "package": pkg,
+                            "type": "transitional",
+                            "reason": "APT package is a dummy that installs snap version",
+                        }
+                    )
                 elif "snap" in stdout.lower():
-                    redirects.append({
-                        "package": pkg,
-                        "type": "snap_meta",
-                        "reason": "Package description mentions snap installation",
-                    })
+                    redirects.append(
+                        {
+                            "package": pkg,
+                            "type": "snap_meta",
+                            "reason": "Package description mentions snap installation",
+                        }
+                    )
 
         # Check snap preference config file
         if os.path.exists(self.SNAP_REDIRECT_CONFIG):
-            redirects.append({
-                "package": "system",
-                "type": "config",
-                "reason": f"Snap preference config exists: {self.SNAP_REDIRECT_CONFIG}",
-            })
+            redirects.append(
+                {
+                    "package": "system",
+                    "type": "config",
+                    "reason": f"Snap preference config exists: {self.SNAP_REDIRECT_CONFIG}",
+                }
+            )
 
         return redirects
 

@@ -2467,9 +2467,7 @@ def main():
     # --------------------------
 
     # --- Unified Package Manager Commands (Issue #450) ---
-    pkg_parser = subparsers.add_parser(
-        "pkg", help="Unified package manager (snap/flatpak/deb)"
-    )
+    pkg_parser = subparsers.add_parser("pkg", help="Unified package manager (snap/flatpak/deb)")
     pkg_subs = pkg_parser.add_subparsers(dest="pkg_action", help="Package manager actions")
 
     # pkg sources <package>

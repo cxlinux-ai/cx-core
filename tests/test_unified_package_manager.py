@@ -321,9 +321,7 @@ class TestUnifiedPackageManager(unittest.TestCase):
         """Test modifying flatpak permission."""
         mock_run.return_value = (True, "", "")
 
-        success, message = self.upm.modify_flatpak_permission(
-            "org.test.App", "filesystem", "home"
-        )
+        success, message = self.upm.modify_flatpak_permission("org.test.App", "filesystem", "home")
 
         self.assertTrue(success)
 
@@ -454,9 +452,10 @@ class TestUnifiedPackageManager(unittest.TestCase):
         """Test listing permissions when snap unavailable."""
         self.upm._snap_available = False
 
-        result = self.upm.list_snap_permissions("test")
+        with self.assertRaises(RuntimeError) as context:
+            self.upm.list_snap_permissions("test")
 
-        self.assertIn("error", result)
+        self.assertIn("not available", str(context.exception))
 
     @patch.object(UnifiedPackageManager, "_run_command")
     def test_list_flatpak_permissions_unavailable(self, mock_run):
