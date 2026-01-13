@@ -38,7 +38,12 @@ logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
-def _is_interactive():
+def _is_interactive() -> bool:
+    """Check if stdin is connected to a terminal (interactive mode).
+
+    Returns:
+        True if running in interactive terminal, False if piped or redirected.
+    """
     return sys.stdin.isatty()
 
 
@@ -51,7 +56,9 @@ class CortexCLI:
         if not sys.stdin.isatty():
             try:
                 self.stdin_data = sys.stdin.read()
-            except OSError:
+            except Exception:
+                # Silently ignore any stdin reading errors (OSError, UnicodeDecodeError, etc.)
+                # stdin_data remains None and will be handled gracefully downstream
                 pass
 
     def _build_prompt_with_stdin(self, user_prompt: str) -> str:
@@ -135,6 +142,10 @@ class CortexCLI:
                 )
                 return response.content[0].text.strip()
             elif interpreter.provider.name == "ollama":
+                # Defensive check: ollama_url only exists if provider is OLLAMA
+                if not hasattr(interpreter, "ollama_url"):
+                    return fallback
+
                 full_prompt = f"System: {system_message}\n\nUser: {prompt}"
                 data = json.dumps(
                     {
@@ -869,6 +880,8 @@ class CortexCLI:
         api_key: str | None = None,
         provider: str | None = None,
         skip_clarification: bool = False,
+        max_retries: int = 3,
+        retry_count: int = 0,
     ):
         # Validate input first
         is_valid, error = validate_install_request(software)
@@ -919,6 +932,16 @@ class CortexCLI:
 
             if confidence_level == "low":
                 # Low confidence: ask user to clarify what they want
+                if retry_count >= max_retries:
+                    # Max retries exceeded, show suggestions
+                    if _is_interactive():
+                        suggestions = self._generate_suggestions(interpreter, software, intent)
+                        print(f"\nHere are some suggestions:\n{suggestions}\n")
+                    self._print_error(
+                        "Unable to determine installation requirements after multiple clarifications."
+                    )
+                    return 1
+
                 if _is_interactive():
                     clarification_msg = self._generate_clarification_request(
                         interpreter, software, intent
@@ -934,6 +957,8 @@ class CortexCLI:
                             api_key,
                             provider,
                             skip_clarification=True,
+                            max_retries=max_retries,
+                            retry_count=retry_count + 1,
                         )
                     return 1
                 else:
@@ -968,7 +993,7 @@ class CortexCLI:
 
             # High confidence: proceed directly
             # Generate natural understanding message
-            if _is_interactive() or not _is_interactive():  # Always show understanding
+            if _is_interactive():
                 understanding_msg = self._generate_understanding_message(
                     interpreter, intent, software
                 )

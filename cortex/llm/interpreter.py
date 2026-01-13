@@ -477,7 +477,8 @@ Respond with ONLY this JSON format (no explanations):
             if start != -1 and end != -1:
                 json_blob = content[start : end + 1]
             else:
-                json_blob = content
+                # No braces found - content is not valid JSON
+                raise ValueError("No JSON object found in response")
 
             # First attempt: strict JSON
             data = json.loads(json_blob)
