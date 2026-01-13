@@ -206,17 +206,20 @@ class UnifiedPackageManager:
 
         # Check if installed
         success, stdout, _ = self._run_command(["snap", "list", package_name])
-        if success and package_name in stdout:
+        if success:
             lines = stdout.strip().split("\n")
-            if len(lines) > 1:
-                parts = lines[1].split()
-                version = parts[1] if len(parts) > 1 else ""
-                return PackageInfo(
-                    name=package_name,
-                    format=PackageFormat.SNAP,
-                    version=version,
-                    installed=True,
-                )
+            for line in lines[1:]:
+                if not line:
+                    continue
+                parts = line.split()
+                if parts and parts[0] == package_name:
+                    version = parts[1] if len(parts) > 1 else ""
+                    return PackageInfo(
+                        name=package_name,
+                        format=PackageFormat.SNAP,
+                        version=version,
+                        installed=True,
+                    )
 
         # Check if available in snap store
         success, stdout, _ = self._run_command(["snap", "info", package_name])
@@ -483,7 +486,7 @@ class UnifiedPackageManager:
             Dictionary with 'connected' and 'available' interface lists
         """
         if not self._snap_available:
-            return {"error": "Snap is not available on this system"}
+            raise RuntimeError("Snap is not available on this system")
 
         success, stdout, _ = self._run_command(["snap", "connections", snap_name])
 
