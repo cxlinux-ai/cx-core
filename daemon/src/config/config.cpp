@@ -36,6 +36,29 @@ std::optional<Config> Config::load(const std::string& path) {
         // LLM configuration
         if (yaml["llm"]) {
             auto llm = yaml["llm"];
+            // Read backend type first
+            if (llm["backend"]) config.llm_backend = llm["backend"].as<std::string>();
+            
+            // Local llama.cpp configuration
+            if (llm["local"]) {
+                auto local = llm["local"];
+                if (local["base_url"]) config.llm_api_url = local["base_url"].as<std::string>();
+            }
+            
+            // Cloud API configuration
+            if (llm["cloud"]) {
+                auto cloud = llm["cloud"];
+                if (cloud["api_key_env"]) config.llm_api_key_env = cloud["api_key_env"].as<std::string>();
+                // Only use cloud.provider to determine backend if backend is "cloud" (legacy support)
+                // Don't override if backend is explicitly set to "local", "cloud_claude", etc.
+                if (config.llm_backend == "cloud" && cloud["provider"]) {
+                    std::string provider = cloud["provider"].as<std::string>();
+                    if (provider == "claude") config.llm_backend = "cloud_claude";
+                    else if (provider == "openai") config.llm_backend = "cloud_openai";
+                }
+            }
+            
+            // Legacy embedded LLM settings (deprecated)
             if (llm["model_path"]) config.model_path = llm["model_path"].as<std::string>();
             if (llm["context_length"]) config.llm_context_length = llm["context_length"].as<int>();
             if (llm["threads"]) config.llm_threads = llm["threads"].as<int>();

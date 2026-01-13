@@ -80,7 +80,7 @@ systemctl status cortexd
 **Solution**:
 ```bash
 # Check if socket file exists
-ls -la /run/cortex.sock
+ls -la /run/cortex/cortex.sock
 
 # Kill any existing daemon
 pkill -f cortexd
@@ -88,7 +88,7 @@ pkill -f cortexd
 sudo systemctl stop cortexd
 
 # Remove socket file if stale
-sudo rm -f /run/cortex.sock
+sudo rm -f /run/cortex/cortex.sock
 
 # Restart daemon
 sudo systemctl start cortexd
@@ -126,10 +126,10 @@ file /usr/local/bin/cortexd
 systemctl is-active cortexd
 
 # Verify socket exists
-ls -la /run/cortex.sock
+ls -la /run/cortex/cortex.sock
 
 # Test socket manually
-echo '{"command":"health"}' | socat - UNIX-CONNECT:/run/cortex.sock
+echo '{"method":"health"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 
 # Check daemon logs
 journalctl -u cortexd -f
@@ -148,7 +148,7 @@ ps aux | grep cortexd
 # Example: cortexd 25 200M (200 MB)
 
 # Reduce configured memory limit
-cat ~/.cortex/daemon.conf
+cat ~/.cortex/daemon.yaml
 # Change: memory_limit_mb: 100
 
 # Disable LLM if not needed
@@ -167,16 +167,16 @@ sudo systemctl restart cortexd
 **Solution**:
 ```bash
 # Check monitoring interval (should be 300s = 5min)
-cat ~/.cortex/daemon.conf | grep monitoring_interval
+grep -A1 "monitoring:" ~/.cortex/daemon.yaml | grep interval
 
 # Increase interval to reduce frequency
-# Change: monitoring_interval_seconds: 600
+# Change: monitoring.interval_sec: 600
 
 # Reload config
 cortex daemon reload-config
 
 # Disable unnecessary checks
-# Change: enable_cve_scanning: false
+# Change: monitoring.enable_cve: false
 ```
 
 #### Socket timeout errors
@@ -210,7 +210,7 @@ sudo systemctl stop cortexd
 **Solution**:
 ```bash
 # Verify config file exists
-cat ~/.cortex/daemon.conf
+cat ~/.cortex/daemon.yaml
 
 # Reload config
 cortex daemon reload-config
@@ -228,13 +228,13 @@ journalctl -u cortexd | grep "Configuration loaded"
 **Solution**:
 ```bash
 # Check config file syntax (YAML-like)
-cat ~/.cortex/daemon.conf
+cat ~/.cortex/daemon.yaml
 
 # Must be key: value format (with colon and space)
 # Check for typos: monitoring_interval_seconds (not interval)
 
 # Restore defaults if corrupted
-rm ~/.cortex/daemon.conf
+rm ~/.cortex/daemon.yaml
 
 # Daemon will use built-in defaults
 sudo systemctl restart cortexd
@@ -246,7 +246,7 @@ sudo systemctl restart cortexd
 **Solution**:
 ```bash
 # Check configured model path
-cat ~/.cortex/daemon.conf | grep model_path
+cat ~/.cortex/daemon.yaml | grep model_path
 
 # Verify file exists
 ls -la ~/.cortex/models/default.gguf
@@ -352,14 +352,14 @@ python3 -c "import cortex; print(cortex.__path__)"
 **Solution**:
 ```bash
 # Check socket permissions
-ls -la /run/cortex.sock
+ls -la /run/cortex/cortex.sock
 # Should be: srw-rw-rw-
 
 # If not world-writable, run CLI with sudo
 sudo cortex daemon health
 
 # Or change socket permissions (temporary)
-sudo chmod 666 /run/cortex.sock
+sudo chmod 666 /run/cortex/cortex.sock
 
 # To fix permanently, modify daemon code to set 0666 on socket
 ```
@@ -374,7 +374,7 @@ sudo chmod 666 /run/cortex.sock
 **Solution**:
 ```bash
 # Check if journald is enabled in config
-cat ~/.cortex/daemon.conf | grep journald
+cat ~/.cortex/daemon.yaml | grep journald
 
 # Verify daemon is actually logging
 /usr/local/bin/cortexd --verbose
@@ -392,7 +392,7 @@ journalctl | grep cortexd
 **Solution**:
 ```bash
 # Reduce log level
-cat ~/.cortex/daemon.conf
+cat ~/.cortex/daemon.yaml
 # Change: log_level: 3 (ERROR only)
 
 # Or disable debug logging
@@ -475,11 +475,11 @@ systemctl status cortexd
 journalctl -u cortexd | grep "busy\|queue"
 
 # Reduce monitoring frequency
-cat ~/.cortex/daemon.conf
-# Change: monitoring_interval_seconds: 600
+cat ~/.cortex/daemon.yaml
+# Change: monitoring.interval_sec: 600
 
 # Disable expensive checks
-# Change: enable_cve_scanning: false
+# Change: monitoring.enable_cve: false
 
 # Reload
 cortex daemon reload-config
@@ -525,7 +525,7 @@ ps aux | grep cortexd
 
 # 2. Socket check
 echo "2. Socket Status:"
-ls -la /run/cortex.sock 2>/dev/null || echo "Socket not found"
+ls -la /run/cortex/cortex.sock 2>/dev/null || echo "Socket not found"
 
 # 3. Systemd check
 echo "3. Systemd Status:"
@@ -537,7 +537,7 @@ journalctl -u cortexd -n 20 --no-pager
 
 # 5. Config check
 echo "5. Configuration:"
-cat ~/.cortex/daemon.conf 2>/dev/null || echo "No user config"
+cat ~/.cortex/daemon.yaml 2>/dev/null || echo "No user config"
 
 # 6. Memory check
 echo "6. Memory Usage:"
@@ -545,7 +545,7 @@ ps aux | grep cortexd | awk '{print "Memory:", $6/1024 "MB, CPU:", $3"%"}'
 
 # 7. IPC test
 echo "7. IPC Test:"
-echo '{"command":"health"}' | socat - UNIX-CONNECT:/run/cortex.sock 2>/dev/null | jq '.' 2>/dev/null || echo "IPC failed"
+echo '{"method":"health"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock 2>/dev/null | jq '.' 2>/dev/null || echo "IPC failed"
 
 echo "=== End Diagnostics ==="
 ```
@@ -561,7 +561,7 @@ sudo systemctl restart cortexd && sleep 1 && systemctl status cortexd
 ```bash
 # Complete daemon reset
 sudo systemctl stop cortexd
-sudo rm -f /run/cortex.sock
+sudo rm -f /run/cortex/cortex.sock
 rm -rf ~/.cortex/daemon.conf
 sudo systemctl start cortexd
 sleep 1
@@ -590,8 +590,8 @@ mkdir ~/cortex-diagnostics
 ps aux | grep cortexd > ~/cortex-diagnostics/processes.txt
 systemctl status cortexd > ~/cortex-diagnostics/systemd-status.txt
 journalctl -u cortexd -n 500 > ~/cortex-diagnostics/logs.txt
-cat ~/.cortex/daemon.conf > ~/cortex-diagnostics/config.txt 2>/dev/null
-ls -la /run/cortex.sock > ~/cortex-diagnostics/socket-info.txt 2>/dev/null
+cat ~/.cortex/daemon.yaml > ~/cortex-diagnostics/config.txt 2>/dev/null
+ls -la /run/cortex/cortex.sock > ~/cortex-diagnostics/socket-info.txt 2>/dev/null
 
 # Share for debugging
 tar czf cortex-diagnostics.tar.gz ~/cortex-diagnostics/
@@ -605,7 +605,7 @@ When reporting issues, include:
 2. OS version: `lsb_release -a`
 3. Daemon status: `systemctl status cortexd`
 4. Recent logs: `journalctl -u cortexd -n 100`
-5. Config file: `cat ~/.cortex/daemon.conf`
+5. Config file: `cat ~/.cortex/daemon.yaml`
 6. Diagnostic bundle (see above)
 
 ---
@@ -615,22 +615,28 @@ When reporting issues, include:
 ### For High-Load Systems
 
 ```yaml
-# ~/.cortex/daemon.conf
-monitoring_interval_seconds: 600      # Less frequent checks
-max_inference_queue_size: 50          # Smaller queue
-memory_limit_mb: 200                  # More memory available
-enable_cve_scanning: false            # Disable heavy checks
-log_level: 2                          # Reduce logging
+# ~/.cortex/daemon.yaml
+monitoring:
+  interval_sec: 600           # Less frequent checks
+  enable_cve: false           # Disable heavy checks
+
+rate_limit:
+  max_inference_queue: 50     # Smaller queue
+
+log_level: 2                  # Reduce logging
 ```
 
 ### For Resource-Constrained Systems
 
 ```yaml
-# ~/.cortex/daemon.conf
-monitoring_interval_seconds: 900      # Very infrequent checks
-max_inference_queue_size: 10          # Minimal queue
-memory_limit_mb: 100                  # Tight memory limit
-enable_cve_scanning: false            # Disable CVE scanning
-log_level: 3                          # Errors only
+# ~/.cortex/daemon.yaml
+monitoring:
+  interval_sec: 900           # Very infrequent checks
+  enable_cve: false           # Disable CVE scanning
+
+rate_limit:
+  max_inference_queue: 10     # Minimal queue
+
+log_level: 3                  # Errors only
 ```
 

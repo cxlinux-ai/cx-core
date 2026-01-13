@@ -44,7 +44,7 @@ sudo nano /etc/cortex/daemon.conf
 Add or update the `model_path` line:
 
 ```yaml
-socket_path: /run/cortex.sock
+socket_path: /run/cortex/cortex.sock
 model_path: /home/username/.cortex/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 monitoring_interval_seconds: 300
 enable_cve_scanning: true

@@ -326,86 +326,6 @@ class CortexDaemonClient:
             # Daemon may have already shut down
             return True
 
-    # LLM operations
-
-    def get_llm_status(self) -> dict[str, Any]:
-        """
-        Get LLM engine status.
-
-        Returns:
-            LLM status dictionary
-        """
-        response = self._send_request("llm.status")
-        return self._check_response(response)
-
-    # Timeout for model loading (can take 30-120+ seconds for large models)
-    MODEL_LOAD_TIMEOUT = 120.0
-
-    def load_model(self, model_path: str) -> dict[str, Any]:
-        """
-        Load an LLM model.
-
-        Args:
-            model_path: Path to GGUF model file
-
-        Returns:
-            Model info dictionary
-        """
-        response = self._send_request(
-            "llm.load", {"model_path": model_path}, timeout=self.MODEL_LOAD_TIMEOUT
-        )
-        return self._check_response(response)
-
-    def unload_model(self) -> bool:
-        """
-        Unload the current LLM model.
-
-        Returns:
-            True if successful
-        """
-        response = self._send_request("llm.unload")
-        try:
-            result = self._check_response(response)
-            return result.get("unloaded", False)
-        except DaemonProtocolError:
-            return False
-
-    # Timeout for inference (depends on max_tokens and model size)
-    INFERENCE_TIMEOUT = 60.0
-
-    def infer(
-        self,
-        prompt: str,
-        max_tokens: int = 256,
-        temperature: float = 0.7,
-        top_p: float = 0.9,
-        stop: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        Run inference on loaded model.
-
-        Args:
-            prompt: Input prompt
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            top_p: Top-p sampling parameter
-            stop: Optional stop sequence
-
-        Returns:
-            Inference result dictionary
-        """
-        params = {
-            "prompt": prompt,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
-        }
-        if stop:
-            params["stop"] = stop
-
-        response = self._send_request("llm.infer", params, timeout=self.INFERENCE_TIMEOUT)
-        return self._check_response(response)
-
     # Convenience methods
 
     def get_alerts_by_severity(self, severity: str) -> list[dict[str, Any]]:
@@ -429,10 +349,6 @@ class CortexDaemonClient:
             "",
             f"  Pending Updates:    {health.get('pending_updates', 0)}",
             f"  Security Updates:   {health.get('security_updates', 0)}",
-            "",
-            f"  LLM Loaded:         {'Yes' if health.get('llm_loaded') else 'No'}",
-            f"  LLM Model:          {health.get('llm_model_name', '') or 'Not loaded'}",
-            f"  Inference Queue:    {health.get('inference_queue_size', 0)}",
             "",
             f"  Active Alerts:      {health.get('active_alerts', 0)}",
             f"  Critical Alerts:    {health.get('critical_alerts', 0)}",
@@ -461,15 +377,17 @@ class CortexDaemonClient:
             lines.append(f"    Disk:             {health.get('disk_usage_percent', 0):.1f}%")
             lines.append(f"    Active Alerts:    {health.get('active_alerts', 0)}")
 
-        # Add LLM info if present
+        # Add LLM backend info if present
         if "llm" in status:
             lines.append("")
-            lines.append("  LLM:")
+            lines.append("  LLM Backend:")
             llm = status["llm"]
-            lines.append(f"    Loaded:           {'Yes' if llm.get('loaded') else 'No'}")
-            if llm.get("loaded"):
-                lines.append(f"    Model:            {llm.get('model_name', 'unknown')}")
-                lines.append(f"    Queue Size:       {llm.get('queue_size', 0)}")
+            backend = llm.get("backend", "none")
+            enabled = llm.get("enabled", False)
+            lines.append(f"    Backend:          {backend}")
+            lines.append(f"    Enabled:          {'Yes' if enabled else 'No'}")
+            if backend == "local" and llm.get("url"):
+                lines.append(f"    URL:              {llm.get('url')}")
 
         return "\n".join(lines)
 

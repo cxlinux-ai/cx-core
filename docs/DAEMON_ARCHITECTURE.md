@@ -9,7 +9,7 @@
 │                                                            │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │ Unix Socket Server (AF_UNIX, SOCK_STREAM)            │  │
-│  │ Path: /run/cortex.sock                               │  │
+│  │ Path: /run/cortex/cortex.sock                        │  │
 │  │ - Accepts connections from CLI/Python clients        │  │
 │  │ - Synchronous request/response handling              │  │
 │  │ - 5-second timeout per request                       │  │
@@ -378,7 +378,7 @@ class DaemonConfigManager {
 
 **File Format**: YAML-like key:value pairs
 ```yaml
-socket_path: /run/cortex.sock
+socket_path: /run/cortex/cortex.sock
 model_path: ~/.cortex/models/default.gguf
 monitoring_interval_seconds: 300
 ```
@@ -437,7 +437,7 @@ PID=<process id>
    ↓
 7. Call SocketServer::start()
    ├─ Create Unix socket
-   ├─ Bind to /run/cortex.sock
+   ├─ Bind to /run/cortex/cortex.sock
    ├─ Listen for connections
    └─ Spawn accept_connections() thread
    ↓

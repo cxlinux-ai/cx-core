@@ -1,0 +1,53 @@
+[Unit]
+Description=Cortex LLM Service (llama.cpp server)
+Documentation=https://github.com/cortexlinux/cortex
+After=network.target
+
+[Service]
+Type=simple
+
+# Default values (overridden by /etc/cortex/llm.env if it exists)
+Environment=CORTEX_LLM_MODEL_PATH=
+Environment=CORTEX_LLM_THREADS=4
+Environment=CORTEX_LLM_CTX_SIZE=2048
+
+# Load user configuration (optional, - means ignore if missing)
+EnvironmentFile=-/etc/cortex/llm.env
+
+ExecStart=/usr/local/bin/llama-server \
+    --model ${CORTEX_LLM_MODEL_PATH} \
+    --host 127.0.0.1 \
+    --port 8085 \
+    --ctx-size ${CORTEX_LLM_CTX_SIZE} \
+    --threads ${CORTEX_LLM_THREADS}
+Restart=on-failure
+RestartSec=10
+
+# No watchdog - llama.cpp inference can take >60s for large prompts
+# WatchdogSec=60
+
+# Resource limits - sized for LLM models (2-16GB)
+MemoryMax=16G
+MemoryHigh=12G
+TasksMax=64
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+# Allow read access to home directories for model files
+ProtectHome=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cortex-llm
+
+# Graceful shutdown
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
+

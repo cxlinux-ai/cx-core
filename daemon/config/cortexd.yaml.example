@@ -9,7 +9,28 @@ socket:
 
 # LLM configuration
 llm:
-  # Path to GGUF model file (leave empty to disable)
+  # Backend type: "local", "cloud_claude", "cloud_openai", or "none"
+  # - local: Use local llama.cpp server (cortex-llm.service)
+  # - cloud_claude: Use Anthropic Claude API
+  # - cloud_openai: Use OpenAI API
+  # - none: Disable LLM features (default)
+  backend: "none"
+
+  # Cloud API configuration (when backend: cloud_claude or cloud_openai)
+  cloud:
+    # API key environment variable name (key is read from env, not stored here)
+    # Default for cloud_claude: ANTHROPIC_API_KEY
+    # Default for cloud_openai: OPENAI_API_KEY
+    api_key_env: ""
+
+  # Local llama.cpp configuration (when backend: local)
+  local:
+    # URL of the cortex-llm service (llama.cpp server)
+    base_url: "http://127.0.0.1:8085"
+
+  # Legacy embedded LLM settings (deprecated - use cortex-llm.service instead)
+  # These settings are kept for backwards compatibility but will be removed
+  # Path to GGUF model file (leave empty to disable embedded LLM)
   model_path: ""
   # Context length (tokens)
   context_length: 2048

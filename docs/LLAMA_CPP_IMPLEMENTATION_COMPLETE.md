@@ -141,7 +141,7 @@ endif()
 |-----------|--------|----------|
 | C++ daemon compiles | ✅ YES | CMakeLists.txt with llama.cpp detection |
 | Systemd service unit | ✅ YES | cortexd.service with auto-restart |
-| Unix socket API | ✅ YES | /run/cortex.sock JSON-RPC |
+| Unix socket API | ✅ YES | /run/cortex/cortex.sock JSON-RPC |
 | **Embedded llama.cpp inference** | ✅ **YES** | Full C API integration, real model loading |
 | Basic system monitoring | ✅ YES | Memory, disk, APT state checks |
 | CLI communicates with daemon | ✅ YES | daemon_client.py + daemon_commands.py |

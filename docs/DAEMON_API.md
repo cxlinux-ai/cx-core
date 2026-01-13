@@ -2,9 +2,9 @@
 
 ## Overview
 
-Cortexd provides a JSON-based RPC interface via Unix domain socket (`/run/cortex.sock`). All communication uses UTF-8 encoded JSON.
+Cortexd provides a JSON-based RPC interface via Unix domain socket (`/run/cortex/cortex.sock`). All communication uses UTF-8 encoded JSON.
 
-**Socket Path**: `/run/cortex.sock`
+**Socket Path**: `/run/cortex/cortex.sock`
 **Protocol**: JSON-RPC 2.0 (subset)
 **Timeout**: 5 seconds per request
 **Max Message Size**: 64 KB
@@ -66,7 +66,7 @@ Get daemon status and version information.
     "version": "0.1.0",
     "uptime_seconds": 3600,
     "pid": 1234,
-    "socket_path": "/run/cortex.sock",
+    "socket_path": "/run/cortex/cortex.sock",
     "config_loaded": true
   },
   "timestamp": 1672574400

@@ -25,7 +25,7 @@ class MemoryMonitor;
 class CVEScanner;
 class DependencyChecker;
 class AlertManager;
-class LLMEngine;
+class HttpLLMClient;
 
 /**
  * @brief System monitoring service
@@ -50,18 +50,13 @@ struct CpuCounters {
 class SystemMonitor : public Service {
 public:
     /**
-     * @brief Construct with optional alert manager and LLM engine
+     * @brief Construct with optional alert manager
      * @param alert_manager Shared alert manager (can be nullptr)
-     * @param llm_engine Non-owning raw pointer to LLM engine (can be nullptr).
-     *                   LIFETIME CONTRACT: The LLMEngine instance pointed to must
-     *                   outlive this SystemMonitor instance, or be left as nullptr.
-     *                   All internal accesses to llm_engine_ are guarded by null
-     *                   checks. The caller retains ownership and is responsible
-     *                   for ensuring the pointed-to object remains valid for the
-     *                   lifetime of this SystemMonitor.
+     * 
+     * AI-powered alerts use HttpLLMClient which is configured automatically
+     * from daemon config (supports local llama-server or cloud APIs).
      */
-    explicit SystemMonitor(std::shared_ptr<AlertManager> alert_manager = nullptr,
-                          LLMEngine* llm_engine = nullptr);
+    explicit SystemMonitor(std::shared_ptr<AlertManager> alert_manager = nullptr);
     ~SystemMonitor() override;
     
     // Service interface
@@ -94,18 +89,18 @@ public:
     HealthSnapshot force_check();
     
     /**
-     * @brief Update LLM state in snapshot
-     */
-    void set_llm_state(bool loaded, const std::string& model_name, size_t queue_size);
-    
-    /**
      * @brief Set check interval
      */
     void set_interval(std::chrono::seconds interval);
     
+    /**
+     * @brief Initialize HTTP LLM client from configuration
+     */
+    void initialize_http_llm_client();
+    
 private:
     std::shared_ptr<AlertManager> alert_manager_;
-    LLMEngine* llm_engine_ = nullptr;  // Non-owning pointer to LLM engine
+    std::unique_ptr<HttpLLMClient> http_llm_client_;  // HTTP client for LLM API calls
     
     std::unique_ptr<AptMonitor> apt_monitor_;
     std::unique_ptr<DiskMonitor> disk_monitor_;
@@ -117,12 +112,6 @@ private:
     
     mutable std::mutex snapshot_mutex_;
     HealthSnapshot current_snapshot_;
-    
-    // LLM state (updated externally)
-    std::atomic<bool> llm_loaded_{false};
-    std::string llm_model_name_;
-    std::atomic<size_t> llm_queue_size_{0};
-    std::mutex llm_mutex_;
     
     std::atomic<int64_t> check_interval_secs_{300};  // 5 minutes (atomic for thread-safe access)
     

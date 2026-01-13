@@ -167,7 +167,7 @@ ctest --output-on-failure -VV
 ./cortexd --verbose
 
 # In another terminal, test socket
-echo '{"command":"status"}' | socat - UNIX-CONNECT:/run/cortex.sock
+echo '{"method":"status"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 ```
 
 ## Build Troubleshooting

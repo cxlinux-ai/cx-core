@@ -14,6 +14,7 @@ class APIProvider(Enum):
     CLAUDE = "claude"
     OPENAI = "openai"
     OLLAMA = "ollama"
+    LLAMA_CPP = "llama_cpp"
     FAKE = "fake"
 
 
@@ -63,6 +64,9 @@ class CommandInterpreter:
             elif self.provider == APIProvider.OLLAMA:
                 # Try to load model from config or environment
                 self.model = self._get_ollama_model()
+            elif self.provider == APIProvider.LLAMA_CPP:
+                # Model is loaded by cortex-llm service, use a placeholder name
+                self.model = os.environ.get("LLAMA_CPP_MODEL", "local-model")
             elif self.provider == APIProvider.FAKE:
                 self.model = "fake"  # Fake provider doesn't use a real model
 
@@ -99,6 +103,18 @@ class CommandInterpreter:
                 self.client = OpenAI(
                     api_key="ollama",
                     base_url=f"{ollama_base_url}/v1",  # Dummy key, not used
+                )
+            except ImportError:
+                raise ImportError("OpenAI package not installed. Run: pip install openai")
+        elif self.provider == APIProvider.LLAMA_CPP:
+            # llama.cpp server uses OpenAI-compatible API (same as Ollama)
+            try:
+                from openai import OpenAI
+
+                llama_cpp_url = os.environ.get("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8085")
+                self.client = OpenAI(
+                    api_key="llama-cpp",  # Dummy key, not used by llama-server
+                    base_url=f"{llama_cpp_url}/v1",
                 )
             except ImportError:
                 raise ImportError("OpenAI package not installed. Run: pip install openai")
@@ -201,6 +217,37 @@ Respond with ONLY this JSON format (no explanations):
             raise RuntimeError(
                 f"Ollama API call failed. Is Ollama running? (ollama serve)\n"
                 f"URL: {ollama_base_url}, Model: {self.model}\n"
+                f"Error: {str(e)}"
+            )
+
+    def _call_llama_cpp(self, user_input: str) -> list[str]:
+        """Call local llama.cpp server using OpenAI-compatible API."""
+        try:
+            # For local models, be extremely explicit in the user message
+            enhanced_input = f"""{user_input}
+
+Respond with ONLY this JSON format (no explanations):
+{{\"commands\": [\"command1\", \"command2\"]}}"""
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self._get_system_prompt(simplified=True)},
+                    {"role": "user", "content": enhanced_input},
+                ],
+                temperature=0.1,  # Lower temperature for more focused responses
+                max_tokens=300,  # Reduced tokens for faster response
+            )
+
+            content = response.choices[0].message.content.strip()
+            return self._parse_commands(content)
+        except Exception as e:
+            # Provide helpful error message
+            llama_cpp_url = os.environ.get("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8085")
+            raise RuntimeError(
+                f"llama.cpp server call failed. Is cortex-llm service running?\n"
+                f"Check with: sudo systemctl status cortex-llm\n"
+                f"URL: {llama_cpp_url}, Model: {self.model}\n"
                 f"Error: {str(e)}"
             )
 
@@ -339,6 +386,8 @@ Respond with ONLY this JSON format (no explanations):
             commands = self._call_claude(user_input)
         elif self.provider == APIProvider.OLLAMA:
             commands = self._call_ollama(user_input)
+        elif self.provider == APIProvider.LLAMA_CPP:
+            commands = self._call_llama_cpp(user_input)
         elif self.provider == APIProvider.FAKE:
             commands = self._call_fake(user_input)
         else:

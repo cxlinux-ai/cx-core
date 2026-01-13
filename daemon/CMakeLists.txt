@@ -46,6 +46,7 @@ pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 pkg_check_modules(OPENSSL REQUIRED openssl)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(UUID REQUIRED uuid)
+pkg_check_modules(CURL REQUIRED libcurl)
 
 # Find llama.cpp
 find_library(LLAMA_LIB llama PATHS /usr/local/lib /usr/lib)
@@ -84,6 +85,7 @@ include_directories(
     ${OPENSSL_INCLUDE_DIRS}
     ${SQLITE3_INCLUDE_DIRS}
     ${UUID_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
 )
 
 if(LLAMA_INCLUDE)
@@ -111,9 +113,8 @@ set(DAEMON_SOURCES
     src/monitor/apt_monitor.cpp
     src/monitor/cve_scanner.cpp
     
-    # LLM
-    src/llm/engine.cpp
-    src/llm/llama_backend.cpp
+    # LLM (HTTP client for external LLM services)
+    src/llm/http_llm_client.cpp
     
     # Alerts
     src/alerts/alert_manager.cpp
@@ -138,6 +139,7 @@ target_link_libraries(cortexd
     ${OPENSSL_LIBRARIES}
     ${SQLITE3_LIBRARIES}
     ${UUID_LIBRARIES}
+    ${CURL_LIBRARIES}
     nlohmann_json::nlohmann_json
     yaml-cpp::yaml-cpp
     pthread

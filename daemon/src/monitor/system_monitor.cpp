@@ -8,17 +8,18 @@
 #include "cortexd/monitor/disk_monitor.h"
 #include "cortexd/monitor/memory_monitor.h"
 #include "cortexd/alerts/alert_manager.h"
-#include "cortexd/llm/engine.h"
+#include "cortexd/llm/http_llm_client.h"
 #include "cortexd/config.h"
 #include "cortexd/logger.h"
 #include <fstream>
 #include <sstream>
+#include <cstdlib>
 
 namespace cortexd {
 
-SystemMonitor::SystemMonitor(std::shared_ptr<AlertManager> alert_manager, LLMEngine* llm_engine)
+SystemMonitor::SystemMonitor(std::shared_ptr<AlertManager> alert_manager)
     : alert_manager_(std::move(alert_manager))
-    , llm_engine_(llm_engine)
+    , http_llm_client_(std::make_unique<HttpLLMClient>())
     , apt_monitor_(std::make_unique<AptMonitor>())
     , disk_monitor_(std::make_unique<DiskMonitor>())
     , memory_monitor_(std::make_unique<MemoryMonitor>()) {
@@ -27,8 +28,70 @@ SystemMonitor::SystemMonitor(std::shared_ptr<AlertManager> alert_manager, LLMEng
     const auto& config = ConfigManager::instance().get();
     check_interval_secs_.store(config.monitor_interval_sec, std::memory_order_relaxed);
     
-    if (llm_engine_) {
-        LOG_INFO("SystemMonitor", "AI-powered alerts enabled");
+    // Initialize HTTP LLM client from configuration
+    initialize_http_llm_client();
+}
+
+void SystemMonitor::initialize_http_llm_client() {
+    const auto& config = ConfigManager::instance().get();
+    
+    if (!config.enable_ai_alerts) {
+        LOG_INFO("SystemMonitor", "AI alerts disabled in configuration");
+        return;
+    }
+    
+    LLMBackendType backend_type = LLMBackendType::NONE;
+    std::string base_url;
+    std::string api_key;
+    
+    if (config.llm_backend == "local") {
+        backend_type = LLMBackendType::LOCAL;
+        base_url = config.llm_api_url;
+        LOG_INFO("SystemMonitor", "Configuring local llama-server at: " + base_url);
+    } else if (config.llm_backend == "cloud_claude") {
+        backend_type = LLMBackendType::CLOUD_CLAUDE;
+        // Get API key from environment variable
+        if (!config.llm_api_key_env.empty()) {
+            const char* key = std::getenv(config.llm_api_key_env.c_str());
+            if (key) api_key = key;
+        }
+        if (api_key.empty()) {
+            const char* key = std::getenv("ANTHROPIC_API_KEY");
+            if (key) api_key = key;
+        }
+        if (api_key.empty()) {
+            LOG_WARN("SystemMonitor", "Claude API key not found, AI alerts disabled");
+            return;
+        }
+        LOG_INFO("SystemMonitor", "Configuring Claude API for AI alerts");
+    } else if (config.llm_backend == "cloud_openai") {
+        backend_type = LLMBackendType::CLOUD_OPENAI;
+        // Get API key from environment variable
+        if (!config.llm_api_key_env.empty()) {
+            const char* key = std::getenv(config.llm_api_key_env.c_str());
+            if (key) api_key = key;
+        }
+        if (api_key.empty()) {
+            const char* key = std::getenv("OPENAI_API_KEY");
+            if (key) api_key = key;
+        }
+        if (api_key.empty()) {
+            LOG_WARN("SystemMonitor", "OpenAI API key not found, AI alerts disabled");
+            return;
+        }
+        LOG_INFO("SystemMonitor", "Configuring OpenAI API for AI alerts");
+    } else if (config.llm_backend == "none" || config.llm_backend.empty()) {
+        LOG_INFO("SystemMonitor", "No LLM backend configured, AI alerts disabled");
+        return;
+    } else {
+        LOG_WARN("SystemMonitor", "Unknown LLM backend: " + config.llm_backend + ", AI alerts disabled");
+        return;
+    }
+    
+    http_llm_client_->configure(backend_type, base_url, api_key);
+    
+    if (http_llm_client_->is_configured()) {
+        LOG_INFO("SystemMonitor", "AI-powered alerts enabled via HTTP LLM client");
     }
 }
 
@@ -122,14 +185,6 @@ HealthSnapshot SystemMonitor::force_check() {
     
     std::lock_guard<std::mutex> lock(snapshot_mutex_);
     return current_snapshot_;
-}
-
-void SystemMonitor::set_llm_state(bool loaded, const std::string& model_name, size_t queue_size) {
-    llm_loaded_ = loaded;
-    llm_queue_size_ = queue_size;
-    
-    std::lock_guard<std::mutex> lock(llm_mutex_);
-    llm_model_name_ = model_name;
 }
 
 void SystemMonitor::set_interval(std::chrono::seconds interval) {
@@ -247,13 +302,6 @@ void SystemMonitor::run_checks() {
             current_snapshot_.disk_total_gb = disk_stats.total_gb();
             current_snapshot_.pending_updates = pending;
             current_snapshot_.security_updates = security;
-            current_snapshot_.llm_loaded = llm_loaded_.load();
-            current_snapshot_.inference_queue_size = llm_queue_size_.load();
-            
-            {
-                std::lock_guard<std::mutex> llm_lock(llm_mutex_);
-                current_snapshot_.llm_model_name = llm_model_name_;
-            }
             
             // Alert count from manager
             if (alert_manager_) {
@@ -386,58 +434,43 @@ void SystemMonitor::check_thresholds(const HealthSnapshot& snapshot) {
 std::string SystemMonitor::generate_ai_alert(AlertType alert_type, const std::string& context) {
     const auto& config = ConfigManager::instance().get();
     
-    // Check if AI alerts are enabled and LLM is available
-    if (!config.enable_ai_alerts || !llm_engine_ || !llm_engine_->is_loaded()) {
+    // Check if AI alerts are enabled and HTTP LLM client is configured
+    if (!config.enable_ai_alerts || !http_llm_client_ || !http_llm_client_->is_configured()) {
         return "";
     }
     
-    // Build the prompt based on alert type
+    // Build simple, direct prompts based on alert type
     std::string prompt;
     
     switch (alert_type) {
         case AlertType::DISK_USAGE:
-            prompt = "You are a Linux system administrator assistant. Analyze this disk usage alert and provide a brief, actionable response (2-3 sentences max).\n\n"
-                    "Context: " + context + "\n\n"
-                    "Provide practical suggestions to free disk space. Be specific and concise.";
+            prompt = context + "\n\nHow can I free up disk space on this Linux system? Give 2 specific commands or actions.";
             break;
             
         case AlertType::MEMORY_USAGE:
-            prompt = "You are a Linux system administrator assistant. Analyze this memory usage alert and provide a brief, actionable response (2-3 sentences max).\n\n"
-                    "Context: " + context + "\n\n"
-                    "Suggest how to identify memory-hungry processes and potential fixes. Be specific and concise.";
+            prompt = context + "\n\nHow can I reduce memory usage on this Linux system? Give 2 specific commands or actions.";
             break;
             
         case AlertType::SECURITY_UPDATE:
-            prompt = "You are a Linux security assistant. Analyze these pending security updates and provide a brief, actionable response (2-3 sentences max).\n\n"
-                    "Context: " + context + "\n\n"
-                    "Assess the urgency and recommend whether to update immediately. Be specific and concise.";
+            prompt = context + "\n\nShould I install these security updates now? Give a brief recommendation.";
             break;
             
         case AlertType::CVE_FOUND:
-            prompt = "You are a Linux security assistant. Analyze this CVE alert and provide a brief, actionable response (2-3 sentences max).\n\n"
-                    "Context: " + context + "\n\n"
-                    "Explain the risk and recommended mitigation. Be specific and concise.";
+            prompt = context + "\n\nHow serious is this vulnerability and what should I do? Give a brief recommendation.";
             break;
             
         default:
-            prompt = "You are a Linux system administrator assistant. Analyze this system alert and provide a brief, actionable response (2-3 sentences max).\n\n"
-                    "Context: " + context + "\n\n"
-                    "Provide practical recommendations. Be specific and concise.";
+            prompt = context + "\n\nWhat action should I take for this alert? Give a brief recommendation.";
             break;
     }
     
-    // Run inference
-    InferenceRequest request;
-    request.prompt = prompt;
-    request.max_tokens = 150;  // Keep responses concise
-    request.temperature = 0.3f;  // Lower temperature for more focused responses
+    LOG_DEBUG("SystemMonitor", "Generating AI alert analysis via HTTP LLM client...");
     
-    LOG_DEBUG("SystemMonitor", "Generating AI alert analysis...");
-    
-    auto result = llm_engine_->infer_sync(request);
+    // Use HTTP LLM client for inference
+    auto result = http_llm_client_->generate(prompt, 150, 0.3f);
     
     if (result.success && !result.output.empty()) {
-        LOG_DEBUG("SystemMonitor", "AI analysis generated in " + std::to_string(result.time_ms) + "ms");
+        LOG_DEBUG("SystemMonitor", "AI analysis generated successfully");
         return result.output;
     }
     
@@ -458,8 +491,8 @@ void SystemMonitor::create_smart_alert(AlertSeverity severity, AlertType type,
     
     std::string alert_id = alert_manager_->create(severity, type, title, basic_message, metadata_copy);
     
-    // Skip AI analysis if LLM not available or alert creation failed
-    if (alert_id.empty() || !llm_engine_ || !llm_engine_->is_loaded()) {
+    // Skip AI analysis if HTTP LLM client not available or alert creation failed
+    if (alert_id.empty() || !http_llm_client_ || !http_llm_client_->is_configured()) {
         return;
     }
     

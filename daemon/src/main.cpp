@@ -7,7 +7,6 @@
 #include "cortexd/ipc/server.h"
 #include "cortexd/ipc/handlers.h"
 #include "cortexd/monitor/system_monitor.h"
-#include "cortexd/llm/engine.h"
 #include "cortexd/alerts/alert_manager.h"
 #include "cortexd/logger.h"
 #include "cortexd/config.h"
@@ -114,24 +113,19 @@ int main(int argc, char* argv[]) {
         config.max_requests_per_sec
     );
     
-    // Create LLM engine first so we can pass it to the monitor
-    auto llm_engine = std::make_unique<LLMEngine>();
-    auto* llm_ptr = llm_engine.get();
-    
-    // Create system monitor with LLM engine for AI-powered alerts
-    auto system_monitor = std::make_unique<SystemMonitor>(alert_manager, llm_ptr);
+    // Create system monitor (uses HTTP LLM client for AI-powered alerts)
+    auto system_monitor = std::make_unique<SystemMonitor>(alert_manager);
     
     // Get raw pointers before moving
     auto* ipc_ptr = ipc_server.get();
     auto* monitor_ptr = system_monitor.get();
     
     // Register IPC handlers
-    Handlers::register_all(*ipc_ptr, *monitor_ptr, *llm_ptr, alert_manager);
+    Handlers::register_all(*ipc_ptr, *monitor_ptr, alert_manager);
     
     // Register services with daemon
     daemon.register_service(std::move(ipc_server));
     daemon.register_service(std::move(system_monitor));
-    daemon.register_service(std::move(llm_engine));
     
     // Run daemon (blocks until shutdown)
     int exit_code = daemon.run();

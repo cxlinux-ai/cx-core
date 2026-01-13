@@ -179,11 +179,6 @@ struct HealthSnapshot {
     int pending_updates = 0;
     int security_updates = 0;
     
-    // LLM state
-    bool llm_loaded = false;
-    std::string llm_model_name;
-    size_t inference_queue_size = 0;
-    
     // Alerts
     int active_alerts = 0;
     int critical_alerts = 0;
@@ -200,9 +195,6 @@ struct HealthSnapshot {
             {"disk_total_gb", disk_total_gb},
             {"pending_updates", pending_updates},
             {"security_updates", security_updates},
-            {"llm_loaded", llm_loaded},
-            {"llm_model_name", llm_model_name},
-            {"inference_queue_size", inference_queue_size},
             {"active_alerts", active_alerts},
             {"critical_alerts", critical_alerts}
         };

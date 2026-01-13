@@ -129,7 +129,7 @@ import json
 
 def check_llm_status():
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect('/run/cortex.sock')
+    sock.connect('/run/cortex/cortex.sock')
     
     request = json.dumps({
         "method": "health.snapshot",
@@ -185,7 +185,7 @@ sudo journalctl -u cortexd -n 100 | grep -i error
 sudo systemctl status cortexd
 
 # Check socket exists
-ls -la /run/cortex.sock
+ls -la /run/cortex/cortex.sock
 
 # Restart daemon if needed
 sudo systemctl restart cortexd

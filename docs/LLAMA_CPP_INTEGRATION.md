@@ -2,103 +2,274 @@
 
 ## Overview
 
-Cortexd now includes full **llama.cpp integration** for embedding LLM inference directly into the system daemon.
+Cortex supports **llama.cpp** for local LLM inference using GGUF quantized models. This enables free, private, offline AI capabilities on your machine.
 
 **Status**: ✅ **FULLY IMPLEMENTED**
 
 ---
 
-## What's Implemented
+## Architecture
 
-### ✅ C++ Wrapper (`daemon/src/llm/llama_wrapper.cpp`)
+Cortex uses a **separate service architecture** for llama.cpp to keep the main daemon lightweight:
 
-The daemon includes a complete llama.cpp C API wrapper:
-
-```cpp
-class LlamaWrapper : public LLMWrapper {
-    // Load GGUF model files
-    bool load_model(const std::string& model_path);
-    
-    // Check if model is ready
-    bool is_loaded() const;
-    
-    // Run inference with prompt
-    InferenceResult infer(const InferenceRequest& request);
-    
-    // Get current memory usage
-    size_t get_memory_usage();
-    
-    // Unload and cleanup
-    void unload_model();
-    
-    // Configure threading
-    void set_n_threads(int n_threads);
-};
+```
+┌──────────────────────────┐      ┌──────────────────────────┐
+│   cortexd (C++ Daemon)   │      │  cortex-llm Service      │
+│  ┌────────────────────┐  │      │  ┌────────────────────┐  │
+│  │  Core Services     │  │ HTTP │  │  llama-server      │  │
+│  │  - IPC Server      │◄─┼──────┼─►│  - GGUF Models     │  │
+│  │  - System Monitor  │  │      │  │  - OpenAI API      │  │
+│  │  - Alerts          │  │      │  │                    │  │
+│  │  MemoryMax=256M    │  │      │  │  MemoryMax=16G     │  │
+│  └────────────────────┘  │      │  └────────────────────┘  │
+└──────────────────────────┘      └──────────────────────────┘
+     cortexd.service                  cortex-llm.service
 ```
 
-### ✅ Features
+### Why Separate Services?
 
-- **Model Loading**: Load GGUF quantized models from disk
-- **Inference Queue**: Single-threaded queue with async processing
-- **Memory Management**: Efficient context allocation and cleanup
-- **Thread Configuration**: Adjustable thread count (default: 4)
-- **Error Handling**: Graceful failures with detailed logging
-- **Thread Safety**: Mutex-protected critical sections
+| Benefit | Description |
+|---------|-------------|
+| **Lightweight daemon** | cortexd stays under 256MB for system monitoring |
+| **Memory isolation** | LLM models (2-16GB) don't affect daemon stability |
+| **Failure isolation** | LLM crashes don't kill the daemon |
+| **Flexible scaling** | Upgrade LLM service independently |
 
-### ✅ Build Integration
+---
 
-CMakeLists.txt automatically detects llama.cpp:
+## Quick Start
 
-```cmake
-# Auto-detect llama.cpp
-find_package(llama QUIET)
-if(NOT llama_FOUND)
-    pkg_check_modules(LLAMA llama QUIET)
-endif()
+The easiest way to set up llama.cpp is using the daemon setup wizard:
 
-# Link if available
-if(LLAMA_LIBRARIES)
-    target_link_libraries(cortexd PRIVATE ${LLAMA_LIBRARIES})
-endif()
+```bash
+cd cortex/daemon
+python scripts/setup_daemon.py
 ```
 
-### ✅ IPC Integration
+Select **"Local llama.cpp"** when prompted for LLM backend.
 
-Query inference via daemon socket:
+---
 
-```json
-{
-  "command": "inference",
-  "params": {
-    "prompt": "What packages are installed?",
-    "max_tokens": 256,
-    "temperature": 0.7
-  }
-}
+## Manual Setup
+
+### 1. Install llama.cpp Server
+
+**Option A: Build from Source (Recommended)**
+```bash
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
 ```
 
-### ✅ Configuration
+**Option B: Package Manager**
+```bash
+sudo apt install libllama-dev  # If available
+```
 
-Control via `~/.cortex/daemon.conf`:
+### 2. Download a Model
 
-```yaml
-[llm]
-model_path: ~/.cortex/models/mistral-7b.gguf
-n_threads: 4
-n_ctx: 512
-use_mmap: true
+Get GGUF quantized models from Hugging Face:
+
+```bash
+mkdir -p ~/.cortex/models
+
+# TinyLlama 1.1B (600MB, fast)
+wget https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf \
+  -O ~/.cortex/models/tinyllama-1.1b.gguf
+
+# OR Phi 2.7B (1.6GB, balanced)
+wget https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf \
+  -O ~/.cortex/models/phi-2.7b.gguf
+
+# OR Mistral 7B (4GB, high quality)
+wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
+  -O ~/.cortex/models/mistral-7b.gguf
+```
+
+### 3. Install cortex-llm Service
+
+```bash
+cd cortex/daemon
+sudo ./scripts/install-llm.sh install ~/.cortex/models/model_name tot_threads tot_context_size
+```
+
+This will:
+- Create `/etc/cortex/llm.env` with model configuration
+- Install `cortex-llm.service` systemd unit
+- Start the llama-server on port 8085
+
+### 4. Configure Cortex to Use llama.cpp
+
+```bash
+# Set environment variables
+export CORTEX_PROVIDER=llama_cpp
+export LLAMA_CPP_BASE_URL=http://127.0.0.1:8085
+
+# Or add to ~/.cortex/.env
+echo "CORTEX_PROVIDER=llama_cpp" >> ~/.cortex/.env
+echo "LLAMA_CPP_BASE_URL=http://127.0.0.1:8085" >> ~/.cortex/.env
+```
+
+### 5. Test
+
+```bash
+# Check service status
+sudo systemctl status cortex-llm
+
+# Test with Cortex
+cortex ask "What is nginx?"
+cortex install nginx --dry-run
 ```
 
 ---
 
-## Getting Started
+## Service Management
 
-### 1. Install llama.cpp
+### cortex-llm.service Commands
 
-**Option A: Package Manager**
 ```bash
-sudo apt install libllama-dev
+# Start/stop/restart
+sudo systemctl start cortex-llm
+sudo systemctl stop cortex-llm
+sudo systemctl restart cortex-llm
+
+# View status
+sudo systemctl status cortex-llm
+
+# View logs
+journalctl -u cortex-llm -f
+
+# Enable at boot
+sudo systemctl enable cortex-llm
+
+# Disable at boot
+sudo systemctl disable cortex-llm
 ```
+
+### Configuration
+
+Edit `/etc/cortex/llm.env` to change model or settings:
+
+```bash
+# Path to the GGUF model file
+CORTEX_LLM_MODEL_PATH=/home/user/.cortex/models/phi-2.7b.gguf
+
+# Number of CPU threads for inference
+CORTEX_LLM_THREADS=4
+
+# Context size in tokens
+CORTEX_LLM_CTX_SIZE=2048
+```
+
+After changing configuration:
+```bash
+sudo systemctl restart cortex-llm
+```
+
+### Switching Models
+
+```bash
+# Download new model
+wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf \
+  -O ~/.cortex/models/mistral-7b.gguf
+
+# Update configuration
+sudo ./scripts/install-llm.sh configure ~/.cortex/models/mistral-7b.gguf 4 2048
+```
+
+---
+
+## Recommended Models
+
+| Model | Size | RAM | Speed | Quality | Best For |
+|-------|------|-----|-------|---------|----------|
+| **TinyLlama 1.1B** | 600MB | 2GB | ⚡ Very Fast | Fair | Testing, low-resource |
+| **Phi 2.7B** | 1.6GB | 3GB | ⚡ Fast | Good | Daily use, balanced |
+| **Mistral 7B** | 4GB | 8GB | Medium | Very Good | Production |
+| **Llama 2 13B** | 8GB | 16GB | Slow | Excellent | High quality |
+
+---
+
+## Python Integration
+
+Cortex CLI automatically uses the `llama_cpp` provider when configured:
+
+```python
+from cortex.llm.interpreter import CommandInterpreter, APIProvider
+
+# Create interpreter with llama.cpp
+interpreter = CommandInterpreter(
+    api_key="",  # Not needed for local
+    provider="llama_cpp",
+)
+
+# Parse commands
+commands = interpreter.parse("install nginx and configure it")
+print(commands)
+```
+
+Environment variables:
+- `CORTEX_PROVIDER=llama_cpp` - Use llama.cpp backend
+- `LLAMA_CPP_BASE_URL=http://127.0.0.1:8085` - Server URL
+- `LLAMA_CPP_MODEL=local-model` - Model name (display only)
+
+---
+
+## Legacy: Embedded LLM (Deprecated)
+
+The previous approach embedded llama.cpp directly into the daemon. This is now **deprecated** in favor of the separate service architecture.
+
+### Why Deprecated?
+
+The embedded approach conflicted with the daemon's 256MB memory limit:
+- Daemon MemoryMax: 256MB
+- Smallest model (TinyLlama): 2GB RAM required
+
+With embedded LLM, systemd would kill the daemon when loading any model.
+
+### Migration
+
+If you were using embedded LLM, migrate to the new architecture:
+
+```bash
+# Re-run setup wizard
+cd cortex/daemon
+python scripts/setup_daemon.py
+
+# Select "Local llama.cpp" when prompted
+```
+
+---
+
+## What's Implemented
+
+### ✅ Separate Service (`cortex-llm.service`)
+
+- Runs llama-server as a systemd service
+- OpenAI-compatible API on port 8085
+- Configurable via `/etc/cortex/llm.env`
+- Memory limit: 16GB (configurable)
+
+### ✅ Python Provider (`llama_cpp`)
+
+- `cortex/llm/interpreter.py` - LLAMA_CPP provider
+- OpenAI-compatible client (same as Ollama)
+- Automatic error handling and retry
+
+### ✅ Setup Wizard
+
+- `daemon/scripts/setup_daemon.py` - Interactive setup
+- Model download from Hugging Face
+- Service installation and configuration
+
+### ✅ Install Script
+
+- `daemon/scripts/install-llm.sh` - Service management
+- Install, uninstall, configure commands
+- Environment file management
 
 **Option B: Build from Source**
 ```bash
@@ -159,7 +330,7 @@ cortex daemon status
 
 # Test inference
 echo '{"command":"inference","params":{"prompt":"Hello"}}' | \
-  socat - UNIX-CONNECT:/run/cortex.sock | jq .
+  socat - UNIX-CONNECT:/run/cortex/cortex.sock | jq .
 ```
 
 ---
@@ -228,11 +399,11 @@ print(f"Inference time: {result['data']['inference_time_ms']}ms")
 ```bash
 # Test inference
 echo '{"command":"inference","params":{"prompt":"What is Python?","max_tokens":100}}' | \
-  socat - UNIX-CONNECT:/run/cortex.sock
+  socat - UNIX-CONNECT:/run/cortex/cortex.sock
 
 # Pretty print
 echo '{"command":"inference","params":{"prompt":"Hello","max_tokens":50}}' | \
-  socat - UNIX-CONNECT:/run/cortex.sock | jq .
+  socat - UNIX-CONNECT:/run/cortex/cortex.sock | jq .
 ```
 
 ### Via CLI

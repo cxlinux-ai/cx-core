@@ -25,6 +25,11 @@ struct Config {
     int socket_timeout_ms = SOCKET_TIMEOUT_MS;
     
     // LLM configuration
+    std::string llm_backend = "none";  // "none", "local", "cloud_claude", "cloud_openai"
+    std::string llm_api_url = "http://127.0.0.1:8085";  // URL for local llama-server
+    std::string llm_api_key_env = "";  // Environment variable for API key (cloud backends)
+    
+    // Legacy embedded LLM settings (deprecated)
     std::string model_path;
     int llm_context_length = 2048;
     int llm_threads = 4;

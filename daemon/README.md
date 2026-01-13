@@ -6,7 +6,7 @@
 
 - 🚀 **Fast Startup**: < 1 second startup time
 - 💾 **Low Memory**: < 50MB idle, < 150MB with model loaded
-- 🔌 **Unix Socket IPC**: JSON-RPC protocol at `/run/cortex.sock`
+- 🔌 **Unix Socket IPC**: JSON-RPC protocol at `/run/cortex/cortex.sock`
 - 🤖 **Embedded LLM**: llama.cpp integration for local inference
 - 📊 **System Monitoring**: CPU, memory, disk, APT updates, CVE scanning
 - 🔔 **Smart Alerts**: SQLite-persisted alerts with deduplication
@@ -38,7 +38,7 @@ systemctl status cortexd
 journalctl -u cortexd -f
 
 # Test socket
-echo '{"method":"ping"}' | socat - UNIX-CONNECT:/run/cortex.sock
+echo '{"method":"ping"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 ```
 
 ## Architecture
@@ -47,7 +47,7 @@ echo '{"method":"ping"}' | socat - UNIX-CONNECT:/run/cortex.sock
 ┌─────────────────────────────────────────────────────────────┐
 │                     cortex CLI (Python)                      │
 └───────────────────────────┬─────────────────────────────────┘
-                            │ Unix Socket (/run/cortex.sock)
+                            │ Unix Socket (/run/cortex/cortex.sock)
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      cortexd (C++)                           │
@@ -85,9 +85,8 @@ daemon/
 │   │   ├── disk_monitor.h
 │   │   ├── apt_monitor.h
 │   │   └── cve_scanner.h
-│   ├── llm/                  # LLM inference
-│   │   ├── engine.h
-│   │   └── llama_backend.h
+│   ├── llm/                  # LLM HTTP client
+│   │   └── http_llm_client.h
 │   └── alerts/               # Alert system
 │       └── alert_manager.h
 ├── src/                      # Implementation
@@ -175,7 +174,7 @@ Default config: `/etc/cortex/daemon.yaml`
 
 ```yaml
 socket:
-  path: /run/cortex.sock
+  path: /run/cortex/cortex.sock
   timeout_ms: 5000
 
 llm:

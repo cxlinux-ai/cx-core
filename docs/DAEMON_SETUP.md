@@ -53,43 +53,84 @@ systemctl status cortexd
 ### Default Configuration Location
 
 - **Systemd**: `/etc/systemd/system/cortexd.service`
-- **Default Settings**: `/etc/default/cortexd`
-- **User Config**: `~/.cortex/daemon.conf`
-- **Runtime Socket**: `/run/cortex.sock`
+- **System Config**: `/etc/cortex/daemon.yaml`
+- **User Config**: `~/.cortex/daemon.yaml`
+- **Runtime Socket**: `/run/cortex/cortex.sock`
 - **Logs**: `journalctl -u cortexd`
 
 ### Configuration File Format
 
-Create `~/.cortex/daemon.conf`:
+Create `~/.cortex/daemon.yaml` or `/etc/cortex/daemon.yaml`:
 
 ```yaml
-# Cortexd Configuration
-socket_path: /run/cortex.sock
-model_path: ~/.cortex/models/default.gguf
-monitoring_interval_seconds: 300
-enable_cve_scanning: true
-enable_journald_logging: true
+# Cortexd Daemon Configuration
+
+# Socket configuration
+socket:
+  path: /run/cortex/cortex.sock
+  backlog: 16
+  timeout_ms: 5000
+
+# LLM configuration
+llm:
+  # Backend type: "local", "cloud_claude", "cloud_openai", or "none"
+  backend: "none"
+  
+  # Local llama.cpp configuration (when backend: local)
+  local:
+    base_url: "http://127.0.0.1:8085"
+  
+  # Legacy embedded LLM settings (deprecated)
+  model_path: ""
+  context_length: 2048
+  threads: 4
+
+# System monitoring configuration
+monitoring:
+  interval_sec: 300
+  enable_apt: true
+  enable_cve: true
+  enable_deps: true
+
+# Alert thresholds (0.0 - 1.0)
+thresholds:
+  disk_warn: 0.80
+  disk_crit: 0.95
+  mem_warn: 0.85
+  mem_crit: 0.95
+
+# Alert configuration
+alerts:
+  db_path: ~/.cortex/alerts.db
+  retention_hours: 168
+  enable_ai: true
+
+# Rate limiting
+rate_limit:
+  max_requests_per_sec: 100
+  max_inference_queue: 100
+
+# Logging level (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR)
 log_level: 1
-max_inference_queue_size: 100
-memory_limit_mb: 150
 ```
 
 ### Configuration Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `socket_path` | string | `/run/cortex.sock` | Unix socket path |
-| `model_path` | string | `~/.cortex/models/default.gguf` | LLM model file path |
-| `n_threads` | int | 4 | Number of threads for LLM inference |
-| `n_ctx` | int | 512 | Context window size for LLM |
-| `use_mmap` | bool | true | Use memory mapping for model loading |
-| `monitoring_interval_seconds` | int | 300 | System monitoring check interval |
-| `enable_cve_scanning` | bool | true | Enable CVE vulnerability scanning |
-| `enable_journald_logging` | bool | true | Use systemd journald for logging |
+| `socket.path` | string | `/run/cortex/cortex.sock` | Unix socket path |
+| `socket.timeout_ms` | int | 5000 | Socket timeout in milliseconds |
+| `llm.backend` | string | `none` | LLM backend: `local`, `cloud_claude`, `cloud_openai`, or `none` |
+| `llm.local.base_url` | string | `http://127.0.0.1:8085` | URL for local llama.cpp server |
+| `llm.model_path` | string | (empty) | Path to GGUF model (legacy) |
+| `llm.threads` | int | 4 | Number of threads for LLM inference |
+| `llm.context_length` | int | 2048 | Context window size for LLM |
+| `monitoring.interval_sec` | int | 300 | System monitoring check interval |
+| `monitoring.enable_cve` | bool | true | Enable CVE vulnerability scanning |
+| `monitoring.enable_apt` | bool | true | Enable APT package monitoring |
+| `alerts.enable_ai` | bool | true | Enable AI-enhanced alerts with LLM analysis |
+| `alerts.db_path` | string | `~/.cortex/alerts.db` | SQLite database for alert persistence |
 | `log_level` | int | 1 | Log level (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR) |
-| `max_inference_queue_size` | int | 100 | Maximum queued inference requests |
-| `memory_limit_mb` | int | 150 | Memory limit in MB |
-| `enable_ai_alerts` | bool | true | Enable AI-enhanced alerts with LLM analysis |
 
 ## LLM Model Setup
 
@@ -126,12 +167,17 @@ wget https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf \
 
 ### Configure Model Path
 
-Update `~/.cortex/daemon.conf`:
+Update `~/.cortex/daemon.yaml`:
 
 ```yaml
-model_path: ~/.cortex/models/mistral-7b.gguf
-n_threads: 4
-n_ctx: 512
+llm:
+  backend: "local"
+  local:
+    base_url: "http://127.0.0.1:8085"
+  # Or use embedded model (legacy):
+  model_path: ~/.cortex/models/mistral-7b.gguf
+  threads: 4
+  context_length: 2048
 ```
 
 Or set environment variable:
@@ -180,7 +226,7 @@ to find large directories. Consider clearing old logs with
 AI alerts are enabled by default. To disable:
 
 ```yaml
-# In ~/.cortex/daemon.conf or /etc/cortex/cortexd.yaml
+# In ~/.cortex/daemon.yaml or /etc/cortex/daemon.yaml
 alerts:
   enable_ai: false
 ```
@@ -334,7 +380,7 @@ watch -n 1 "ps aux | grep cortexd"
 lsof -p $(pgrep cortexd)
 
 # Verify socket
-ss -lp | grep cortex.sock
+ss -lp | grep cortex/cortex.sock
 # or
 netstat -lp | grep cortex
 ```
@@ -377,21 +423,21 @@ journalctl -u cortexd -e
 /usr/local/bin/cortexd --verbose
 
 # Verify socket isn't already in use
-lsof /run/cortex.sock
+lsof /run/cortex/cortex.sock
 ```
 
 ### Socket Connection Issues
 
 ```bash
 # Verify socket exists
-ls -la /run/cortex.sock
+ls -la /run/cortex/cortex.sock
 
 # Check permissions
-stat /run/cortex.sock
+stat /run/cortex/cortex.sock
 # Should be: Access: (0666/-rw-rw-rw-) Uid: ( 0/ root) Gid: ( 0/ root)
 
 # Test socket manually
-echo '{"command":"health"}' | socat - UNIX-CONNECT:/run/cortex.sock
+echo '{"method":"health"}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 ```
 
 ### High Memory Usage
@@ -414,7 +460,7 @@ sudo systemctl restart cortexd
 systemctl is-active cortexd
 
 # Try direct socket test
-socat - UNIX-CONNECT:/run/cortex.sock <<< '{"command":"status"}'
+socat - UNIX-CONNECT:/run/cortex/cortex.sock <<< '{"method":"status"}'
 
 # Check Python client library
 python3 -c "from cortex.daemon_client import CortexDaemonClient; c = CortexDaemonClient(); print(c.is_running())"
@@ -425,24 +471,25 @@ python3 -c "from cortex.daemon_client import CortexDaemonClient; c = CortexDaemo
 ### Reduce CPU Usage
 
 ```yaml
-# In ~/.cortex/daemon.conf
-monitoring_interval_seconds: 600  # Increase from 300
-enable_cve_scanning: false         # Disable if not needed
+# In ~/.cortex/daemon.yaml
+monitoring:
+  interval_sec: 600        # Increase from 300
+  enable_cve: false        # Disable if not needed
 ```
 
 ### Reduce Memory Usage
 
 ```yaml
-# In ~/.cortex/daemon.conf
-memory_limit_mb: 100              # Reduce from 150
-max_inference_queue_size: 50      # Reduce from 100
+# In ~/.cortex/daemon.yaml
+rate_limit:
+  max_inference_queue: 50  # Reduce from 100
 ```
 
 ### Improve Response Time
 
 ```yaml
-# In ~/.cortex/daemon.conf
-log_level: 2                      # Reduce debug logging (INFO=1, WARN=2)
+# In ~/.cortex/daemon.yaml
+log_level: 2               # Reduce debug logging (INFO=1, WARN=2)
 ```
 
 ## Security
@@ -452,8 +499,8 @@ log_level: 2                      # Reduce debug logging (INFO=1, WARN=2)
 The daemon socket is created with `0666` permissions (world-readable/writable):
 
 ```bash
-ls -la /run/cortex.sock
-# srw-rw-rw- 1 root root 0 Jan  2 10:30 /run/cortex.sock=
+ls -la /run/cortex/cortex.sock
+# srw-rw-rw- 1 root root 0 Jan  2 10:30 /run/cortex/cortex.sock=
 ```
 
 To restrict access to a specific group:
@@ -485,7 +532,7 @@ sudo ss -tlnp | grep cortexd
 
 ```bash
 # Backup daemon config
-cp ~/.cortex/daemon.conf ~/.cortex/daemon.conf.backup
+cp ~/.cortex/daemon.yaml ~/.cortex/daemon.yaml.backup
 
 # Backup system service file
 sudo cp /etc/systemd/system/cortexd.service ~/cortexd.service.backup
@@ -495,7 +542,7 @@ sudo cp /etc/systemd/system/cortexd.service ~/cortexd.service.backup
 
 ```bash
 # Remove user config (uses system defaults)
-rm ~/.cortex/daemon.conf
+rm ~/.cortex/daemon.yaml
 
 # Restart daemon
 sudo systemctl restart cortexd
@@ -529,7 +576,7 @@ sudo rm -f /etc/systemd/system/cortexd.service
 sudo rm -f /etc/systemd/system/cortexd.socket
 sudo rm -f /etc/default/cortexd
 sudo systemctl daemon-reload
-rm -rf ~/.cortex/daemon.conf
+rm -rf ~/.cortex/daemon.yaml
 ```
 
 ## Upgrade Cortexd
