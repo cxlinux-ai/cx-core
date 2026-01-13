@@ -293,6 +293,8 @@ Response format (JSON only):
                 max_tokens=1000,
             )
 
+            if not response.choices:
+                raise RuntimeError("OpenAI returned empty response")
             content = (response.choices[0].message.content or "").strip()
             return self._parse_commands(content)
         except Exception as e:
@@ -310,6 +312,8 @@ Response format (JSON only):
                 max_tokens=300,
             )
 
+            if not response.choices:
+                raise RuntimeError("OpenAI returned empty response")
             content = (response.choices[0].message.content or "").strip()
             return self._parse_intent_from_text(content)
         except Exception as e:
@@ -365,6 +369,8 @@ Response format (JSON only):
                 messages=[{"role": "user", "content": user_input}],
             )
 
+            if not response.content:
+                raise RuntimeError("Claude returned empty response")
             content = (response.content[0].text or "").strip()
             return self._parse_commands(content)
         except Exception as e:
@@ -602,6 +608,14 @@ Respond with ONLY this JSON format (no explanations):
         return self.parse(enriched_input, validate=validate)
 
     def _extract_intent_claude(self, user_input: str) -> dict:
+        """Extract intent from user input using Claude API.
+
+        Args:
+            user_input: Natural language description of desired action
+
+        Returns:
+            Dict with keys: action, domain, install_mode, description, ambiguous, confidence
+        """
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -611,6 +625,8 @@ Respond with ONLY this JSON format (no explanations):
                 messages=[{"role": "user", "content": user_input}],
             )
 
+            if not response.content:
+                raise RuntimeError("Claude returned empty response")
             content = (response.content[0].text or "").strip()
             return self._parse_intent_from_text(content)
         except Exception as e:
