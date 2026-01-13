@@ -19,9 +19,9 @@ from cortex.hardware_detection import detect_hardware
 class CortexDemo:
     """Interactive Cortex demonstration"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.console = Console()
-        self.hw = None
+        self.hw: object | None = None  # Type from hardware_detection.detect_hardware()
         self.is_interactive = sys.stdin.isatty()
         self.installation_id = self._generate_id()
 
@@ -114,13 +114,24 @@ Cortex is an AI-powered universal package manager that:
     def _prompt_command(self, command: str) -> bool:
         """
         Prompt user to type a command.
-        Accepts ANY input - no validation, pure learning mode.
+        Re-prompts on empty input to ensure user provides something.
         """
         try:
             if self.is_interactive:
-                self.console.print(f"\n[yellow]Try:[/yellow] [bold]{command}[/bold]")
-                self.console.print("\n[bold green]$[/bold green] ", end="")
-                input()  # Accept any input, don't validate
+                while True:
+                    self.console.print(f"\n[yellow]Try:[/yellow] [bold]{command}[/bold]")
+                    self.console.print("\n[bold green]$[/bold green] ", end="")
+                    user_input = input()
+
+                    # If empty, re-prompt and give hint
+                    if not user_input.strip():
+                        self.console.print(
+                            "[dim]Type the command above or anything else to continue[/dim]"
+                        )
+                        continue
+
+                    break
+
                 self.console.print("[green]✓[/green] [dim]Let's see what Cortex does...[/dim]\n")
             else:
                 self.console.print(f"\n[yellow]Command:[/yellow] [bold]{command}[/bold]\n")
@@ -273,6 +284,9 @@ Install a complete stack with: [cyan]cortex stack webdev[/cyan]
             "NVIDIA" in str(gpu_info.model).upper()
             or "GTX" in str(gpu_info.model).upper()
             or "RTX" in str(gpu_info.model).upper()
+            or "GEFORCE" in str(gpu_info.model).upper()
+            or "QUADRO" in str(gpu_info.model).upper()
+            or "TESLA" in str(gpu_info.model).upper()
         )
 
         # Check for AMD (dedicated or integrated Radeon)
@@ -280,6 +294,9 @@ Install a complete stack with: [cyan]cortex stack webdev[/cyan]
             "AMD" in str(gpu_info.model).upper()
             or "RADEON" in str(gpu_info.model).upper()
             or "RENOIR" in str(gpu_info.model).upper()
+            or "VEGA" in str(gpu_info.model).upper()
+            or "NAVI" in str(gpu_info.model).upper()
+            or "RX " in str(gpu_info.model).upper()
         )
 
         if has_nvidia:
