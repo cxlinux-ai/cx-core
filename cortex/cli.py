@@ -2864,7 +2864,7 @@ class CortexCLI:
             self._print_error(f"Unknown pkg action: {action}")
             return 1
 
-    def _pkg_sources(self, upm, args: argparse.Namespace) -> int:
+    def _pkg_sources(self, upm: "UnifiedPackageManager", args: argparse.Namespace) -> int:
         """Show available sources for a package."""
         package = args.package
         cx_print(f"\n🔍 Checking sources for '{package}'...\n", "info")
@@ -2948,11 +2948,22 @@ class CortexCLI:
 
         cx_print(f"\n🔐 Permissions for '{package}'\n", "info")
 
-        if fmt == "flatpak" or "." in package:
-            # Likely a flatpak app ID
-            perms = upm.list_flatpak_permissions(package)
-            if "error" in perms:
-                self._print_error(perms["error"])
+        # Determine format: explicit flag > detect from installed packages
+        if fmt is None:
+            # Check where package is actually installed
+            sources = upm.detect_package_sources(package)
+            if sources.get("flatpak") and sources["flatpak"].installed:
+                fmt = "flatpak"
+            elif sources.get("snap") and sources["snap"].installed:
+                fmt = "snap"
+            else:
+                fmt = "flatpak" if "." in package and package.count(".") >= 2 else "snap"
+
+        if fmt == "flatpak":
+            try:
+                perms = upm.list_flatpak_permissions(package)
+            except RuntimeError as e:
+                self._print_error(str(e))
                 return 1
 
             for section, values in perms.items():
@@ -2964,18 +2975,19 @@ class CortexCLI:
                     for v in values:
                         console.print(f"  {v}")
         else:
-            # Assume snap
-            perms = upm.list_snap_permissions(package)
-            if "error" in perms:
-                self._print_error(perms["error"])
+            # Snap
+            try:
+                perms = upm.list_snap_permissions(package)
+            except RuntimeError as e:
+                self._print_error(str(e))
                 return 1
 
-            if perms["connected"]:
+            if perms.get("connected"):
                 console.print("[green]Connected Interfaces:[/green]")
                 for conn in perms["connected"]:
                     console.print(f"  • {conn['interface']}: {conn['plug']} → {conn['slot']}")
 
-            if perms["available"]:
+            if perms.get("available"):
                 console.print("\n[dim]Available (not connected):[/dim]")
                 for avail in perms["available"]:
                     console.print(f"  • {avail['interface']}")
@@ -2997,13 +3009,52 @@ class CortexCLI:
         disable = getattr(args, "disable", False)
 
         if disable:
+            # Show warning and get confirmation
+            console.print("\n[yellow]⚠️  This operation will modify system configuration:[/yellow]")
+            console.print("    File: /etc/apt/apt.conf.d/20snapd.conf")
+            console.print("    Action: Move to .disabled (backup created)")
+            console.print("\n[dim]This requires elevated privileges (sudo).[/dim]\n")
+
+            try:
+                confirm = input("Proceed with disabling snap redirects? [y/N]: ").strip().lower()
+                if confirm not in ("y", "yes"):
+                    cx_print("Operation cancelled", "info")
+                    return 0
+            except (EOFError, KeyboardInterrupt):
+                console.print()
+                cx_print("Operation cancelled", "info")
+                return 0
+
             cx_print("\n⚠️  Disabling snap redirects...\n", "warning")
-            success, message = upm.disable_snap_redirects()
-            if success:
-                cx_print(message, "success")
-            else:
-                self._print_error(message)
-            return 0 if success else 1
+
+            # Record to installation history
+            from datetime import datetime
+            history = InstallationHistory()
+            start_time = datetime.now()
+
+            try:
+                install_id = history.record_installation(
+                    operation_type=InstallationType.REMOVE,
+                    packages=["snap-redirects"],
+                    commands=["disable_snap_redirects"],
+                    start_time=start_time,
+                )
+
+                success, message = upm.disable_snap_redirects()
+
+                if success:
+                    history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    cx_print(message, "success")
+                else:
+                    history.update_installation(install_id, InstallationStatus.FAILED, message)
+                    self._print_error(message)
+
+                return 0 if success else 1
+
+            except Exception as e:
+                history.update_installation(install_id, InstallationStatus.FAILED, str(e))
+                self._print_error(f"Failed to disable snap redirects: {e}")
+                return 1
 
         cx_print("\n🔍 Checking for snap redirects...\n", "info")
         redirects = upm.check_snap_redirects()

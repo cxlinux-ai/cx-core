@@ -7,9 +7,8 @@ Provides a unified interface for managing packages across multiple formats:
 - Snap (Canonical's universal packages)
 - Flatpak (cross-distribution application packages)
 
-"""
+""" 
 
-import json
 import logging
 import os
 import re
@@ -152,7 +151,7 @@ class UnifiedPackageManager:
         )
 
         if success and "install ok installed" in stdout:
-            parts = stdout.strip().split("|")
+            parts = stdout.strip().split("|",2)
             version = parts[1] if len(parts) > 1 else ""
             size = int(parts[2]) * 1024 if len(parts) > 2 and parts[2].isdigit() else 0
             return PackageInfo(
@@ -241,20 +240,31 @@ class UnifiedPackageManager:
         return None
 
     def _check_flatpak_package(self, package_name: str) -> PackageInfo | None:
-        """Check if package is available as flatpak."""
+        """
+        Check if package is available as flatpak.
+
+        Note: Returns only the first match if multiple flatpaks match the search term.
+        For full search results, use `flatpak search <package>` directly.
+        """
         if not self._flatpak_available:
             return None
 
-        # Check if installed (by partial match)
+        # Check if installed (match by full app ID or app basename)
         success, stdout, _ = self._run_command(
             ["flatpak", "list", "--app", "--columns=application,version"]
         )
         if success:
             for line in stdout.strip().split("\n"):
-                if package_name.lower() in line.lower():
-                    parts = line.split("\t")
-                    app_id = parts[0] if parts else ""
-                    version = parts[1] if len(parts) > 1 else ""
+                if not line:
+                    continue
+                parts = line.split("\t")
+                app_id = parts[0].strip() if parts else ""
+                if not app_id:
+                    continue
+                # Match exact app ID or exact basename (e.g., "firefox" matches "org.mozilla.firefox")
+                app_basename = app_id.split(".")[-1].lower()
+                if app_id.lower() == package_name.lower() or app_basename == package_name.lower():
+                    version = parts[1].strip() if len(parts) > 1 else ""
                     return PackageInfo(
                         name=app_id,
                         format=PackageFormat.FLATPAK,
@@ -525,19 +535,24 @@ class UnifiedPackageManager:
 
         Returns:
             Dictionary with permission categories and values
+
+        Raises:
+            RuntimeError: If flatpak is not available or permissions cannot be retrieved
         """
         if not self._flatpak_available:
-            return {"error": "Flatpak is not available on this system"}
+            raise RuntimeError("Flatpak is not available on this system")
 
         success, stdout, _ = self._run_command(["flatpak", "info", "--show-permissions", app_id])
 
         if not success:
-            return {"error": f"Could not get permissions for {app_id}"}
+            raise RuntimeError(f"Could not get permissions for {app_id}")
 
         permissions: dict[str, Any] = {}
         current_section = ""
 
-        for line in stdout.strip().split("\n"):
+        # Parse permission sections - each section is either all key=value pairs (dict)
+        # or all standalone values (list). Mixed sections are not supported as flatpak
+        # permissions don't use mixed formats within a single section.
         for line in stdout.strip().split("\n"):
             if not line:
                 continue
@@ -547,20 +562,20 @@ class UnifiedPackageManager:
             elif "=" in line and current_section:
                 if current_section not in permissions:
                     permissions[current_section] = {}
-                
+
                 if isinstance(permissions[current_section], dict):
                     key, value = line.split("=", 1)
                     permissions[current_section][key] = value
             elif current_section:
                 if current_section not in permissions:
                     permissions[current_section] = []
-                
+
                 if isinstance(permissions[current_section], list):
                     permissions[current_section].append(line)
 
-    def modify_snap_permission(
-        self, snap_name: str, interface: str, action: str, slot: str | None = None
-    ) -> tuple[bool, str]:
+        return permissions
+
+    def modify_snap_permission(self, snap_name: str, interface: str, action: str, slot: str | None = None) -> tuple[bool, str]:
         """
         Modify a snap permission (connect/disconnect an interface).
 
@@ -606,12 +621,13 @@ class UnifiedPackageManager:
         self, app_id: str, permission: str, value: str
     ) -> tuple[bool, str]:
         """
-        Modify a flatpak permission using flatpak override.
+        Modify a flatpak permission using `flatpak override`.
 
         Args:
             app_id: Flatpak application ID
-            permission: Permission flag (e.g., '--filesystem=home')
-            value: Value for the permission
+            permission: Permission name without leading dashes (e.g., 'filesystem')
+            value: Value/argument for the permission (e.g., 'home' to produce
+                   '--filesystem=home')
 
         Returns:
             Tuple of (success, message)
@@ -698,6 +714,8 @@ class UnifiedPackageManager:
         try:
             if backup:
                 backup_path = config_path.with_suffix(".conf.disabled")
+                if backup_path.exists():
+                    return True, f"Snap redirects already disabled. Existing backup preserved at: {backup_path}"
                 shutil.move(str(config_path), str(backup_path))
                 return True, f"Snap redirects disabled. Backup saved to: {backup_path}"
             else:
@@ -818,6 +836,11 @@ class UnifiedPackageManager:
         lines.append(f"  Flatpak:   {format_size(analysis.flatpak_total)}")
 
         # Top packages per format
+        if analysis.deb_packages:
+            lines.append("\nTop DEB Packages:")
+            for name, size in analysis.deb_packages[:5]:
+                lines.append(f"  {name}: {format_size(size)}")
+
         if analysis.snap_packages:
             lines.append("\nTop Snap Packages:")
             for name, size in analysis.snap_packages[:5]:

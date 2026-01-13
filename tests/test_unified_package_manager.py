@@ -14,7 +14,7 @@ Tests cover all major functionality including:
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -274,21 +274,31 @@ class TestUnifiedPackageManager(unittest.TestCase):
 
         self.assertIn("connected", result)
         self.assertIn("available", result)
-        self.assertTrue(len(result["connected"]) >= 1)
+        self.assertGreaterEqual(len(result["connected"]), 1)
 
     @patch.object(UnifiedPackageManager, "_run_command")
     def test_list_flatpak_permissions(self, mock_run):
         """Test listing flatpak permissions."""
         mock_run.return_value = (
             True,
-            "[Context]\nshared=network;ipc;\nfilesystems=xdg-download\n\n[Session Bus Policy]\norg.freedesktop.Notifications=talk",
+            "[Context]\nshared=network;ipc;\n\n[filesystems]\nhome\nxdg-data/themes\n\n[Session Bus Policy]\norg.freedesktop.Notifications=talk\n",
             "",
         )
 
         result = self.upm.list_flatpak_permissions("org.test.App")
 
         self.assertIn("Context", result)
-        self.assertIn("shared", result["Context"])
+        self.assertIsInstance(result["Context"], dict)
+        self.assertEqual(result["Context"]["shared"], "network;ipc;")
+
+        self.assertIn("filesystems", result)
+        self.assertIsInstance(result["filesystems"], list)
+        self.assertEqual(len(result["filesystems"]), 2)
+        self.assertIn("home", result["filesystems"])
+
+        self.assertIn("Session Bus Policy", result)
+        self.assertIsInstance(result["Session Bus Policy"], dict)
+        self.assertEqual(result["Session Bus Policy"]["org.freedesktop.Notifications"], "talk")
 
     @patch.object(UnifiedPackageManager, "_run_command")
     def test_modify_snap_permission_connect(self, mock_run):
@@ -342,7 +352,7 @@ class TestUnifiedPackageManager(unittest.TestCase):
 
         result = self.upm.check_snap_redirects()
 
-        self.assertTrue(len(result) >= 1)
+        self.assertGreaterEqual(len(result), 1)
         # Should find Firefox as transitional
         firefox_redirect = next((r for r in result if r["package"] == "firefox"), None)
         self.assertIsNotNone(firefox_redirect)
@@ -382,6 +392,45 @@ class TestUnifiedPackageManager(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertIn("Permission denied", message)
+
+    @patch("pathlib.Path.exists")
+    @patch("shutil.move")
+    def test_restore_snap_redirects_success(self, mock_move, mock_exists):
+        """Test successful restore of snap redirects from backup."""
+        # backup exists, config doesn't exist
+        mock_exists.side_effect = lambda: True  # backup exists
+        
+        with patch("pathlib.Path.exists") as mock_path_exists:
+            # First call for backup_path.exists() = True, second for config_path.exists() = False
+            mock_path_exists.side_effect = [True, False]
+            mock_move.return_value = None
+
+            success, message = self.upm.restore_snap_redirects()
+
+            self.assertTrue(success)
+            self.assertIn("restored", message.lower())
+            mock_move.assert_called_once()
+
+    @patch("pathlib.Path.exists")
+    def test_restore_snap_redirects_no_backup(self, mock_exists):
+        """Test restore when no backup exists."""
+        mock_exists.return_value = False
+
+        success, message = self.upm.restore_snap_redirects()
+
+        self.assertFalse(success)
+        self.assertIn("No backup found", message)
+
+    @patch("pathlib.Path.exists")
+    def test_restore_snap_redirects_config_exists(self, mock_exists):
+        """Test restore when config already exists."""
+        # backup exists, config also exists
+        mock_exists.side_effect = [True, True]
+
+        success, message = self.upm.restore_snap_redirects()
+
+        self.assertFalse(success)
+        self.assertIn("already exists", message)
 
     # =========================================================================
     # Storage Analysis Tests
@@ -462,9 +511,10 @@ class TestUnifiedPackageManager(unittest.TestCase):
         """Test listing permissions when flatpak unavailable."""
         self.upm._flatpak_available = False
 
-        result = self.upm.list_flatpak_permissions("org.test.App")
+        with self.assertRaises(RuntimeError) as context:
+            self.upm.list_flatpak_permissions("org.test.App")
 
-        self.assertIn("error", result)
+        self.assertIn("not available", str(context.exception))
 
 
 class TestPackageInfo(unittest.TestCase):
