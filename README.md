@@ -67,6 +67,7 @@ cortex install "tools for video compression"
 | **Dry-Run Default** | Preview all commands before execution |
 | **Sandboxed Execution** | Commands run in Firejail isolation |
 | **Full Rollback** | Undo any installation with `cortex rollback` |
+| **Role Management** | AI-driven system personality detection and tailored recommendations |
 | **Docker Permission Fixer** | Fix root-owned bind mount issues automatically |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
@@ -145,6 +146,16 @@ cortex history
 cortex rollback <installation-id>
 ```
 
+### Role Management
+
+```bash
+# Auto-detect your system role using AI analysis of local context and patterns
+cortex role detect
+
+# Manually set your system role to receive specific AI recommendations
+cortex role set <slug>
+```
+
 ### Command Reference
 
 | Command | Description |
@@ -153,6 +164,8 @@ cortex rollback <installation-id>
 | `cortex install <query> --dry-run` | Preview installation plan (default) |
 | `cortex install <query> --execute` | Execute the installation |
 | `cortex docker permissions` | Fix file ownership for Docker bind mounts |
+| `cortex role detect` | Automatically identifies the system's purpose |
+| `cortex role set <slug>` | Manually declare a system role |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
@@ -191,10 +204,10 @@ Cortex stores configuration in `~/.cortex/`:
 │                      LLM Router                                 │
 │              Claude / GPT-4 / Ollama                            │
 │                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
-│  │  Anthropic  │  │   OpenAI    │  │   Ollama    │             │
-│  │   Claude    │  │    GPT-4    │  │   Local     │             │
-│  └─────────────┘  └─────────────┘  └─────────────┘             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │  Anthropic  │  │   OpenAI    │  │   Ollama    │              │
+│  │   Claude    │  │    GPT-4    │  │   Local     │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -343,6 +356,7 @@ pip install -e .
 - [x] Firejail sandboxing
 - [x] Dry-run preview mode
 - [x] Docker bind-mount permission fixer
+- [x] Automatic Role Discovery (AI-driven system context sensing)
 
 ### In Progress
 - [ ] Conflict resolution UI
