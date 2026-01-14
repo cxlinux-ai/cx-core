@@ -62,7 +62,11 @@ class TestEndToEndWorkflows(unittest.TestCase):
         result = self._run("python -m cortex.cli install docker --dry-run", env=env)
 
         self.assertTrue(result.succeeded(), msg=result.stderr)
-        self.assertIn("Generated commands", result.stdout)
+        # i18n: "Commands that would run:" or legacy "Generated commands"
+        self.assertTrue(
+            "Commands that would run" in result.stdout or "Generated commands" in result.stdout,
+            msg=f"Expected dry-run output header not found in: {result.stdout}",
+        )
         self.assertIn("echo Step 1", result.stdout)
 
     def test_cli_execute_with_fake_provider(self):
@@ -84,7 +88,11 @@ class TestEndToEndWorkflows(unittest.TestCase):
 
         self.assertTrue(result.succeeded(), msg=result.stderr)
         # Output formatting may vary (Rich UI vs legacy), but the success text should be present.
-        self.assertIn("docker installed successfully!", result.stdout)
+        # i18n: "docker installed successfully" (no exclamation in i18n version)
+        self.assertTrue(
+            "docker installed successfully" in result.stdout,
+            msg=f"Expected success message not found in: {result.stdout}",
+        )
 
     def test_coordinator_executes_in_container(self):
         """InstallationCoordinator should execute simple commands inside Docker."""
