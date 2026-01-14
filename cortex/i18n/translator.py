@@ -174,8 +174,10 @@ class Translator:
         if kwargs:
             try:
                 message = message.format(**kwargs)
-            except KeyError:
+            except (KeyError, IndexError, ValueError):
                 # If interpolation fails, return message without interpolation
+                # KeyError: missing named argument, IndexError: missing positional,
+                # ValueError: malformed format string
                 pass
 
         return message

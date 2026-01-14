@@ -16,8 +16,10 @@ import yaml
 
 from cortex.i18n.detector import detect_os_language
 
-# Import supported languages from translator to avoid circular import
-SUPPORTED_LANGUAGES = {"en", "es", "fr", "de", "zh"}
+# Supported language codes for membership checking (set, not dict)
+# Named differently from translator.SUPPORTED_LANGUAGES (dict with full info)
+# to avoid confusion - this is just for validation
+SUPPORTED_LANGUAGE_CODES = {"en", "es", "fr", "de", "zh"}
 DEFAULT_LANGUAGE = "en"
 
 
@@ -50,14 +52,20 @@ class LanguageConfig:
 
         Returns:
             Dictionary of preferences
+
+        Note:
+            The exists() check and file read are both inside the critical section
+            to prevent TOCTOU (time-of-check to time-of-use) race conditions.
         """
-        if self.preferences_file.exists():
-            try:
-                with self._file_lock:
+        try:
+            with self._file_lock:
+                if self.preferences_file.exists():
                     with open(self.preferences_file, encoding="utf-8") as f:
                         return yaml.safe_load(f) or {}
-            except (yaml.YAMLError, OSError):
-                pass
+        except (yaml.YAMLError, OSError):
+            # Handle race-related failures (file deleted between check and read)
+            # or YAML parsing errors gracefully
+            pass
         return {}
 
     def _save_preferences(self, preferences: dict[str, Any]) -> None:
@@ -89,18 +97,18 @@ class LanguageConfig:
         """
         # 1. Environment variable override
         env_lang = os.environ.get("CORTEX_LANGUAGE", "").lower()
-        if env_lang in SUPPORTED_LANGUAGES:
+        if env_lang in SUPPORTED_LANGUAGE_CODES:
             return env_lang
 
         # 2. User preference from config file
         preferences = self._load_preferences()
         saved_lang = preferences.get("language", "").lower()
-        if saved_lang in SUPPORTED_LANGUAGES:
+        if saved_lang in SUPPORTED_LANGUAGE_CODES:
             return saved_lang
 
         # 3. OS-detected language
         detected_lang = detect_os_language()
-        if detected_lang in SUPPORTED_LANGUAGES:
+        if detected_lang in SUPPORTED_LANGUAGE_CODES:
             return detected_lang
 
         # 4. Default
@@ -117,10 +125,10 @@ class LanguageConfig:
             ValueError: If language code is not supported
         """
         language = language.lower()
-        if language not in SUPPORTED_LANGUAGES:
+        if language not in SUPPORTED_LANGUAGE_CODES:
             raise ValueError(
                 f"Unsupported language: {language}. "
-                f"Supported: {', '.join(sorted(SUPPORTED_LANGUAGES))}"
+                f"Supported: {', '.join(sorted(SUPPORTED_LANGUAGE_CODES))}"
             )
 
         preferences = self._load_preferences()
@@ -152,13 +160,13 @@ class LanguageConfig:
         detected_lang = detect_os_language()
 
         # Determine effective language and its source
-        if env_lang in SUPPORTED_LANGUAGES:
+        if env_lang in SUPPORTED_LANGUAGE_CODES:
             effective_lang = env_lang
             source = "environment"
-        elif saved_lang in SUPPORTED_LANGUAGES:
+        elif saved_lang in SUPPORTED_LANGUAGE_CODES:
             effective_lang = saved_lang
             source = "config"
-        elif detected_lang in SUPPORTED_LANGUAGES:
+        elif detected_lang in SUPPORTED_LANGUAGE_CODES:
             effective_lang = detected_lang
             source = "auto-detected"
         else:

@@ -15,9 +15,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import yaml
+from unittest.mock import patch
 
 
 class TestTranslator(unittest.TestCase):

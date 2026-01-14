@@ -1172,7 +1172,7 @@ class CortexCLI:
             lang_info = SUPPORTED_LANGUAGES[code]
             cx_print(t("language.changed", language=lang_info["native"]), "success")
             return 0
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             self._print_error(f"Failed to set language: {e}")
             return 1
 

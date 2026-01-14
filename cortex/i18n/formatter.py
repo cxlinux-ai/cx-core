@@ -359,14 +359,25 @@ def get_formatter() -> LocaleFormatter:
     """
     Get or create the global formatter instance.
 
+    The formatter is kept in sync with the current application language.
+    If the language has changed since the formatter was created, it will
+    be updated automatically.
+
     Returns:
         The global LocaleFormatter instance
     """
     global _formatter
-    if _formatter is None:
-        from cortex.i18n.translator import get_language
+    from cortex.i18n.translator import get_language
 
-        _formatter = LocaleFormatter(language=get_language())
+    current_language = get_language()
+
+    if _formatter is None:
+        # Create new formatter with current language
+        _formatter = LocaleFormatter(language=current_language)
+    elif _formatter.language != current_language:
+        # Language has changed - update the formatter
+        _formatter.language = current_language
+
     return _formatter
 
 

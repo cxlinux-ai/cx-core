@@ -185,7 +185,7 @@ Update this guide and the README to include the new language.
 
 Message catalogs are stored in `cortex/i18n/locales/` as YAML files:
 
-```
+```text
 cortex/i18n/locales/
 ├── en.yaml    # English (source language)
 ├── es.yaml    # Spanish
