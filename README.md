@@ -130,6 +130,27 @@ cortex install nginx --execute
 
 ---
 
+## 🚀 Upgrade to Pro
+
+Unlock advanced features with Cortex Pro:
+
+| Feature | Community (Free) | Pro ($20/mo) | Enterprise ($99/mo) |
+|---------|------------------|--------------|---------------------|
+| Natural language commands | ✅ | ✅ | ✅ |
+| Hardware detection | ✅ | ✅ | ✅ |
+| Installation history | 7 days | 90 days | Unlimited |
+| GPU/CUDA optimization | Basic | Advanced | Advanced |
+| Systems per license | 1 | 5 | 100 |
+| Cloud LLM connectors | ❌ | ✅ | ✅ |
+| Priority support | ❌ | ✅ | ✅ |
+| SSO/SAML | ❌ | ❌ | ✅ |
+| Compliance reports | ❌ | ❌ | ✅ |
+| Support | Community | Priority | Dedicated |
+
+**[Compare Plans →](https://cortexlinux.com/pricing)** | **[Start Free Trial →](https://cortexlinux.com/pricing)**
+
+---
+
 ## Usage
 
 ### Basic Commands
