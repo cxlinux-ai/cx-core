@@ -69,6 +69,7 @@ cortex install "tools for video compression"
 | **Full Rollback** | Undo any installation with `cortex rollback` |
 | **Role Management** | AI-driven system personality detection and tailored recommendations |
 | **Docker Permission Fixer** | Fix root-owned bind mount issues automatically |
+| **JIT Benchmarking** | Measure Python 3.13 performance gains for Cortex operations |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
 | **Multi-LLM Support** | Works with Claude, GPT-4, or local Ollama models |
@@ -177,6 +178,18 @@ cortex role detect
 cortex role set <slug>
 ```
 
+### JIT Benchmarking (Python 3.13+)
+
+Measure the speed impact of Python's new JIT compiler on Cortex:
+
+```bash
+# Run all benchmarks
+cortex jit-benchmark run
+
+# Compare a non-JIT baseline with a JIT-enabled run
+cortex jit-benchmark compare --baseline base.json --jit enabled.json
+```
+
 ### Command Reference
 
 | Command | Description |
@@ -187,6 +200,7 @@ cortex role set <slug>
 | `cortex docker permissions` | Fix file ownership for Docker bind mounts |
 | `cortex role detect` | Automatically identifies the system's purpose |
 | `cortex role set <slug>` | Manually declare a system role |
+| `cortex jit-benchmark` | Run Python 3.13+ JIT performance benchmarks |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
@@ -378,6 +392,7 @@ pip install -e .
 - [x] Dry-run preview mode
 - [x] Docker bind-mount permission fixer
 - [x] Automatic Role Discovery (AI-driven system context sensing)
+- [x] Python JIT Benchmarking Suite (Performance analysis)
 
 ### In Progress
 - [ ] Conflict resolution UI
