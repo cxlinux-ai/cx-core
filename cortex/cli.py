@@ -3056,6 +3056,33 @@ def main():
         help="Enable verbose output",
     )
 
+    # Stdin Piping Support
+    stdin_parser = subparsers.add_parser("stdin", help="Process piped stdin data")
+    stdin_parser.add_argument(
+        "action",
+        nargs="?",
+        default="info",
+        choices=["info", "analyze", "passthrough", "stats"],
+        help="Action to perform (default: info)",
+    )
+    stdin_parser.add_argument(
+        "--max-lines",
+        type=int,
+        default=1000,
+        help="Maximum lines to process (default: 1000)",
+    )
+    stdin_parser.add_argument(
+        "--truncation",
+        choices=["head", "tail", "middle", "sample"],
+        default="middle",
+        help="Truncation mode for large input (default: middle)",
+    )
+    stdin_parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
     args = parser.parse_args()
 
     # The Guard: Check for empty commands before starting the CLI
@@ -3146,6 +3173,14 @@ def main():
             from cortex.wifi_driver import run_wifi_driver
             return run_wifi_driver(
                 action=getattr(args, "action", "status"),
+                verbose=getattr(args, "verbose", False),
+            )
+        elif args.command == "stdin":
+            from cortex.stdin_handler import run_stdin_handler
+            return run_stdin_handler(
+                action=getattr(args, "action", "info"),
+                max_lines=getattr(args, "max_lines", 1000),
+                truncation=getattr(args, "truncation", "middle"),
                 verbose=getattr(args, "verbose", False),
             )
         else:
