@@ -163,16 +163,16 @@
      return setup_permissions();
  }
  
- bool IPCServer::setup_permissions() {
-     // Set socket permissions to 0666 (world read/write)
-     // This is safe because Unix sockets are local-only and cannot be accessed remotely.
-     // The socket path (/run/cortex/) already provides directory-level access control.
-     if (chmod(socket_path_.c_str(), 0666) == -1) {
-         LOG_WARN("IPCServer", "Failed to set socket permissions: " + std::string(strerror(errno)));
-         // Continue anyway
-     }
-     return true;
- }
+bool IPCServer::setup_permissions() {
+    // Set socket permissions to 0666 (world read/write)
+    // This is safe for Unix domain sockets as they are local-only (not network accessible).
+    // The socket directory (/run/cortex/) provides additional access control if needed.
+    if (chmod(socket_path_.c_str(), 0666) == -1) {
+        LOG_WARN("IPCServer", "Failed to set socket permissions: " + std::string(strerror(errno)));
+        // Continue anyway
+    }
+    return true;
+}
  
  void IPCServer::cleanup_socket() {
      if (server_fd_ != -1) {

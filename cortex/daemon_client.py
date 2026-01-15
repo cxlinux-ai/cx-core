@@ -9,7 +9,7 @@ import json
 import socket
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Default socket path (matches daemon config)
 DEFAULT_SOCKET_PATH = "/run/cortex/cortex.sock"
@@ -106,11 +106,10 @@ class DaemonClient:
         }
 
         try:
-            # Create Unix socket
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(SOCKET_TIMEOUT)
+            # Create Unix socket and use context manager for automatic cleanup
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(SOCKET_TIMEOUT)
 
-            try:
                 # Connect to daemon
                 sock.connect(self.socket_path)
 
@@ -118,17 +117,37 @@ class DaemonClient:
                 request_json = json.dumps(request)
                 sock.sendall(request_json.encode("utf-8"))
 
-                # Receive response
-                response_data = sock.recv(MAX_RESPONSE_SIZE)
-                if not response_data:
+                # Receive response - loop to handle partial reads
+                # TCP is stream-based, so data may arrive in multiple chunks
+                chunks: list[bytes] = []
+                total_received = 0
+
+                while total_received < MAX_RESPONSE_SIZE:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        # Connection closed by server
+                        break
+                    chunks.append(chunk)
+                    total_received += len(chunk)
+
+                    # Try to parse - if valid JSON, we're done
+                    # This handles the common case where the full message arrives
+                    try:
+                        response_data = b"".join(chunks)
+                        response_json = json.loads(response_data.decode("utf-8"))
+                        return DaemonResponse.from_json(response_json)
+                    except json.JSONDecodeError:
+                        # Incomplete JSON, continue receiving
+                        continue
+
+                # If we get here, either connection closed or max size reached
+                if not chunks:
                     raise DaemonProtocolError("Empty response from daemon")
 
-                # Parse response
+                # Final attempt to parse
+                response_data = b"".join(chunks)
                 response_json = json.loads(response_data.decode("utf-8"))
                 return DaemonResponse.from_json(response_json)
-
-            finally:
-                sock.close()
 
         except FileNotFoundError:
             # Check if daemon is installed at all

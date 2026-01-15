@@ -93,17 +93,26 @@
      );
  }
  
- void Logger::log_to_stderr(LogLevel level, const std::string& component, const std::string& message) {
-     // Get current time
-     auto now = std::time(nullptr);
-     auto tm = std::localtime(&now);
-     
-     // Format: [TIMESTAMP] [LEVEL] component: message
-     std::cerr << std::put_time(tm, "[%Y-%m-%d %H:%M:%S]")
-               << " [" << level_to_string(level) << "]"
-               << " " << component << ": "
-               << message << std::endl;
- }
+void Logger::log_to_stderr(LogLevel level, const std::string& component, const std::string& message) {
+    // Get current time using thread-safe localtime_r (POSIX)
+    auto now = std::time(nullptr);
+    std::tm tm_buf{};
+    std::tm* tm = localtime_r(&now, &tm_buf);
+    
+    // Format: [TIMESTAMP] [LEVEL] component: message
+    if (tm) {
+        std::cerr << std::put_time(tm, "[%Y-%m-%d %H:%M:%S]")
+                  << " [" << level_to_string(level) << "]"
+                  << " " << component << ": "
+                  << message << std::endl;
+    } else {
+        // Fallback if localtime_r fails
+        std::cerr << "[XXXX-XX-XX XX:XX:XX]"
+                  << " [" << level_to_string(level) << "]"
+                  << " " << component << ": "
+                  << message << std::endl;
+    }
+}
  
  int Logger::level_to_priority(LogLevel level) {
      switch (level) {

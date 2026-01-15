@@ -118,8 +118,8 @@ std::string Config::validate() const {
     if (max_requests_per_sec <= 0) {
         return "max_requests_per_sec must be positive";
     }
-    if (log_level < 0 || log_level > 3) {
-        return "log_level must be between 0 and 3";
+    if (log_level < 0 || log_level > 4) {
+        return "log_level must be between 0 and 4";
     }
     return "";  // Valid
 }
@@ -136,38 +136,67 @@ ConfigManager& ConfigManager::instance() {
 }
 
 bool ConfigManager::load(const std::string& path) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    Config config_copy;
+    std::vector<ChangeCallback> callbacks_copy;
     
-    auto loaded = Config::load(path);
-    if (!loaded) {
-        LOG_WARN("ConfigManager", "Using default configuration");
-        config_ = Config::defaults();
-        config_.expand_paths();
-        return false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto loaded = Config::load(path);
+        if (!loaded) {
+            LOG_WARN("ConfigManager", "Using default configuration");
+            config_ = Config::defaults();
+            config_.expand_paths();
+            return false;
+        }
+        
+        config_ = *loaded;
+        config_path_ = path;
+        
+        // Copy for callback invocation outside the lock
+        config_copy = config_;
+        callbacks_copy = callbacks_;
     }
     
-    config_ = *loaded;
-    config_path_ = path;
-    notify_callbacks();
+    // Invoke callbacks outside the lock to prevent deadlock
+    notify_callbacks_unlocked(callbacks_copy, config_copy);
     return true;
 }
 
 bool ConfigManager::reload() {
-    if (config_path_.empty()) {
-        LOG_WARN("ConfigManager", "No config path set, cannot reload");
-        return false;
+    std::string path_copy;
+    Config config_copy;
+    std::vector<ChangeCallback> callbacks_copy;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        // Copy config_path_ while holding mutex to avoid TOCTOU race
+        if (config_path_.empty()) {
+            LOG_WARN("ConfigManager", "No config path set, cannot reload");
+            return false;
+        }
+        path_copy = config_path_;
     }
     
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto loaded = Config::load(config_path_);
+    // Load config outside the lock (Config::load is self-contained)
+    auto loaded = Config::load(path_copy);
     if (!loaded) {
         LOG_ERROR("ConfigManager", "Failed to reload configuration");
         return false;
     }
     
-    config_ = *loaded;
-    notify_callbacks();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        config_ = *loaded;
+        
+        // Copy for callback invocation outside the lock
+        config_copy = config_;
+        callbacks_copy = callbacks_;
+    }
+    
+    // Invoke callbacks outside the lock to prevent deadlock
+    notify_callbacks_unlocked(callbacks_copy, config_copy);
     LOG_INFO("ConfigManager", "Configuration reloaded");
     return true;
 }
@@ -183,9 +212,28 @@ void ConfigManager::on_change(ChangeCallback callback) {
 }
 
 void ConfigManager::notify_callbacks() {
-    for (const auto& callback : callbacks_) {
+    // This method should only be called while NOT holding the mutex
+    // For internal use, prefer notify_callbacks_unlocked
+    Config config_copy;
+    std::vector<ChangeCallback> callbacks_copy;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        config_copy = config_;
+        callbacks_copy = callbacks_;
+    }
+    
+    notify_callbacks_unlocked(callbacks_copy, config_copy);
+}
+
+void ConfigManager::notify_callbacks_unlocked(
+    const std::vector<ChangeCallback>& callbacks,
+    const Config& config) {
+    // Invoke callbacks outside the lock to prevent deadlock if a callback
+    // calls ConfigManager::get() or other mutex-guarded methods
+    for (const auto& callback : callbacks) {
         try {
-            callback(config_);
+            callback(config);
         } catch (const std::exception& e) {
             LOG_ERROR("ConfigManager", "Callback error: " + std::string(e.what()));
         }

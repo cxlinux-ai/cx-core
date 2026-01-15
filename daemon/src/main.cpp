@@ -57,8 +57,8 @@
          {nullptr, 0, nullptr, 0}
      };
      
-     int opt;
-     while ((opt = getopt_long(argc, argv, "c:vfh", long_options, nullptr)) != -1) {
+    int opt;
+    while ((opt = getopt_long(argc, argv, "c:vfhV", long_options, nullptr)) != -1) {
          switch (opt) {
              case 'c':
                  config_path = optarg;

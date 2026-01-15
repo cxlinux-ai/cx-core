@@ -1,14 +1,11 @@
-import os
 import sqlite3
 import subprocess
 import sys
-import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from rich.console import Console
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.table import Table
 
 console = Console()
@@ -78,7 +75,7 @@ def log_audit_event(event_type: str, details: str, success: bool = True) -> None
         conn = sqlite3.connect(str(AUDIT_DB_PATH))
         cursor = conn.cursor()
 
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         cursor.execute(
             "INSERT INTO events (timestamp, event_type, details, success) VALUES (?, ?, ?, ?)",
             (timestamp, event_type, details, 1 if success else 0),
@@ -282,9 +279,16 @@ def clean_build() -> None:
     build_dir = DAEMON_DIR / "build"
     if build_dir.exists():
         console.print(f"[cyan]Removing previous build directory: {build_dir}[/cyan]")
-        result = subprocess.run(["sudo", "rm", "-rf", str(build_dir)], check=False)
+        result = subprocess.run(
+            ["sudo", "rm", "-rf", str(build_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if result.returncode != 0:
             console.print("[red]Failed to remove previous build directory.[/red]")
+            if result.stderr:
+                console.print(f"[dim]Error: {result.stderr.strip()}[/dim]")
             sys.exit(1)
 
 

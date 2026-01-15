@@ -110,15 +110,23 @@
       */
      void notify_watchdog();
      
-     /**
-      * @brief Reload configuration
-      * @return true if successful
-      */
-     bool reload_config();
-     
-     // Delete copy/move
-     Daemon(const Daemon&) = delete;
-     Daemon& operator=(const Daemon&) = delete;
+    /**
+     * @brief Reload configuration
+     * @return true if successful
+     */
+    bool reload_config();
+    
+    /**
+     * @brief Reset daemon state for testing
+     * 
+     * Clears all registered services and resets shutdown flag.
+     * Should only be used in test teardown to ensure clean state between tests.
+     */
+    void reset();
+    
+    // Delete copy/move
+    Daemon(const Daemon&) = delete;
+    Daemon& operator=(const Daemon&) = delete;
      
  private:
      Daemon() = default;

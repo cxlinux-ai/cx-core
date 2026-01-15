@@ -40,9 +40,10 @@ echo "Installing binary to /usr/local/bin..."
 install -m 0755 "$BUILD_DIR/cortexd" /usr/local/bin/cortexd
 
 # Install systemd files
+# Note: We only install the service file, not a socket file.
+# The daemon manages its own socket to avoid conflicts with systemd socket activation.
 echo "Installing systemd service files..."
 install -m 0644 "$SCRIPT_DIR/systemd/cortexd.service" /etc/systemd/system/
-install -m 0644 "$SCRIPT_DIR/systemd/cortexd.socket" /etc/systemd/system/
 
 # Create config directory
 echo "Creating configuration directory..."

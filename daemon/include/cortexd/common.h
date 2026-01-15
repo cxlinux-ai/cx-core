@@ -19,8 +19,11 @@ namespace cortexd {
 // JSON type alias
 using json = nlohmann::json;
 
-// Version info
-constexpr const char* VERSION = "1.0.0";
+// Version info - CORTEXD_VERSION is defined by CMake from PROJECT_VERSION
+#ifndef CORTEXD_VERSION
+#define CORTEXD_VERSION "1.0.0"  // Fallback for non-CMake builds
+#endif
+constexpr const char* VERSION = CORTEXD_VERSION;
 constexpr const char* NAME = "cortexd";
 
 // Socket constants

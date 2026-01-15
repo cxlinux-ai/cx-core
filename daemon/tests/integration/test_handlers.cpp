@@ -83,7 +83,12 @@ log_level: 1
             return "";
         }
         
-        send(sock, request.c_str(), request.length(), 0);
+        // Check send() return value to ensure data was sent successfully
+        ssize_t sent = send(sock, request.c_str(), request.length(), 0);
+        if (sent <= 0 || static_cast<size_t>(sent) < request.length()) {
+            close(sock);
+            return "";  // Send failed or partial send
+        }
         
         char buffer[65536];
         ssize_t bytes = recv(sock, buffer, sizeof(buffer) - 1, 0);

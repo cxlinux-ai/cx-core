@@ -56,11 +56,11 @@ FetchContent_Declare(json
 FetchContent_MakeAvailable(json)
 
 # Fetch yaml-cpp
+# Note: yaml-cpp 0.8.0 already has cmake_minimum_required(VERSION 3.5), no patching needed
 FetchContent_Declare(yaml-cpp
     GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
     GIT_TAG 0.8.0
     GIT_SHALLOW TRUE
-    PATCH_COMMAND sed -i "s/cmake_minimum_required(VERSION 2.8.12)/cmake_minimum_required(VERSION 3.5)/" <SOURCE_DIR>/CMakeLists.txt || true
 )
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
@@ -128,7 +128,6 @@ install(TARGETS cortexd
 
 install(FILES
     systemd/cortexd.service
-    systemd/cortexd.socket
     DESTINATION lib/systemd/system
 )
 

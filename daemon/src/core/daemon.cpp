@@ -128,17 +128,37 @@
      sd_notify(0, "WATCHDOG=1");
  }
  
- bool Daemon::reload_config() {
-     LOG_INFO("Daemon", "Reloading configuration");
-     if (ConfigManager::instance().reload()) {
-         LOG_INFO("Daemon", "Configuration reloaded successfully");
-         return true;
-     }
-     LOG_ERROR("Daemon", "Failed to reload configuration");
-     return false;
- }
- 
- void Daemon::setup_signals() {
+bool Daemon::reload_config() {
+    LOG_INFO("Daemon", "Reloading configuration");
+    if (ConfigManager::instance().reload()) {
+        LOG_INFO("Daemon", "Configuration reloaded successfully");
+        return true;
+    }
+    LOG_ERROR("Daemon", "Failed to reload configuration");
+    return false;
+}
+
+void Daemon::reset() {
+    // Reset all singleton state for test isolation
+    // This ensures each test starts with a clean daemon state
+    
+    // Stop any running services first
+    stop_services();
+    
+    // Clear all registered services
+    services_.clear();
+    
+    // Reset state flags
+    shutdown_requested_ = false;
+    running_ = false;
+    
+    // Reset start time
+    start_time_ = std::chrono::steady_clock::time_point{};
+    
+    LOG_DEBUG("Daemon", "Daemon state reset for testing");
+}
+
+void Daemon::setup_signals() {
      g_daemon = this;
      
      struct sigaction sa;

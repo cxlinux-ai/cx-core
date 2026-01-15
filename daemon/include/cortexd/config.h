@@ -127,7 +127,22 @@ private:
     mutable std::mutex mutex_;
     std::vector<ChangeCallback> callbacks_;
     
+    /**
+     * @brief Notify all registered callbacks (acquires mutex internally)
+     */
     void notify_callbacks();
+    
+    /**
+     * @brief Notify callbacks without acquiring mutex
+     * @param callbacks Copy of callbacks to invoke
+     * @param config Copy of config to pass to callbacks
+     * 
+     * This method is used to invoke callbacks outside the lock to prevent
+     * deadlock if a callback calls ConfigManager::get() or other methods.
+     */
+    void notify_callbacks_unlocked(
+        const std::vector<ChangeCallback>& callbacks,
+        const Config& config);
 };
 
 } // namespace cortexd

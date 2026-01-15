@@ -100,7 +100,7 @@ TEST_F(ConfigTest, ValidateRejectsZeroMaxRequests) {
 
 TEST_F(ConfigTest, ValidateRejectsInvalidLogLevel) {
     auto config = cortexd::Config::defaults();
-    config.log_level = 5;  // Valid range is 0-3
+    config.log_level = 5;  // Valid range is 0-4 (DEBUG=0, INFO=1, WARN=2, ERROR=3, CRITICAL=4)
     
     std::string error = config.validate();
     EXPECT_FALSE(error.empty());
@@ -118,7 +118,8 @@ TEST_F(ConfigTest, ValidateRejectsNegativeLogLevel) {
 TEST_F(ConfigTest, ValidateAcceptsAllValidLogLevels) {
     auto config = cortexd::Config::defaults();
     
-    for (int level = 0; level <= 3; ++level) {
+    // Valid range is 0-4 (DEBUG=0, INFO=1, WARN=2, ERROR=3, CRITICAL=4)
+    for (int level = 0; level <= 4; ++level) {
         config.log_level = level;
         std::string error = config.validate();
         EXPECT_TRUE(error.empty()) << "Log level " << level << " should be valid";

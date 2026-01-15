@@ -2869,6 +2869,42 @@ class CortexCLI:
             cx_print("  run-tests      Run daemon test suite", "info")
             return 0
 
+    def _daemon_ipc_call(self, operation_name: str, ipc_func):
+        """
+        Helper method for daemon IPC calls with centralized error handling.
+
+        Args:
+            operation_name: Human-readable name of the operation for error messages.
+            ipc_func: A callable that takes a DaemonClient and returns a DaemonResponse.
+
+        Returns:
+            Tuple of (success: bool, response: DaemonResponse | None)
+            On error, response is None and an error message is printed.
+        """
+        try:
+            from cortex.daemon_client import (
+                DaemonClient,
+                DaemonConnectionError,
+                DaemonNotInstalledError,
+            )
+
+            client = DaemonClient()
+            response = ipc_func(client)
+            return True, response
+
+        except DaemonNotInstalledError as e:
+            cx_print(f"{e}", "error")
+            return False, None
+        except DaemonConnectionError as e:
+            cx_print(f"{e}", "error")
+            return False, None
+        except ImportError:
+            cx_print("Daemon client not available.", "error")
+            return False, None
+        except Exception as e:
+            cx_print(f"Unexpected error during {operation_name}: {e}", "error")
+            return False, None
+
     def _daemon_install(self, args: argparse.Namespace) -> int:
         """Install the cortexd daemon using setup_daemon.py."""
         import subprocess
@@ -2967,138 +3003,74 @@ class CortexCLI:
 
         cx_header("Daemon Configuration")
 
-        try:
-            from cortex.daemon_client import (
-                DaemonClient,
-                DaemonConnectionError,
-                DaemonNotInstalledError,
-            )
-
-            client = DaemonClient()
-            response = client.config_get()
-
-            if response.success and response.result:
-                table = Table(title="Current Configuration", show_header=True)
-                table.add_column("Setting", style="cyan")
-                table.add_column("Value", style="green")
-
-                for key, value in response.result.items():
-                    table.add_row(key, str(value))
-
-                console.print(table)
-                return 0
-            else:
-                cx_print(f"Failed to get config: {response.error}", "error")
-                return 1
-
-        except DaemonNotInstalledError as e:
-            cx_print(f"{e}", "error")
+        success, response = self._daemon_ipc_call("config.get", lambda c: c.config_get())
+        if not success:
             return 1
-        except DaemonConnectionError as e:
-            cx_print(f"{e}", "error")
-            return 1
-        except ImportError:
-            cx_print("Daemon client not available.", "error")
+
+        if response.success and response.result:
+            table = Table(title="Current Configuration", show_header=True)
+            table.add_column("Setting", style="cyan")
+            table.add_column("Value", style="green")
+
+            for key, value in response.result.items():
+                table.add_row(key, str(value))
+
+            console.print(table)
+            return 0
+        else:
+            cx_print(f"Failed to get config: {response.error}", "error")
             return 1
 
     def _daemon_reload_config(self) -> int:
         """Reload daemon configuration via IPC."""
         cx_header("Reloading Daemon Configuration")
 
-        try:
-            from cortex.daemon_client import (
-                DaemonClient,
-                DaemonConnectionError,
-                DaemonNotInstalledError,
-            )
-
-            client = DaemonClient()
-            response = client.config_reload()
-
-            if response.success:
-                cx_print("Configuration reloaded successfully!", "success")
-                return 0
-            else:
-                cx_print(f"Failed to reload config: {response.error}", "error")
-                return 1
-
-        except DaemonNotInstalledError as e:
-            cx_print(f"{e}", "error")
+        success, response = self._daemon_ipc_call("config.reload", lambda c: c.config_reload())
+        if not success:
             return 1
-        except DaemonConnectionError as e:
-            cx_print(f"{e}", "error")
-            return 1
-        except ImportError:
-            cx_print("Daemon client not available.", "error")
+
+        if response.success:
+            cx_print("Configuration reloaded successfully!", "success")
+            return 0
+        else:
+            cx_print(f"Failed to reload config: {response.error}", "error")
             return 1
 
     def _daemon_version(self) -> int:
         """Get daemon version via IPC."""
         cx_header("Daemon Version")
 
-        try:
-            from cortex.daemon_client import (
-                DaemonClient,
-                DaemonConnectionError,
-                DaemonNotInstalledError,
-            )
-
-            client = DaemonClient()
-            response = client.version()
-
-            if response.success and response.result:
-                name = response.result.get("name", "cortexd")
-                version = response.result.get("version", "unknown")
-                cx_print(f"{name} version {version}", "success")
-                return 0
-            else:
-                cx_print(f"Failed to get version: {response.error}", "error")
-                return 1
-
-        except DaemonNotInstalledError as e:
-            cx_print(f"{e}", "error")
+        success, response = self._daemon_ipc_call("version", lambda c: c.version())
+        if not success:
             return 1
-        except DaemonConnectionError as e:
-            cx_print(f"{e}", "error")
-            return 1
-        except ImportError:
-            cx_print("Daemon client not available.", "error")
+
+        if response.success and response.result:
+            name = response.result.get("name", "cortexd")
+            version = response.result.get("version", "unknown")
+            cx_print(f"{name} version {version}", "success")
+            return 0
+        else:
+            cx_print(f"Failed to get version: {response.error}", "error")
             return 1
 
     def _daemon_ping(self) -> int:
         """Test daemon connectivity via IPC."""
+        import time
+
         cx_header("Daemon Ping")
 
-        try:
-            import time
+        start = time.time()
+        success, response = self._daemon_ipc_call("ping", lambda c: c.ping())
+        elapsed = (time.time() - start) * 1000  # ms
 
-            from cortex.daemon_client import (
-                DaemonClient,
-                DaemonConnectionError,
-                DaemonNotInstalledError,
-            )
-
-            client = DaemonClient()
-
-            start = time.time()
-            response = client.ping()
-            elapsed = (time.time() - start) * 1000  # ms
-
-            if response.success:
-                cx_print(f"Pong! Response time: {elapsed:.1f}ms", "success")
-                return 0
-            else:
-                cx_print(f"Ping failed: {response.error}", "error")
-                return 1
-
-        except DaemonNotInstalledError as e:
-            cx_print(f"{e}", "error")
+        if not success:
             return 1
-        except DaemonConnectionError as e:
-            cx_print(f"{e}", "error")
-            return 1
-        except ImportError:
-            cx_print("Daemon client not available.", "error")
+
+        if response.success:
+            cx_print(f"Pong! Response time: {elapsed:.1f}ms", "success")
+            return 0
+        else:
+            cx_print(f"Ping failed: {response.error}", "error")
             return 1
 
     def _daemon_run_tests(self, args: argparse.Namespace) -> int:
@@ -3315,9 +3287,6 @@ def main():
                 console.print(
                     f"[cyan]🔔 Cortex update available:[/cyan] "
                     f"[green]{update_release.version}[/green]"
-                )
-                console.print(
-                    "   [dim]Run 'cortex update' to upgrade[/dim]"
                 )
                 console.print("   [dim]Run 'cortex update' to upgrade[/dim]")
                 console.print()

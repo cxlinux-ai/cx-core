@@ -87,9 +87,8 @@ log_level: 1
     }
     
     void TearDown() override {
-        // Note: We don't call request_shutdown() here because Daemon is a singleton
-        // and the shutdown_requested_ flag would persist to the next test.
-        // Each test that needs shutdown should call it explicitly.
+        // Reset daemon singleton state to ensure clean state between tests
+        cortexd::Daemon::instance().reset();
         
         fs::remove_all(temp_dir_);
         cortexd::Logger::shutdown();

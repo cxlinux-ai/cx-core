@@ -129,8 +129,6 @@ cortex daemon install --execute
 cortex daemon uninstall
 ```
 
-
-
 ```
 
 ## IPC API
@@ -396,7 +394,7 @@ sudo systemctl enable cortexd
 
 ## Security
 
-- Unix socket with 0666 permissions (local access only)
+- Unix socket with 0666 permissions (local access only, not network accessible)
 - No network exposure
 - systemd hardening (NoNewPrivileges, ProtectSystem, etc.)
 - Minimal attack surface (core daemon only)
