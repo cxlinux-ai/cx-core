@@ -6,7 +6,6 @@ cgroups v2 wrapper for AI workloads.
 """
 
 import json
-import sqlite3
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path

@@ -8,7 +8,6 @@ User-space KV-cache management for LLM inference optimization.
 import builtins
 import contextlib
 import json
-import sqlite3
 from dataclasses import asdict, dataclass
 from enum import Enum
 from multiprocessing import shared_memory

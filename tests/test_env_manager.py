@@ -12,12 +12,10 @@ Tests cover:
 Target: >80% code coverage
 """
 
-import json
 import os
 import stat
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -31,7 +29,6 @@ from cortex.env_manager import (
     EnvironmentVariable,
     TemplateVariable,
     ValidationResult,
-    VariableType,
     get_env_manager,
 )
 

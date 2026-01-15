@@ -7,7 +7,6 @@ and that API keys become available in os.environ.
 
 import importlib.util
 import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest import mock

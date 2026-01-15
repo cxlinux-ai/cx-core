@@ -20,7 +20,6 @@ from cortex.dependency_importer import (
     DependencyImporter,
     PackageEcosystem,
     ParseResult,
-    format_package_list,
 )
 from cortex.env_manager import EnvironmentManager, get_env_manager
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
@@ -40,7 +39,6 @@ from cortex.updater import Updater, UpdateStatus
 from cortex.user_preferences import (
     PreferencesManager,
     format_preference_value,
-    print_all_preferences,
 )
 from cortex.validators import validate_api_key, validate_install_request
 from cortex.version_manager import get_version_string
@@ -57,8 +55,10 @@ logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+logger = logging.getLogger(__name__)
 
-class InstallationCancelledError(SystemExit):
+
+class InstallationCancelledError(Exception):
     """Raised when the user cancels installation during conflict resolution."""
 
 
@@ -580,8 +580,10 @@ class CortexCLI:
                 if not key:
                     self._print_error("Key required")
                     return 1
-                v = manager.get(key)
-                if v is None:
+                # Use a sentinel to distinguish missing keys from falsy values (e.g., False, 0, empty string)
+                _sentinel = object()
+                v = manager.get(key, _sentinel)
+                if v is _sentinel:
                     self._print_error(f"Preference key '{key}' not found")
                     return 1
                 print(format_preference_value(v))
@@ -744,7 +746,6 @@ class CortexCLI:
             DockerSandbox,
             SandboxAlreadyExistsError,
             SandboxNotFoundError,
-            SandboxTestStatus,
         )
 
         action = getattr(args, "sandbox_action", None)
@@ -1094,14 +1095,18 @@ class CortexCLI:
                         remove_cmd = f"sudo apt-get remove -y {pkg_to_remove}"
                         if remove_cmd not in commands:
                             commands.insert(0, remove_cmd)
-            except SystemExit:
+            except KeyboardInterrupt:
+                # Allow KeyboardInterrupt to propagate for normal signal handling
                 raise
             except InstallationCancelledError:
                 self._print_error("Installation cancelled by user during conflict resolution.")
                 return 1
-            except Exception:
-                # Best-effort; dependency resolver may not be available on non-Debian systems.
-                pass
+            except (ImportError, ModuleNotFoundError):
+                # Dependency resolver not available on non-Debian systems
+                logger.debug("DependencyResolver not available; skipping conflict detection")
+            except RuntimeError as e:
+                # Handle resolver-specific runtime errors gracefully
+                logger.debug(f"Dependency resolution failed: {e}")
 
             # Extract packages from commands for tracking
             packages = history._extract_packages_from_commands(commands)

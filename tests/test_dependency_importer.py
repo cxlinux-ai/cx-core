@@ -15,7 +15,6 @@ import os
 import sys
 import tempfile
 import unittest
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 

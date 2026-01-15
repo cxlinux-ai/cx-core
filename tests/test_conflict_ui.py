@@ -54,8 +54,9 @@ class TestConflictResolutionUI(unittest.TestCase):
 
         conflicts = [("nginx", "apache2")]
 
-        # Should exit on choice 3
-        with self.assertRaises(SystemExit):
+        # Should raise InstallationCancelledError on choice 3
+        from cortex.cli import InstallationCancelledError
+        with self.assertRaises(InstallationCancelledError):
             self.cli._resolve_conflicts_interactive(conflicts)
 
         # Verify skip option was presented
@@ -343,8 +344,9 @@ class TestConflictDetectionWorkflow(unittest.TestCase):
         # Test the conflict resolution logic directly
         conflicts = [("nginx", "apache2")]
 
-        # Should exit on choice 3
-        with self.assertRaises(SystemExit):
+        # Should raise InstallationCancelledError on choice 3
+        from cortex.cli import InstallationCancelledError
+        with self.assertRaises(InstallationCancelledError):
             self.cli._resolve_conflicts_interactive(conflicts)
 
     @patch("builtins.input")

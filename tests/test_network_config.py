@@ -6,13 +6,11 @@ Issue: #25
 
 import json
 import os
-import socket
 import subprocess
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, mock_open, patch
 
-import pytest
 import requests
 
 from cortex.network_config import (

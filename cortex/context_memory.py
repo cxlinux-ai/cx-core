@@ -10,7 +10,6 @@ remember preferences, suggest optimizations, and personalize the experience.
 import hashlib
 import json
 import re
-import sqlite3
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime

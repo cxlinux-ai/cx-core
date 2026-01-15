@@ -27,7 +27,6 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 from cortex.branding import console, cx_print
 

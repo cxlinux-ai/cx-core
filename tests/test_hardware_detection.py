@@ -4,8 +4,6 @@ Tests for Hardware Detection Module
 Issue: #253
 """
 
-import json
-import os
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
