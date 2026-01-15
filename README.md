@@ -459,7 +459,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
-Apache 2.0 - See [LICENSE](LICENSE) for details.
+Cortex Linux is licensed under the **Business Source License 1.1 (BSL 1.1)**.
+
+- Free use: **one (1) system** for personal, educational, contribution, or evaluation (up to **30 days**, including for-profit evaluation)
+- Commercial use: any additional systems, production use, managed services, or competing offerings require a commercial license
+- Change Date: **January 15, 2032** → **Apache 2.0**
+
+See **BSL_LICENSE.md** for full terms.
 
 ---
 
