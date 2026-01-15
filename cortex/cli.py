@@ -2669,6 +2669,37 @@ def main():
     )
     # --------------------------
 
+    # JIT Compiler Benchmarking
+    jit_parser = subparsers.add_parser("jit-benchmark", help="JIT compiler benchmarking")
+    jit_parser.add_argument(
+        "action",
+        nargs="?",
+        default="run",
+        choices=["run", "list", "info"],
+        help="Action to perform (default: run)",
+    )
+    jit_parser.add_argument(
+        "--benchmark", "-b",
+        type=str,
+        help="Run specific benchmark (startup, parsing, cache, json, string, list, dict, compute)",
+    )
+    jit_parser.add_argument(
+        "--iterations", "-i",
+        type=int,
+        default=10,
+        help="Number of benchmark iterations (default: 10)",
+    )
+    jit_parser.add_argument(
+        "--output", "-o",
+        type=str,
+        help="Export results to JSON file",
+    )
+    jit_parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
     args = parser.parse_args()
 
     # The Guard: Check for empty commands before starting the CLI
@@ -2723,6 +2754,15 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
+        elif args.command == "jit-benchmark":
+            from cortex.jit_benchmark import run_jit_benchmark
+            return run_jit_benchmark(
+                action=getattr(args, "action", "run"),
+                benchmark=getattr(args, "benchmark", None),
+                iterations=getattr(args, "iterations", 10),
+                output=getattr(args, "output", None),
+                verbose=getattr(args, "verbose", False),
+            )
         else:
             parser.print_help()
             return 1
