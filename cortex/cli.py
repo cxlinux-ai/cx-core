@@ -1441,6 +1441,12 @@ class CortexCLI:
 
         return run_systemd_helper(service, action, verbose)
 
+    def gpu(self, action: str = "status", mode: str = None, verbose: bool = False):
+        """Hybrid GPU (Optimus) manager"""
+        from cortex.gpu_manager import run_gpu_manager
+
+        return run_gpu_manager(action, mode, verbose)
+
     def wizard(self):
         """Interactive setup wizard for API key configuration"""
         show_banner()
@@ -2592,6 +2598,18 @@ def main():
     )
     systemd_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
+    # GPU manager command
+    gpu_parser = subparsers.add_parser("gpu", help="Hybrid GPU (Optimus) manager")
+    gpu_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "modes", "switch", "apps"],
+        help="Action: status (default), modes, switch, apps"
+    )
+    gpu_parser.add_argument("mode", nargs="?", help="Mode for switch action (integrated/hybrid/nvidia)")
+    gpu_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
     ask_parser.add_argument("question", type=str, help="Natural language question")
@@ -3036,6 +3054,12 @@ def main():
             return cli.systemd(
                 args.service,
                 action=getattr(args, "action", "status"),
+                verbose=getattr(args, "verbose", False)
+            )
+        elif args.command == "gpu":
+            return cli.gpu(
+                action=getattr(args, "action", "status"),
+                mode=getattr(args, "mode", None),
                 verbose=getattr(args, "verbose", False)
             )
         elif args.command == "ask":
