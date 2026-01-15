@@ -23,6 +23,7 @@ from cortex.dependency_importer import (
 )
 from cortex.env_manager import EnvironmentManager, get_env_manager
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
+from cortex.jit_benchmark import run_jit_benchmark
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
@@ -767,6 +768,30 @@ class CortexCLI:
         return result.exit_code
 
     # --- End Sandbox Commands ---
+
+    def jit_benchmark(self, args: argparse.Namespace) -> int:
+        """Handle JIT benchmarking commands.
+
+        Args:
+            args: Parsed command-line arguments.
+
+        Returns:
+            Exit code (0 for success, 1 for error).
+        """
+        action = getattr(args, "bench_action", "run")
+        benchmark_name = getattr(args, "benchmark", None)
+        iterations = getattr(args, "iterations", 100)
+        output = getattr(args, "output", None)
+
+        # Handle compare action
+        if action == "compare":
+            baseline = getattr(args, "baseline", None)
+            jit = getattr(args, "jit", None)
+            return run_jit_benchmark(action="compare", compare_baseline=baseline, compare_jit=jit)
+
+        return run_jit_benchmark(
+            action=action, benchmark_name=benchmark_name, iterations=iterations, output=output
+        )
 
     def ask(self, question: str) -> int:
         """Answer a natural language question about the system."""
@@ -2207,6 +2232,7 @@ def show_rich_help():
     table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
     table.add_row("docker permissions", "Fix Docker bind-mount permissions")
+    table.add_row("jit-benchmark", "Python JIT performance benchmarks")
     table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
     table.add_row("doctor", "System health check")
 
@@ -2276,6 +2302,36 @@ def main():
     # Define the docker command and its associated sub-actions
     docker_parser = subparsers.add_parser("docker", help="Docker and container utilities")
     docker_subs = docker_parser.add_subparsers(dest="docker_action", help="Docker actions")
+
+    # JIT Benchmark command
+    jit_parser = subparsers.add_parser(
+        "jit-benchmark", help="Benchmark Python JIT compilation performance"
+    )
+    jit_subs = jit_parser.add_subparsers(dest="bench_action", help="Benchmark actions")
+
+    # jit-benchmark run (default action)
+    jit_run_parser = jit_subs.add_parser("run", help="Run benchmarks")
+    jit_run_parser.add_argument(
+        "-b",
+        "--benchmark",
+        choices=["cli", "parse", "cache", "stream"],
+        help="Specific benchmark to run (default: all)",
+    )
+    jit_run_parser.add_argument(
+        "-i", "--iterations", type=int, default=100, help="Number of iterations (default: 100)"
+    )
+    jit_run_parser.add_argument("-o", "--output", help="Export results to JSON file")
+
+    # jit-benchmark list
+    jit_subs.add_parser("list", help="List available benchmarks")
+
+    # jit-benchmark info
+    jit_subs.add_parser("info", help="Show JIT status and information")
+
+    # jit-benchmark compare
+    jit_compare_parser = jit_subs.add_parser("compare", help="Compare baseline vs JIT results")
+    jit_compare_parser.add_argument("--baseline", required=True, help="Baseline results JSON file")
+    jit_compare_parser.add_argument("--jit", required=True, help="JIT results JSON file")
 
     # Add the permissions action to allow fixing file ownership issues
     perm_parser = docker_subs.add_parser(
@@ -2702,6 +2758,11 @@ def main():
                 dry_run=args.dry_run,
                 parallel=args.parallel,
             )
+        elif args.command == "jit-benchmark":
+            # Set default action if no subcommand
+            if not hasattr(args, "bench_action") or args.bench_action is None:
+                args.bench_action = "run"
+            return cli.jit_benchmark(args)
         elif args.command == "import":
             return cli.import_deps(args)
         elif args.command == "history":
