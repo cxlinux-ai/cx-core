@@ -99,7 +99,7 @@ class LanguageConfig:
             lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
             try:
                 fcntl.flock(file_obj.fileno(), lock_type)
-            except (OSError, IOError) as e:
+            except OSError as e:
                 logger.debug(f"Could not acquire file lock: {e}")
 
     def _release_file_lock(self, file_obj: Any) -> None:
@@ -114,7 +114,7 @@ class LanguageConfig:
 
             try:
                 fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
-            except (OSError, IOError) as e:
+            except OSError as e:
                 logger.debug(f"Could not release file lock: {e}")
 
     def _load_preferences(self) -> dict[str, Any]:
