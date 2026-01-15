@@ -1447,6 +1447,12 @@ class CortexCLI:
 
         return run_gpu_manager(action, mode, verbose)
 
+    def printer(self, action: str = "status", verbose: bool = False):
+        """Printer/Scanner auto-setup"""
+        from cortex.printer_setup import run_printer_setup
+
+        return run_printer_setup(action, verbose)
+
     def wizard(self):
         """Interactive setup wizard for API key configuration"""
         show_banner()
@@ -2610,6 +2616,17 @@ def main():
     gpu_parser.add_argument("mode", nargs="?", help="Mode for switch action (integrated/hybrid/nvidia)")
     gpu_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
+    # Printer/Scanner setup command
+    printer_parser = subparsers.add_parser("printer", help="Printer/Scanner auto-setup")
+    printer_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "detect"],
+        help="Action: status (default), detect"
+    )
+    printer_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
     ask_parser.add_argument("question", type=str, help="Natural language question")
@@ -3060,6 +3077,11 @@ def main():
             return cli.gpu(
                 action=getattr(args, "action", "status"),
                 mode=getattr(args, "mode", None),
+                verbose=getattr(args, "verbose", False)
+            )
+        elif args.command == "printer":
+            return cli.printer(
+                action=getattr(args, "action", "status"),
                 verbose=getattr(args, "verbose", False)
             )
         elif args.command == "ask":
