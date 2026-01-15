@@ -14,9 +14,6 @@ from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
-from cortex.update_checker import UpdateChannel, should_notify_update
-from cortex.updater import Updater, UpdateStatus
-from cortex.version_manager import get_version_string
 from cortex.demo import run_demo
 from cortex.dependency_importer import (
     DependencyImporter,
@@ -31,7 +28,10 @@ from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
 from cortex.role_manager import RoleManager
 from cortex.stack_manager import StackManager
+from cortex.update_checker import UpdateChannel, should_notify_update
+from cortex.updater import Updater, UpdateStatus
 from cortex.validators import validate_api_key, validate_install_request
+from cortex.version_manager import get_version_string
 
 if TYPE_CHECKING:
     from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
@@ -1218,11 +1218,11 @@ class CortexCLI:
                     "success",
                 )
                 console.print()
-                console.print(f"[bold]Release notes:[/bold]")
+                console.print("[bold]Release notes:[/bold]")
                 console.print(result.latest_release.release_notes_summary)
                 console.print()
                 cx_print(
-                    f"Run [bold]cortex update install[/bold] to upgrade",
+                    "Run [bold]cortex update install[/bold] to upgrade",
                     "info",
                 )
             else:
@@ -1262,9 +1262,7 @@ class CortexCLI:
                             "success",
                         )
                         if result.duration_seconds:
-                            console.print(
-                                f"[dim]Completed in {result.duration_seconds:.1f}s[/dim]"
-                            )
+                            console.print(f"[dim]Completed in {result.duration_seconds:.1f}s[/dim]")
                 elif result.status == UpdateStatus.PENDING:
                     # Dry run
                     cx_print(
@@ -2442,6 +2440,393 @@ class CortexCLI:
             return 1
 
     # --------------------------
+    # Daemon Commands
+    # --------------------------
+
+    def daemon(self, args: argparse.Namespace) -> int:
+        """
+        Handle daemon commands: install, uninstall, config, reload-config, version, ping.
+
+        PR1 available commands:
+        - install/uninstall: Manage systemd service files (Python-side)
+        - config: Get daemon configuration via IPC
+        - reload-config: Reload daemon configuration via IPC
+        - version: Get daemon version via IPC
+        - ping: Test daemon connectivity via IPC
+        """
+        action = getattr(args, "daemon_action", None)
+
+        if action == "install":
+            return self._daemon_install(args)
+        elif action == "uninstall":
+            return self._daemon_uninstall(args)
+        elif action == "config":
+            return self._daemon_config()
+        elif action == "reload-config":
+            return self._daemon_reload_config()
+        elif action == "version":
+            return self._daemon_version()
+        elif action == "ping":
+            return self._daemon_ping()
+        elif action == "run-tests":
+            return self._daemon_run_tests(args)
+        else:
+            cx_print("Usage: cortex daemon <command>", "info")
+            cx_print("", "info")
+            cx_print("Available commands:", "info")
+            cx_print("  install        Install and enable the daemon service", "info")
+            cx_print("  uninstall      Remove the daemon service", "info")
+            cx_print("  config         Show daemon configuration", "info")
+            cx_print("  reload-config  Reload daemon configuration", "info")
+            cx_print("  version        Show daemon version", "info")
+            cx_print("  ping           Test daemon connectivity", "info")
+            cx_print("  run-tests      Run daemon test suite", "info")
+            return 0
+
+    def _daemon_install(self, args: argparse.Namespace) -> int:
+        """Install the cortexd daemon using setup_daemon.py."""
+        import subprocess
+        from pathlib import Path
+
+        cx_header("Installing Cortex Daemon")
+
+        # Find setup_daemon.py
+        daemon_dir = Path(__file__).parent.parent / "daemon"
+        setup_script = daemon_dir / "scripts" / "setup_daemon.py"
+
+        if not setup_script.exists():
+            cx_print(f"Setup script not found at {setup_script}", "error")
+            cx_print("Please ensure the daemon directory is present.", "error")
+            return 1
+
+        execute = getattr(args, "execute", False)
+
+        if not execute:
+            cx_print("This will build and install the cortexd daemon.", "info")
+            cx_print("", "info")
+            cx_print("The setup wizard will:", "info")
+            cx_print("  1. Check and install build dependencies", "info")
+            cx_print("  2. Build the daemon from source", "info")
+            cx_print("  3. Install systemd service files", "info")
+            cx_print("  4. Enable and start the service", "info")
+            cx_print("", "info")
+            cx_print("Run with --execute to proceed:", "info")
+            cx_print("  cortex daemon install --execute", "dim")
+            return 0
+
+        # Run setup_daemon.py
+        cx_print("Running daemon setup wizard...", "info")
+        result = subprocess.run(
+            [sys.executable, str(setup_script)],
+            check=False,
+        )
+
+        return result.returncode
+
+    def _daemon_uninstall(self, args: argparse.Namespace) -> int:
+        """Uninstall the cortexd daemon."""
+        import subprocess
+        from pathlib import Path
+
+        cx_header("Uninstalling Cortex Daemon")
+
+        execute = getattr(args, "execute", False)
+
+        if not execute:
+            cx_print("This will stop and remove the cortexd daemon.", "warning")
+            cx_print("", "info")
+            cx_print("This will:", "info")
+            cx_print("  1. Stop the cortexd service", "info")
+            cx_print("  2. Disable the service", "info")
+            cx_print("  3. Remove systemd unit files", "info")
+            cx_print("  4. Remove the daemon binary", "info")
+            cx_print("", "info")
+            cx_print("Run with --execute to proceed:", "info")
+            cx_print("  cortex daemon uninstall --execute", "dim")
+            return 0
+
+        # Find uninstall script
+        daemon_dir = Path(__file__).parent.parent / "daemon"
+        uninstall_script = daemon_dir / "scripts" / "uninstall.sh"
+
+        if uninstall_script.exists():
+            cx_print("Running uninstall script...", "info")
+            result = subprocess.run(
+                ["sudo", "bash", str(uninstall_script)],
+                check=False,
+            )
+            return result.returncode
+        else:
+            # Manual uninstall
+            cx_print("Running manual uninstall...", "info")
+            commands = [
+                ["sudo", "systemctl", "stop", "cortexd"],
+                ["sudo", "systemctl", "disable", "cortexd"],
+                ["sudo", "rm", "-f", "/etc/systemd/system/cortexd.service"],
+                ["sudo", "rm", "-f", "/etc/systemd/system/cortexd.socket"],
+                ["sudo", "rm", "-f", "/usr/local/bin/cortexd"],
+                ["sudo", "systemctl", "daemon-reload"],
+            ]
+
+            for cmd in commands:
+                cx_print(f"  Running: {' '.join(cmd)}", "dim")
+                subprocess.run(cmd, check=False, capture_output=True)
+
+            cx_print("Daemon uninstalled.", "success")
+            return 0
+
+    def _daemon_config(self) -> int:
+        """Get daemon configuration via IPC."""
+        from rich.table import Table
+
+        cx_header("Daemon Configuration")
+
+        try:
+            from cortex.daemon_client import (
+                DaemonClient,
+                DaemonConnectionError,
+                DaemonNotInstalledError,
+            )
+
+            client = DaemonClient()
+            response = client.config_get()
+
+            if response.success and response.result:
+                table = Table(title="Current Configuration", show_header=True)
+                table.add_column("Setting", style="cyan")
+                table.add_column("Value", style="green")
+
+                for key, value in response.result.items():
+                    table.add_row(key, str(value))
+
+                console.print(table)
+                return 0
+            else:
+                cx_print(f"Failed to get config: {response.error}", "error")
+                return 1
+
+        except DaemonNotInstalledError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except DaemonConnectionError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except ImportError:
+            cx_print("Daemon client not available.", "error")
+            return 1
+
+    def _daemon_reload_config(self) -> int:
+        """Reload daemon configuration via IPC."""
+        cx_header("Reloading Daemon Configuration")
+
+        try:
+            from cortex.daemon_client import (
+                DaemonClient,
+                DaemonConnectionError,
+                DaemonNotInstalledError,
+            )
+
+            client = DaemonClient()
+            response = client.config_reload()
+
+            if response.success:
+                cx_print("Configuration reloaded successfully!", "success")
+                return 0
+            else:
+                cx_print(f"Failed to reload config: {response.error}", "error")
+                return 1
+
+        except DaemonNotInstalledError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except DaemonConnectionError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except ImportError:
+            cx_print("Daemon client not available.", "error")
+            return 1
+
+    def _daemon_version(self) -> int:
+        """Get daemon version via IPC."""
+        cx_header("Daemon Version")
+
+        try:
+            from cortex.daemon_client import (
+                DaemonClient,
+                DaemonConnectionError,
+                DaemonNotInstalledError,
+            )
+
+            client = DaemonClient()
+            response = client.version()
+
+            if response.success and response.result:
+                name = response.result.get("name", "cortexd")
+                version = response.result.get("version", "unknown")
+                cx_print(f"{name} version {version}", "success")
+                return 0
+            else:
+                cx_print(f"Failed to get version: {response.error}", "error")
+                return 1
+
+        except DaemonNotInstalledError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except DaemonConnectionError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except ImportError:
+            cx_print("Daemon client not available.", "error")
+            return 1
+
+    def _daemon_ping(self) -> int:
+        """Test daemon connectivity via IPC."""
+        cx_header("Daemon Ping")
+
+        try:
+            import time
+
+            from cortex.daemon_client import (
+                DaemonClient,
+                DaemonConnectionError,
+                DaemonNotInstalledError,
+            )
+
+            client = DaemonClient()
+
+            start = time.time()
+            response = client.ping()
+            elapsed = (time.time() - start) * 1000  # ms
+
+            if response.success:
+                cx_print(f"Pong! Response time: {elapsed:.1f}ms", "success")
+                return 0
+            else:
+                cx_print(f"Ping failed: {response.error}", "error")
+                return 1
+
+        except DaemonNotInstalledError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except DaemonConnectionError as e:
+            cx_print(f"{e}", "error")
+            return 1
+        except ImportError:
+            cx_print("Daemon client not available.", "error")
+            return 1
+
+    def _daemon_run_tests(self, args: argparse.Namespace) -> int:
+        """Run the daemon test suite."""
+        import subprocess
+        from pathlib import Path
+
+        cx_header("Daemon Tests")
+
+        # Find daemon directory
+        daemon_dir = Path(__file__).parent.parent / "daemon"
+        build_dir = daemon_dir / "build"
+        tests_dir = build_dir / "tests"  # Test binaries are in build/tests/
+
+        # Define test binaries
+        unit_tests = [
+            "test_config",
+            "test_protocol",
+            "test_rate_limiter",
+            "test_logger",
+            "test_common",
+        ]
+        integration_tests = ["test_ipc_server", "test_handlers", "test_daemon"]
+        all_tests = unit_tests + integration_tests
+
+        # Check if tests are built
+        def check_tests_built() -> tuple[bool, list[str]]:
+            """Check which test binaries exist."""
+            existing = []
+            for test in all_tests:
+                if (tests_dir / test).exists():
+                    existing.append(test)
+            return len(existing) > 0, existing
+
+        tests_built, existing_tests = check_tests_built()
+
+        if not tests_built:
+            cx_print("Tests are not built.", "warning")
+            cx_print("", "info")
+            cx_print("To build tests, run the setup wizard with test building enabled:", "info")
+            cx_print("", "info")
+            cx_print("  [bold]python daemon/scripts/setup_daemon.py[/bold]", "info")
+            cx_print("", "info")
+            cx_print("When prompted, answer 'yes' to build the test suite.", "info")
+            cx_print("", "info")
+            cx_print("Or build manually:", "info")
+            cx_print("  cd daemon && ./scripts/build.sh Release --with-tests", "dim")
+            return 1
+
+        # Determine which tests to run
+        test_filter = getattr(args, "test", None)
+        run_unit = getattr(args, "unit", False)
+        run_integration = getattr(args, "integration", False)
+        verbose = getattr(args, "verbose", False)
+
+        tests_to_run = []
+
+        if test_filter:
+            # Run a specific test
+            # Allow partial matching (e.g., "config" matches "test_config")
+            test_name = test_filter if test_filter.startswith("test_") else f"test_{test_filter}"
+            if test_name in existing_tests:
+                tests_to_run = [test_name]
+            else:
+                cx_print(f"Test '{test_filter}' not found or not built.", "error")
+                cx_print("", "info")
+                cx_print("Available tests:", "info")
+                for t in existing_tests:
+                    cx_print(f"  • {t}", "info")
+                return 1
+        elif run_unit and not run_integration:
+            tests_to_run = [t for t in unit_tests if t in existing_tests]
+            if not tests_to_run:
+                cx_print("No unit tests built.", "warning")
+                return 1
+        elif run_integration and not run_unit:
+            tests_to_run = [t for t in integration_tests if t in existing_tests]
+            if not tests_to_run:
+                cx_print("No integration tests built.", "warning")
+                return 1
+        else:
+            # Run all available tests
+            tests_to_run = existing_tests
+
+        # Show what we're running
+        cx_print(f"Running {len(tests_to_run)} test(s)...", "info")
+        cx_print("", "info")
+
+        # Use ctest for running tests
+        ctest_args = ["ctest", "--output-on-failure"]
+
+        if verbose:
+            ctest_args.append("-V")
+
+        # Filter specific tests if not running all
+        if test_filter or run_unit or run_integration:
+            # ctest uses -R for regex filtering
+            test_regex = "|".join(tests_to_run)
+            ctest_args.extend(["-R", test_regex])
+
+        result = subprocess.run(
+            ctest_args,
+            cwd=str(build_dir),
+            check=False,
+        )
+
+        if result.returncode == 0:
+            cx_print("", "info")
+            cx_print("All tests passed!", "success")
+            return 0
+        else:
+            cx_print("", "info")
+            cx_print("Some tests failed.", "error")
+            return 1
 
 
 def show_rich_help():
@@ -2544,9 +2929,7 @@ def main():
                     f"[cyan]🔔 Cortex update available:[/cyan] "
                     f"[green]{update_release.version}[/green]"
                 )
-                console.print(
-                    f"   [dim]Run 'cortex update' to upgrade[/dim]"
-                )
+                console.print("   [dim]Run 'cortex update' to upgrade[/dim]")
                 console.print()
     except Exception:
         pass  # Don't block CLI on update check failures
@@ -2600,7 +2983,7 @@ def main():
         nargs="?",
         default="status",
         choices=["status", "diagnose", "deps"],
-        help="Action: status (default), diagnose, deps"
+        help="Action: status (default), diagnose, deps",
     )
     systemd_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
@@ -2611,9 +2994,11 @@ def main():
         nargs="?",
         default="status",
         choices=["status", "modes", "switch", "apps"],
-        help="Action: status (default), modes, switch, apps"
+        help="Action: status (default), modes, switch, apps",
     )
-    gpu_parser.add_argument("mode", nargs="?", help="Mode for switch action (integrated/hybrid/nvidia)")
+    gpu_parser.add_argument(
+        "mode", nargs="?", help="Mode for switch action (integrated/hybrid/nvidia)"
+    )
     gpu_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     # Printer/Scanner setup command
@@ -2623,7 +3008,7 @@ def main():
         nargs="?",
         default="status",
         choices=["status", "detect"],
-        help="Action: status (default), detect"
+        help="Action: status (default), detect",
     )
     printer_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
@@ -3041,6 +3426,59 @@ def main():
     update_subs.add_parser("backups", help="List available backups for rollback")
     # --------------------------
 
+    # --- Daemon Commands ---
+    daemon_parser = subparsers.add_parser("daemon", help="Manage the cortexd background daemon")
+    daemon_subs = daemon_parser.add_subparsers(dest="daemon_action", help="Daemon actions")
+
+    # daemon install [--execute]
+    daemon_install_parser = daemon_subs.add_parser(
+        "install", help="Install and enable the daemon service"
+    )
+    daemon_install_parser.add_argument(
+        "--execute", action="store_true", help="Actually run the installation"
+    )
+
+    # daemon uninstall [--execute]
+    daemon_uninstall_parser = daemon_subs.add_parser(
+        "uninstall", help="Stop and remove the daemon service"
+    )
+    daemon_uninstall_parser.add_argument(
+        "--execute", action="store_true", help="Actually run the uninstallation"
+    )
+
+    # daemon config - uses config.get IPC handler
+    daemon_subs.add_parser("config", help="Show current daemon configuration")
+
+    # daemon reload-config - uses config.reload IPC handler
+    daemon_subs.add_parser("reload-config", help="Reload daemon configuration from disk")
+
+    # daemon version - uses version IPC handler
+    daemon_subs.add_parser("version", help="Show daemon version")
+
+    # daemon ping - uses ping IPC handler
+    daemon_subs.add_parser("ping", help="Test daemon connectivity")
+
+    # daemon run-tests - run daemon test suite
+    daemon_run_tests_parser = daemon_subs.add_parser("run-tests", help="Run daemon test suite")
+    daemon_run_tests_parser.add_argument(
+        "--all", action="store_true", default=True, help="Run all tests (default)"
+    )
+    daemon_run_tests_parser.add_argument("--unit", action="store_true", help="Run only unit tests")
+    daemon_run_tests_parser.add_argument(
+        "--integration", action="store_true", help="Run only integration tests"
+    )
+    daemon_run_tests_parser.add_argument(
+        "--test",
+        "-t",
+        type=str,
+        metavar="NAME",
+        help="Run a specific test (e.g., test_config, test_daemon)",
+    )
+    daemon_run_tests_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show verbose test output"
+    )
+    # --------------------------
+
     # WiFi/Bluetooth Driver Matcher
     wifi_parser = subparsers.add_parser("wifi", help="WiFi/Bluetooth driver auto-matcher")
     wifi_parser.add_argument(
@@ -3051,7 +3489,8 @@ def main():
         help="Action to perform (default: status)",
     )
     wifi_parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
@@ -3078,7 +3517,8 @@ def main():
         help="Truncation mode for large input (default: middle)",
     )
     stdin_parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
@@ -3098,7 +3538,8 @@ def main():
         help="Package constraints (format: pkg:constraint:source)",
     )
     deps_parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
@@ -3113,7 +3554,8 @@ def main():
         help="Action to perform (default: check)",
     )
     health_parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
@@ -3148,18 +3590,17 @@ def main():
             return cli.systemd(
                 args.service,
                 action=getattr(args, "action", "status"),
-                verbose=getattr(args, "verbose", False)
+                verbose=getattr(args, "verbose", False),
             )
         elif args.command == "gpu":
             return cli.gpu(
                 action=getattr(args, "action", "status"),
                 mode=getattr(args, "mode", None),
-                verbose=getattr(args, "verbose", False)
+                verbose=getattr(args, "verbose", False),
             )
         elif args.command == "printer":
             return cli.printer(
-                action=getattr(args, "action", "status"),
-                verbose=getattr(args, "verbose", False)
+                action=getattr(args, "action", "status"), verbose=getattr(args, "verbose", False)
             )
         elif args.command == "ask":
             return cli.ask(args.question)
@@ -3193,25 +3634,32 @@ def main():
             return cli.env(args)
         elif args.command == "upgrade":
             from cortex.licensing import open_upgrade_page
+
             open_upgrade_page()
             return 0
         elif args.command == "license":
             from cortex.licensing import show_license_status
+
             show_license_status()
             return 0
         elif args.command == "activate":
             from cortex.licensing import activate_license
+
             return 0 if activate_license(args.license_key) else 1
         elif args.command == "update":
             return cli.update(args)
+        elif args.command == "daemon":
+            return cli.daemon(args)
         elif args.command == "wifi":
             from cortex.wifi_driver import run_wifi_driver
+
             return run_wifi_driver(
                 action=getattr(args, "action", "status"),
                 verbose=getattr(args, "verbose", False),
             )
         elif args.command == "stdin":
             from cortex.stdin_handler import run_stdin_handler
+
             return run_stdin_handler(
                 action=getattr(args, "action", "info"),
                 max_lines=getattr(args, "max_lines", 1000),
@@ -3220,6 +3668,7 @@ def main():
             )
         elif args.command == "deps":
             from cortex.semver_resolver import run_semver_resolver
+
             return run_semver_resolver(
                 action=getattr(args, "action", "analyze"),
                 packages=getattr(args, "packages", None),
@@ -3227,6 +3676,7 @@ def main():
             )
         elif args.command == "health":
             from cortex.health_score import run_health_check
+
             return run_health_check(
                 action=getattr(args, "action", "check"),
                 verbose=getattr(args, "verbose", False),
