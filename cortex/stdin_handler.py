@@ -104,7 +104,7 @@ class StdinHandler:
 
         try:
             content = sys.stdin.read()
-        except (IOError, OSError):
+        except OSError:
             return StdinData(content="", line_count=0, byte_count=0)
 
         lines = content.splitlines(keepends=True)
@@ -309,7 +309,7 @@ def analyze_stdin(
     return result
 
 
-def display_stdin_info(data: StdinData, analysis: Optional[dict] = None):
+def display_stdin_info(data: StdinData, analysis: dict | None = None):
     """Display information about stdin data.
 
     Args:

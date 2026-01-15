@@ -7,10 +7,11 @@ Provides investor-ready polished display for all CLI output.
 Issue: #242
 """
 
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Generator, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from rich import box
 from rich.console import Console, Group
@@ -82,7 +83,7 @@ class TableColumn:
     header: str
     style: str = "cyan"
     justify: str = "left"
-    width: Optional[int] = None
+    width: int | None = None
     no_wrap: bool = False
 
 
@@ -97,11 +98,11 @@ class StatusInfo:
 
 def format_box(
     content: str,
-    title: Optional[str] = None,
-    subtitle: Optional[str] = None,
+    title: str | None = None,
+    subtitle: str | None = None,
     style: OutputStyle = OutputStyle.DEFAULT,
     border_style: str = "cyan",
-    padding: Tuple[int, int] = (1, 2),
+    padding: tuple[int, int] = (1, 2),
     expand: bool = False,
 ) -> Panel:
     """
@@ -144,7 +145,7 @@ def format_box(
 
 def format_status_box(
     title: str,
-    items: List[StatusInfo],
+    items: list[StatusInfo],
     border_style: str = "cyan",
 ) -> Panel:
     """
@@ -196,12 +197,12 @@ def format_status_box(
 
 
 def format_table(
-    columns: List[TableColumn],
-    rows: List[List[str]],
-    title: Optional[str] = None,
+    columns: list[TableColumn],
+    rows: list[list[str]],
+    title: str | None = None,
     show_header: bool = True,
     show_lines: bool = False,
-    row_styles: Optional[List[str]] = None,
+    row_styles: list[str] | None = None,
 ) -> Table:
     """
     Create a formatted table.
@@ -244,7 +245,7 @@ def format_table(
 
 
 def format_package_table(
-    packages: List[Tuple[str, str, str]],
+    packages: list[tuple[str, str, str]],
     title: str = "Packages",
 ) -> Table:
     """
@@ -270,7 +271,7 @@ def format_package_table(
 def format_dependency_tree(
     package: str,
     dependencies: dict,
-    title: Optional[str] = None,
+    title: str | None = None,
 ) -> Tree:
     """
     Create a formatted dependency tree.
@@ -306,8 +307,8 @@ def format_dependency_tree(
 @contextmanager
 def spinner_context(
     message: str,
-    success_message: Optional[str] = None,
-    error_message: Optional[str] = None,
+    success_message: str | None = None,
+    error_message: str | None = None,
     spinner_type: str = "dots",
 ) -> Generator[Status, None, None]:
     """
@@ -353,14 +354,14 @@ class ProgressTracker:
     def __init__(
         self,
         description: str,
-        total: Optional[int] = None,
+        total: int | None = None,
         show_speed: bool = False,
     ):
         self.description = description
         self.total = total
         self.show_speed = show_speed
-        self._progress: Optional[Progress] = None
-        self._task_id: Optional[TaskID] = None
+        self._progress: Progress | None = None
+        self._task_id: TaskID | None = None
 
     def __enter__(self) -> "ProgressTracker":
         columns = [
@@ -387,7 +388,7 @@ class ProgressTracker:
         if self._progress:
             self._progress.stop()
 
-    def update(self, description: Optional[str] = None, advance: int = 0):
+    def update(self, description: str | None = None, advance: int = 0):
         """Update progress description and/or advance by given amount."""
         if self._progress and self._task_id is not None:
             self._progress.update(
@@ -420,11 +421,11 @@ class MultiStepProgress:
                 progress.complete_step(step)
     """
 
-    def __init__(self, steps: List[str], title: str = "Operation Progress"):
+    def __init__(self, steps: list[str], title: str = "Operation Progress"):
         self.steps = steps
         self.title = title
-        self.step_status: dict = {step: "pending" for step in steps}
-        self._live: Optional[Live] = None
+        self.step_status: dict = dict.fromkeys(steps, "pending")
+        self._live: Live | None = None
 
     def __enter__(self) -> "MultiStepProgress":
         self._live = Live(self._render(), console=console, refresh_per_second=10)
@@ -523,17 +524,17 @@ def print_box(content: str, **kwargs):
     console.print(format_box(content, **kwargs))
 
 
-def print_status_box(title: str, items: List[StatusInfo], **kwargs):
+def print_status_box(title: str, items: list[StatusInfo], **kwargs):
     """Print a status box with key-value pairs."""
     console.print(format_status_box(title, items, **kwargs))
 
 
-def print_table(columns: List[TableColumn], rows: List[List[str]], **kwargs):
+def print_table(columns: list[TableColumn], rows: list[list[str]], **kwargs):
     """Print a formatted table."""
     console.print(format_table(columns, rows, **kwargs))
 
 
-def print_divider(title: Optional[str] = None, style: str = "cyan"):
+def print_divider(title: str | None = None, style: str = "cyan"):
     """Print a horizontal divider with optional title."""
     if title:
         console.print(f"\n[bold {style}]━━━ {title} ━━━[/bold {style}]\n")

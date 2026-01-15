@@ -13,11 +13,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import requests
 
@@ -58,10 +59,10 @@ class UpdateResult:
     success: bool
     status: UpdateStatus
     previous_version: str
-    new_version: Optional[str] = None
-    error: Optional[str] = None
-    backup_path: Optional[Path] = None
-    duration_seconds: Optional[float] = None
+    new_version: str | None = None
+    error: str | None = None
+    backup_path: Path | None = None
+    duration_seconds: float | None = None
 
 
 @dataclass
@@ -80,7 +81,7 @@ class Updater:
     def __init__(
         self,
         channel: UpdateChannel = UpdateChannel.STABLE,
-        progress_callback: Optional[Callable[[str, float], None]] = None,
+        progress_callback: Callable[[str, float], None] | None = None,
     ):
         """Initialize the updater.
 
@@ -116,7 +117,7 @@ class Updater:
 
     def update(
         self,
-        target_version: Optional[str] = None,
+        target_version: str | None = None,
         dry_run: bool = False,
     ) -> UpdateResult:
         """Perform the update.
@@ -250,7 +251,7 @@ class Updater:
                 error=str(e),
             )
 
-    def _get_specific_release(self, version: str) -> Optional[ReleaseInfo]:
+    def _get_specific_release(self, version: str) -> ReleaseInfo | None:
         """Get information about a specific release version."""
         from cortex.update_checker import UpdateChecker
 
@@ -464,7 +465,7 @@ class Updater:
 def download_with_progress(
     url: str,
     dest_path: Path,
-    progress_callback: Optional[Callable[[int, int], None]] = None,
+    progress_callback: Callable[[int, int], None] | None = None,
     chunk_size: int = 8192,
 ) -> bool:
     """Download a file with progress reporting.

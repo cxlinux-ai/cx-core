@@ -20,7 +20,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from cortex.branding import console, cx_print, cx_header, CORTEX_CYAN
+from cortex.branding import CORTEX_CYAN, console, cx_header, cx_print
 
 
 class GPUMode(Enum):
@@ -61,8 +61,8 @@ class GPUState:
     """Current GPU system state."""
 
     mode: GPUMode = GPUMode.UNKNOWN
-    devices: List[GPUDevice] = field(default_factory=list)
-    active_gpu: Optional[GPUDevice] = None
+    devices: list[GPUDevice] = field(default_factory=list)
+    active_gpu: GPUDevice | None = None
     prime_profile: str = ""
     render_offload_available: bool = False
     power_management: str = ""
@@ -83,7 +83,7 @@ class AppGPUConfig:
     name: str
     executable: str
     gpu: GPUVendor
-    env_vars: Dict[str, str] = field(default_factory=dict)
+    env_vars: dict[str, str] = field(default_factory=dict)
 
 
 # Battery impact estimates (hours difference)
@@ -126,9 +126,9 @@ class HybridGPUManager:
 
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
-        self._state: Optional[GPUState] = None
+        self._state: GPUState | None = None
 
-    def _run_command(self, cmd: List[str], timeout: int = 10) -> Tuple[int, str, str]:
+    def _run_command(self, cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
         """Run a command and return (returncode, stdout, stderr)."""
         try:
             result = subprocess.run(
@@ -143,7 +143,7 @@ class HybridGPUManager:
         except subprocess.TimeoutExpired:
             return 1, "", "Command timed out"
 
-    def detect_gpus(self) -> List[GPUDevice]:
+    def detect_gpus(self) -> list[GPUDevice]:
         """Detect all GPU devices in the system."""
         devices = []
 
@@ -172,7 +172,7 @@ class HybridGPUManager:
 
         return devices
 
-    def _parse_lspci_line(self, line: str) -> Optional[GPUDevice]:
+    def _parse_lspci_line(self, line: str) -> GPUDevice | None:
         """Parse an lspci output line for GPU info."""
         line_lower = line.lower()
 
@@ -200,7 +200,7 @@ class HybridGPUManager:
             pci_id=pci_id,
         )
 
-    def _detect_nvidia_gpu(self) -> Optional[GPUDevice]:
+    def _detect_nvidia_gpu(self) -> GPUDevice | None:
         """Detect NVIDIA GPU with detailed info."""
         returncode, stdout, _ = self._run_command([
             "nvidia-smi",
@@ -292,7 +292,7 @@ class HybridGPUManager:
         self._state = state
         return state
 
-    def switch_mode(self, mode: GPUMode, apply: bool = False) -> Tuple[bool, str, Optional[str]]:
+    def switch_mode(self, mode: GPUMode, apply: bool = False) -> tuple[bool, str, str | None]:
         """
         Switch GPU mode.
 
@@ -385,7 +385,7 @@ class HybridGPUManager:
             # Use integrated GPU
             return f"DRI_PRIME=0 {app}"
 
-    def get_battery_estimate(self, mode: GPUMode) -> Dict[str, str]:
+    def get_battery_estimate(self, mode: GPUMode) -> dict[str, str]:
         """Get battery impact estimate for a mode."""
         return BATTERY_IMPACT.get(mode, {"description": "Unknown", "impact": "Unknown"})
 
@@ -519,7 +519,7 @@ Battery Impact: {mode_info['impact']}
 
 def run_gpu_manager(
     action: str = "status",
-    mode: Optional[str] = None,
+    mode: str | None = None,
     verbose: bool = False
 ) -> int:
     """

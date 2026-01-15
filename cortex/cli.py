@@ -14,9 +14,6 @@ from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
-from cortex.update_checker import UpdateChannel, should_notify_update
-from cortex.updater import Updater, UpdateStatus
-from cortex.version_manager import get_version_string
 from cortex.demo import run_demo
 from cortex.dependency_importer import (
     DependencyImporter,
@@ -37,7 +34,10 @@ from cortex.uninstall_impact import (
     ServiceStatus,
     UninstallImpactAnalyzer,
 )
+from cortex.update_checker import UpdateChannel, should_notify_update
+from cortex.updater import Updater, UpdateStatus
 from cortex.validators import validate_api_key, validate_install_request
+from cortex.version_manager import get_version_string
 
 # CLI Help Constants
 HELP_SKIP_CONFIRM = "Skip confirmation prompt"
@@ -1604,11 +1604,11 @@ class CortexCLI:
                     "success",
                 )
                 console.print()
-                console.print(f"[bold]Release notes:[/bold]")
+                console.print("[bold]Release notes:[/bold]")
                 console.print(result.latest_release.release_notes_summary)
                 console.print()
                 cx_print(
-                    f"Run [bold]cortex update install[/bold] to upgrade",
+                    "Run [bold]cortex update install[/bold] to upgrade",
                     "info",
                 )
             else:
@@ -2932,7 +2932,7 @@ def main():
                     f"[green]{update_release.version}[/green]"
                 )
                 console.print(
-                    f"   [dim]Run 'cortex update' to upgrade[/dim]"
+                    "   [dim]Run 'cortex update' to upgrade[/dim]"
                 )
                 console.print()
     except Exception:

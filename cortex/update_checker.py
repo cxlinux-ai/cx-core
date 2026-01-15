@@ -46,7 +46,7 @@ class ReleaseInfo:
     body: str  # Release notes (markdown)
     published_at: str
     html_url: str
-    download_url: Optional[str] = None
+    download_url: str | None = None
     assets: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -104,10 +104,10 @@ class UpdateCheckResult:
 
     update_available: bool
     current_version: SemanticVersion
-    latest_version: Optional[SemanticVersion] = None
-    latest_release: Optional[ReleaseInfo] = None
-    error: Optional[str] = None
-    checked_at: Optional[str] = None
+    latest_version: SemanticVersion | None = None
+    latest_release: ReleaseInfo | None = None
+    error: str | None = None
+    checked_at: str | None = None
     from_cache: bool = False
 
 
@@ -129,7 +129,7 @@ class UpdateChecker:
         """Ensure cache directory exists."""
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    def _get_cached_result(self) -> Optional[UpdateCheckResult]:
+    def _get_cached_result(self) -> UpdateCheckResult | None:
         """Get cached update check result if valid."""
         if not self.cache_enabled or not UPDATE_CACHE_FILE.exists():
             return None
@@ -368,7 +368,7 @@ def check_for_updates(
     return checker.check(force=force)
 
 
-def should_notify_update() -> Optional[ReleaseInfo]:
+def should_notify_update() -> ReleaseInfo | None:
     """Check if we should notify user about an update.
 
     This is called on CLI startup. Uses cache to avoid

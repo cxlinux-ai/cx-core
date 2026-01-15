@@ -21,7 +21,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
-from cortex.branding import console, cx_print, cx_header, CORTEX_CYAN
+from cortex.branding import CORTEX_CYAN, console, cx_header, cx_print
 
 # Service state explanations in plain English
 SERVICE_STATE_EXPLANATIONS = {
@@ -99,17 +99,17 @@ class ServiceConfig:
     description: str
     exec_start: str
     service_type: ServiceType = ServiceType.SIMPLE
-    user: Optional[str] = None
-    group: Optional[str] = None
-    working_directory: Optional[str] = None
-    environment: Dict[str, str] = field(default_factory=dict)
+    user: str | None = None
+    group: str | None = None
+    working_directory: str | None = None
+    environment: dict[str, str] = field(default_factory=dict)
     restart: str = "on-failure"
     restart_sec: int = 5
-    wants: List[str] = field(default_factory=list)
-    after: List[str] = field(default_factory=lambda: ["network.target"])
-    wanted_by: List[str] = field(default_factory=lambda: ["multi-user.target"])
-    exec_stop: Optional[str] = None
-    exec_reload: Optional[str] = None
+    wants: list[str] = field(default_factory=list)
+    after: list[str] = field(default_factory=lambda: ["network.target"])
+    wanted_by: list[str] = field(default_factory=lambda: ["multi-user.target"])
+    exec_stop: str | None = None
+    exec_reload: str | None = None
     timeout_start_sec: int = 90
     timeout_stop_sec: int = 90
 
@@ -130,7 +130,7 @@ class ServiceStatus:
     since: str = ""
     result: str = ""
     fragment_path: str = ""
-    docs: List[str] = field(default_factory=list)
+    docs: list[str] = field(default_factory=list)
 
 
 class SystemdHelper:
@@ -150,7 +150,7 @@ class SystemdHelper:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
 
-    def _run_systemctl(self, *args, capture: bool = True) -> Tuple[int, str, str]:
+    def _run_systemctl(self, *args, capture: bool = True) -> tuple[int, str, str]:
         """Run a systemctl command and return (returncode, stdout, stderr)."""
         cmd = ["systemctl"] + list(args)
         try:
@@ -179,7 +179,7 @@ class SystemdHelper:
         except Exception:
             return ""
 
-    def get_status(self, service: str) -> Optional[ServiceStatus]:
+    def get_status(self, service: str) -> ServiceStatus | None:
         """
         Get the status of a systemd service.
 
@@ -237,7 +237,7 @@ class SystemdHelper:
 
         return status
 
-    def explain_status(self, service: str) -> Tuple[bool, str]:
+    def explain_status(self, service: str) -> tuple[bool, str]:
         """
         Explain a service's status in plain English.
 
@@ -294,7 +294,7 @@ class SystemdHelper:
 
         return True, "\n".join(parts)
 
-    def diagnose_failure(self, service: str) -> Tuple[bool, str, List[str]]:
+    def diagnose_failure(self, service: str) -> tuple[bool, str, list[str]]:
         """
         Diagnose why a service failed.
 
@@ -345,14 +345,14 @@ class SystemdHelper:
 
         return len(recommendations) > 0, "\n".join(explanation_parts), log_lines
 
-    def get_dependencies(self, service: str) -> Dict[str, List[str]]:
+    def get_dependencies(self, service: str) -> dict[str, list[str]]:
         """
         Get service dependencies.
 
         Returns:
             Dict with 'wants', 'requires', 'after', 'before' lists
         """
-        deps: Dict[str, List[str]] = {
+        deps: dict[str, list[str]] = {
             "wants": [],
             "requires": [],
             "after": [],
@@ -470,10 +470,10 @@ class SystemdHelper:
         self,
         description: str,
         command: str,
-        name: Optional[str] = None,
-        user: Optional[str] = None,
-        working_dir: Optional[str] = None,
-    ) -> Tuple[str, str]:
+        name: str | None = None,
+        user: str | None = None,
+        working_dir: str | None = None,
+    ) -> tuple[str, str]:
         """
         Create a unit file from a simple description.
 

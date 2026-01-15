@@ -20,10 +20,10 @@ from typing import Any, List, Optional, Tuple
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from cortex.branding import console, cx_print, cx_header, CORTEX_CYAN
+from cortex.branding import CORTEX_CYAN, console, cx_header, cx_print
 
 # Model recommendations based on system capabilities
 MODEL_REQUIREMENTS = {
@@ -57,11 +57,11 @@ class BenchmarkReport:
 
     timestamp: str = ""
     system_info: dict = field(default_factory=dict)
-    results: List[BenchmarkResult] = field(default_factory=list)
+    results: list[BenchmarkResult] = field(default_factory=list)
     overall_score: int = 0
     rating: str = ""
-    can_run: List[str] = field(default_factory=list)
-    needs_upgrade: List[str] = field(default_factory=list)
+    can_run: list[str] = field(default_factory=list)
+    needs_upgrade: list[str] = field(default_factory=list)
     upgrade_suggestion: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,7 +95,7 @@ class CortexBenchmark:
 
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
-        self._results: List[BenchmarkResult] = []
+        self._results: list[BenchmarkResult] = []
 
     def _get_system_info(self) -> dict:
         """Gather basic system information."""
@@ -418,7 +418,7 @@ class CortexBenchmark:
             description="Simulated generation speed"
         )
 
-    def _calculate_overall_score(self, results: List[BenchmarkResult]) -> Tuple[int, str]:
+    def _calculate_overall_score(self, results: list[BenchmarkResult]) -> tuple[int, str]:
         """
         Calculate overall score and rating.
 
@@ -465,7 +465,7 @@ class CortexBenchmark:
 
     def _get_model_recommendations(
         self, system_info: dict, overall_score: int
-    ) -> Tuple[List[str], List[str], str]:
+    ) -> tuple[list[str], list[str], str]:
         """
         Get model recommendations based on system capabilities.
 

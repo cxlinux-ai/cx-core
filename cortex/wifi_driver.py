@@ -327,7 +327,7 @@ class WirelessDriverMatcher:
         self.devices.extend(self.detect_usb_devices())
         return self.devices
 
-    def find_driver(self, device: WirelessDevice) -> Optional[DriverInfo]:
+    def find_driver(self, device: WirelessDevice) -> DriverInfo | None:
         """Find appropriate driver for a device."""
         # Check by vendor:device ID
         for driver_name, driver in DRIVER_DATABASE.items():

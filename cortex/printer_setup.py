@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from cortex.branding import console, cx_print, cx_header, CORTEX_CYAN
+from cortex.branding import CORTEX_CYAN, console, cx_header, cx_print
 
 
 class DeviceType(Enum):
@@ -103,7 +103,7 @@ class PrinterSetup:
         self._cups_available = self._check_cups()
         self._sane_available = self._check_sane()
 
-    def _run_command(self, cmd: List[str], timeout: int = 30) -> Tuple[int, str, str]:
+    def _run_command(self, cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
         """Run a command and return (returncode, stdout, stderr)."""
         try:
             result = subprocess.run(
@@ -128,7 +128,7 @@ class PrinterSetup:
         returncode, _, _ = self._run_command(["which", "scanimage"])
         return returncode == 0
 
-    def detect_usb_printers(self) -> List[PrinterDevice]:
+    def detect_usb_printers(self) -> list[PrinterDevice]:
         """Detect USB-connected printers."""
         devices = []
 
@@ -171,7 +171,7 @@ class PrinterSetup:
 
         return devices
 
-    def detect_network_printers(self) -> List[PrinterDevice]:
+    def detect_network_printers(self) -> list[PrinterDevice]:
         """Detect network printers using CUPS and DNS-SD."""
         devices = []
 
@@ -198,7 +198,7 @@ class PrinterSetup:
 
         return devices
 
-    def detect_configured_printers(self) -> List[PrinterDevice]:
+    def detect_configured_printers(self) -> list[PrinterDevice]:
         """Get list of already configured printers."""
         devices = []
 
@@ -234,7 +234,7 @@ class PrinterSetup:
 
         return devices
 
-    def detect_scanners(self) -> List[PrinterDevice]:
+    def detect_scanners(self) -> list[PrinterDevice]:
         """Detect scanners using SANE."""
         devices = []
 
@@ -288,7 +288,7 @@ class PrinterSetup:
 
         return "generic"
 
-    def find_driver(self, device: PrinterDevice) -> Optional[DriverInfo]:
+    def find_driver(self, device: PrinterDevice) -> DriverInfo | None:
         """Find the best driver for a device."""
         if not self._cups_available:
             return None
@@ -319,7 +319,7 @@ class PrinterSetup:
             source="cups-generic",
         )
 
-    def get_driver_packages(self, device: PrinterDevice) -> List[str]:
+    def get_driver_packages(self, device: PrinterDevice) -> list[str]:
         """Get recommended driver packages for a device."""
         packages = []
 
@@ -336,9 +336,9 @@ class PrinterSetup:
     def setup_printer(
         self,
         device: PrinterDevice,
-        driver: Optional[DriverInfo] = None,
+        driver: DriverInfo | None = None,
         make_default: bool = False,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Set up a printer with CUPS.
 
@@ -395,7 +395,7 @@ class PrinterSetup:
 
         return True, f"Printer '{printer_name}' configured successfully"
 
-    def test_print(self, printer_name: str) -> Tuple[bool, str]:
+    def test_print(self, printer_name: str) -> tuple[bool, str]:
         """Send a test page to a printer."""
         if not self._cups_available:
             return False, "CUPS is not installed"
@@ -411,7 +411,7 @@ class PrinterSetup:
         else:
             return False, f"Failed to print test page: {stderr}"
 
-    def test_scan(self, scanner_uri: Optional[str] = None) -> Tuple[bool, str]:
+    def test_scan(self, scanner_uri: str | None = None) -> tuple[bool, str]:
         """Test scanner functionality."""
         if not self._sane_available:
             return False, "SANE is not installed"

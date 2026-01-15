@@ -11,7 +11,6 @@ from enum import Enum
 from functools import total_ordering
 from typing import Optional
 
-
 # Single source of truth for version
 __version__ = "0.1.0"
 
@@ -30,8 +29,8 @@ class SemanticVersion:
     major: int
     minor: int
     patch: int
-    prerelease: Optional[str] = None
-    build: Optional[str] = None
+    prerelease: str | None = None
+    build: str | None = None
 
     @classmethod
     def parse(cls, version_str: str) -> "SemanticVersion":

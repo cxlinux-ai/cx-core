@@ -2,9 +2,9 @@
 
 import json
 import webbrowser
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timezone
 
 import httpx
 
@@ -81,9 +81,9 @@ class LicenseInfo:
         self,
         tier: str = FeatureTier.COMMUNITY,
         valid: bool = True,
-        expires: Optional[datetime] = None,
-        organization: Optional[str] = None,
-        email: Optional[str] = None,
+        expires: datetime | None = None,
+        organization: str | None = None,
+        email: str | None = None,
     ):
         self.tier = tier
         self.valid = valid
@@ -107,7 +107,7 @@ class LicenseInfo:
         return max(0, delta.days)
 
 
-_cached_license: Optional[LicenseInfo] = None
+_cached_license: LicenseInfo | None = None
 
 
 def get_license_info() -> LicenseInfo:
@@ -251,7 +251,7 @@ def show_license_status() -> None:
         print(f"    {icon} {name}")
 
     if info.tier == FeatureTier.COMMUNITY:
-        print(f"\n  💡 Upgrade to Pro for just $20/month: cortex upgrade")
+        print("\n  💡 Upgrade to Pro for just $20/month: cortex upgrade")
 
 
 def activate_license(license_key: str) -> bool:
@@ -292,7 +292,7 @@ def activate_license(license_key: str) -> bool:
             # Clear cache
             _cached_license = None
 
-            print(f"\n  ✅ License activated successfully!")
+            print("\n  ✅ License activated successfully!")
             print(f"     Tier: {data['tier'].upper()}")
             if data.get("organization"):
                 print(f"     Organization: {data['organization']}")
@@ -303,7 +303,7 @@ def activate_license(license_key: str) -> bool:
             return False
 
     except httpx.HTTPError as e:
-        print(f"\n  ❌ Activation failed: Could not reach license server")
+        print("\n  ❌ Activation failed: Could not reach license server")
         return False
 
 

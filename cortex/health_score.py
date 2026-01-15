@@ -10,11 +10,12 @@ import json
 import os
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -477,7 +478,7 @@ class HealthChecker:
             try:
                 with open(self.history_path) as f:
                     history = json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 history = []
 
         entry = {
@@ -497,7 +498,7 @@ class HealthChecker:
         try:
             with open(self.history_path, "w") as f:
                 json.dump(history, f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
     def load_history(self) -> list[dict]:
@@ -508,7 +509,7 @@ class HealthChecker:
         try:
             with open(self.history_path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return []
 
     def display_report(self, report: HealthReport):
