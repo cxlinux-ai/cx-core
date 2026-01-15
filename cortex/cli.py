@@ -1429,6 +1429,12 @@ class CortexCLI:
 
             return 0
 
+    def benchmark(self, verbose: bool = False):
+        """Run AI performance benchmark and display scores"""
+        from cortex.benchmark import run_benchmark
+
+        return run_benchmark(verbose=verbose)
+
     def wizard(self):
         """Interactive setup wizard for API key configuration"""
         show_banner()
@@ -2564,6 +2570,10 @@ def main():
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
 
+    # Benchmark command
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run AI performance benchmark")
+    benchmark_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
     ask_parser.add_argument("question", type=str, help="Natural language question")
@@ -3002,6 +3012,8 @@ def main():
             return cli.wizard()
         elif args.command == "status":
             return cli.status()
+        elif args.command == "benchmark":
+            return cli.benchmark(verbose=getattr(args, "verbose", False))
         elif args.command == "ask":
             return cli.ask(args.question)
         elif args.command == "install":
