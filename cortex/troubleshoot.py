@@ -8,6 +8,7 @@ This module provides the Troubleshooter class which:
 """
 
 import re
+import shutil
 import subprocess
 import sys
 from typing import Optional
@@ -121,14 +122,34 @@ class Troubleshooter:
         return True, ""
 
     def _execute_command(self, cmd: str) -> str:
-        """Execute a shell command and return output."""
+        """Execute a shell command and return output.
+
+        If Firejail is available, the command is executed in a sandbox
+        for additional security since AI-suggested commands are untrusted.
+        """
+        # Log the command execution for audit
+        self.logger.info(f"Executing command: {cmd}")
+
+        # Check if Firejail is available for sandboxing
+        use_sandbox = shutil.which("firejail") is not None
+
+        exec_cmd = cmd
+        if use_sandbox:
+            exec_cmd = f"firejail --quiet --private-tmp {cmd}"
+            self.logger.info("Using Firejail sandbox for command execution")
+
         try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                exec_cmd, shell=True, capture_output=True, text=True, timeout=30
+            )
             output = result.stdout
             if result.stderr:
                 output += f"\n[STDERR]\n{result.stderr}"
-            return output.strip()
+            result_output = output.strip()
+            self.logger.info(f"Command completed with exit code: {result.returncode}")
+            return result_output
         except Exception as e:
+            self.logger.error(f"Command execution failed: {e}")
             return f"Error executing command: {e}"
 
     def _interactive_loop(self) -> int:
@@ -207,7 +228,8 @@ class Troubleshooter:
                             # Ask AI for analysis of the output
                             with console.status("[cyan]Analyzing output...[/cyan]"):
                                 analysis = self.ai.ask(
-                                    f"Command '{cmd}' produced this output:\n{output}\n\nWhat is the next step?"
+                                    f"Command '{cmd}' produced this output:\n{output}\n\nWhat is the next step?",
+                                    system_prompt=self.messages[0]["content"],
                                 )
 
                             console.print(Markdown(analysis))

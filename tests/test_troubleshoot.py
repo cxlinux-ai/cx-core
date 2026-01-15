@@ -18,7 +18,7 @@ class TestExtractCodeBlocks(unittest.TestCase):
         # Mock the API key detector to avoid dependency on real config
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "fake-key", "fake", "test")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 self.troubleshooter = Troubleshooter()
 
     def test_extract_bash_block(self):
@@ -94,7 +94,7 @@ class TestIsCommandSafe(unittest.TestCase):
         """Set up test fixtures."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "fake-key", "fake", "test")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 self.troubleshooter = Troubleshooter()
 
     def test_safe_command_ls(self):
@@ -169,7 +169,7 @@ class TestExecuteCommand(unittest.TestCase):
         """Set up test fixtures."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "fake-key", "fake", "test")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 self.troubleshooter = Troubleshooter()
 
     def test_execute_simple_command(self):
@@ -196,7 +196,33 @@ class TestExecuteCommand(unittest.TestCase):
         output = self.troubleshooter._execute_command("sleep 100")
         self.assertIn("Error executing command", output)
 
+    @patch("cortex.troubleshoot.shutil.which")
+    @patch("cortex.troubleshoot.subprocess.run")
+    def test_execute_command_with_firejail(self, mock_run, mock_which):
+        """Test that command is sandboxed when firejail is available."""
+        mock_which.return_value = "/usr/bin/firejail"
+        mock_run.return_value = MagicMock(stdout="output", stderr="", returncode=0)
 
+        self.troubleshooter._execute_command("ls")
+
+        # Verify firejail was used
+        args, _ = mock_run.call_args
+        self.assertIn("firejail", args[0])
+        self.assertIn("ls", args[0])
+
+    @patch("cortex.troubleshoot.shutil.which")
+    @patch("cortex.troubleshoot.subprocess.run")
+    def test_execute_command_without_firejail(self, mock_run, mock_which):
+        """Test that command is NOT sandboxed when firejail is missing."""
+        mock_which.return_value = None
+        mock_run.return_value = MagicMock(stdout="output", stderr="", returncode=0)
+
+        self.troubleshooter._execute_command("ls")
+
+        # Verify firejail was NOT used
+        args, _ = mock_run.call_args
+        self.assertNotIn("firejail", args[0])
+        self.assertEqual(args[0], "ls")
 class TestDangerousPatterns(unittest.TestCase):
     """Tests for DANGEROUS_PATTERNS constant."""
 
@@ -222,7 +248,7 @@ class TestGetProvider(unittest.TestCase):
         """Test that 'anthropic' is mapped to 'claude'."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "sk-ant-xxx", "anthropic", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 self.assertEqual(troubleshooter.provider, "claude")
 
@@ -230,7 +256,7 @@ class TestGetProvider(unittest.TestCase):
         """Test that 'openai' is returned correctly."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "sk-xxx", "openai", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 self.assertEqual(troubleshooter.provider, "openai")
 
@@ -238,7 +264,7 @@ class TestGetProvider(unittest.TestCase):
         """Test that None provider defaults to 'openai'."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (False, None, None, None)
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 self.assertEqual(troubleshooter.provider, "openai")
 
@@ -250,7 +276,7 @@ class TestGetApiKey(unittest.TestCase):
         """Test that API key is returned correctly."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-api-key", "openai", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 self.assertEqual(troubleshooter.api_key, "test-api-key")
 
@@ -258,7 +284,7 @@ class TestGetApiKey(unittest.TestCase):
         """Test that None key returns empty string."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (False, None, "openai", None)
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 self.assertEqual(troubleshooter.api_key, "")
 
@@ -271,7 +297,7 @@ class TestStart(unittest.TestCase):
         """Test that start returns 1 when AI is unavailable."""
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (False, None, "openai", None)
-            with patch("cortex.ask.AskHandler") as mock_handler:
+            with patch("cortex.troubleshoot.AskHandler") as mock_handler:
                 mock_handler.side_effect = Exception("No API key")
                 troubleshooter = Troubleshooter()
                 troubleshooter.ai = None
@@ -285,7 +311,7 @@ class TestStart(unittest.TestCase):
         mock_loop.return_value = 0
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "openai", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 result = troubleshooter.start()
                 mock_loop.assert_called_once()
@@ -302,7 +328,7 @@ class TestInteractiveLoop(unittest.TestCase):
         mock_prompt.ask.return_value = "exit"
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 troubleshooter.messages = [{"role": "system", "content": "test"}]
                 result = troubleshooter._interactive_loop()
@@ -315,7 +341,7 @@ class TestInteractiveLoop(unittest.TestCase):
         mock_prompt.ask.return_value = "quit"
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 troubleshooter.messages = [{"role": "system", "content": "test"}]
                 result = troubleshooter._interactive_loop()
@@ -333,7 +359,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 troubleshooter.messages = [{"role": "system", "content": "test"}]
                 troubleshooter._interactive_loop()
@@ -349,7 +375,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
 
                 # Create and inject mock AI
@@ -378,7 +404,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
 
                 mock_ai = MagicMock()
@@ -406,7 +432,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
 
                 mock_ai = MagicMock()
@@ -427,7 +453,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 troubleshooter.messages = [{"role": "system", "content": "test"}]
                 result = troubleshooter._interactive_loop()
@@ -441,7 +467,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
                 troubleshooter.messages = [{"role": "system", "content": "test"}]
                 result = troubleshooter._interactive_loop()
@@ -461,7 +487,7 @@ class TestInteractiveLoop(unittest.TestCase):
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
-            with patch("cortex.ask.AskHandler"):
+            with patch("cortex.troubleshoot.AskHandler"):
                 troubleshooter = Troubleshooter()
 
                 mock_ai = MagicMock()
