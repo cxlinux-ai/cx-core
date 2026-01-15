@@ -28,10 +28,19 @@ from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
 from cortex.role_manager import RoleManager
 from cortex.stack_manager import StackManager
+from cortex.uninstall_impact import (
+    ImpactResult,
+    ImpactSeverity,
+    ServiceStatus,
+    UninstallImpactAnalyzer,
+)
 from cortex.update_checker import UpdateChannel, should_notify_update
 from cortex.updater import Updater, UpdateStatus
 from cortex.validators import validate_api_key, validate_install_request
 from cortex.version_manager import get_version_string
+
+# CLI Help Constants
+HELP_SKIP_CONFIRM = "Skip confirmation prompt"
 
 if TYPE_CHECKING:
     from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
@@ -1048,6 +1057,383 @@ class CortexCLI:
                 import traceback
 
                 traceback.print_exc()
+            return 1
+
+    def remove(self, args: argparse.Namespace) -> int:
+        """Handle package removal with impact analysis"""
+        package = args.package
+        dry_run = getattr(args, "dry_run", True)  # Default to dry-run for safety
+        purge = getattr(args, "purge", False)
+        force = getattr(args, "force", False)
+        json_output = getattr(args, "json", False)
+
+        # Initialize and analyze
+        result = self._analyze_package_removal(package)
+        if result is None:
+            return 1
+
+        # Check if package doesn't exist at all (not in repos)
+        if self._check_package_not_found(result):
+            return 1
+
+        # Output results
+        self._output_impact_result(result, json_output)
+
+        # Dry-run mode - stop here
+        if dry_run:
+            console.print()
+            cx_print("Dry run mode - no changes made", "info")
+            cx_print(f"To proceed with removal: cortex remove {package} --execute", "info")
+            return 0
+
+        # Safety check and confirmation
+        if not self._can_proceed_with_removal(result, force, args, package, purge):
+            return self._removal_blocked_or_cancelled(result, force)
+
+        return self._execute_removal(package, purge)
+
+    def _analyze_package_removal(self, package: str):
+        """Initialize analyzer and perform impact analysis. Returns None on failure."""
+        try:
+            analyzer = UninstallImpactAnalyzer()
+        except Exception as e:
+            self._print_error(f"Failed to initialize impact analyzer: {e}")
+            return None
+
+        cx_print(f"Analyzing impact of removing '{package}'...", "info")
+        try:
+            return analyzer.analyze(package)
+        except Exception as e:
+            self._print_error(f"Impact analysis failed: {e}")
+            if self.verbose:
+                import traceback
+
+                traceback.print_exc()
+            return None
+
+    def _check_package_not_found(self, result) -> bool:
+        """Check if package doesn't exist in repos and print warnings."""
+        if result.warnings and "not found in repositories" in str(result.warnings):
+            for warning in result.warnings:
+                cx_print(warning, "warning")
+            for rec in result.recommendations:
+                cx_print(rec, "info")
+            return True
+        return False
+
+    def _output_impact_result(self, result, json_output: bool) -> None:
+        """Output the impact result in JSON or rich format."""
+        if json_output:
+            import json as json_module
+
+            data = {
+                "target_package": result.target_package,
+                "direct_dependents": result.direct_dependents,
+                "transitive_dependents": result.transitive_dependents,
+                "affected_services": [
+                    {
+                        "name": s.name,
+                        "status": s.status.value,
+                        "package": s.package,
+                        "is_critical": s.is_critical,
+                    }
+                    for s in result.affected_services
+                ],
+                "orphaned_packages": result.orphaned_packages,
+                "cascade_packages": result.cascade_packages,
+                "severity": result.severity.value,
+                "total_affected": result.total_affected,
+                "cascade_depth": result.cascade_depth,
+                "recommendations": result.recommendations,
+                "warnings": result.warnings,
+                "safe_to_remove": result.safe_to_remove,
+            }
+            console.print(json_module.dumps(data, indent=2))
+        else:
+            self._display_impact_report(result)
+
+    def _can_proceed_with_removal(
+        self, result, force: bool, args, package: str, purge: bool
+    ) -> bool:
+        """Check safety and get user confirmation. Returns True if can proceed."""
+        if not result.safe_to_remove and not force:
+            return False
+
+        skip_confirm = getattr(args, "yes", False)
+        if skip_confirm:
+            return True
+
+        return self._confirm_removal(package, purge)
+
+    def _confirm_removal(self, package: str, purge: bool) -> bool:
+        """Prompt user for removal confirmation."""
+        console.print()
+        confirm_msg = f"Remove '{package}'"
+        if purge:
+            confirm_msg += " and purge configuration"
+        confirm_msg += "? [y/N]: "
+        try:
+            response = input(confirm_msg).strip().lower()
+            return response in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return False
+
+    def _removal_blocked_or_cancelled(self, result, force: bool) -> int:
+        """Handle blocked or cancelled removal."""
+        if not result.safe_to_remove and not force:
+            console.print()
+            self._print_error(
+                "Package removal has high impact. Use --force to proceed anyway, "
+                "or address the recommendations first."
+            )
+            return 1
+        cx_print("Removal cancelled", "info")
+        return 0
+
+    def _display_impact_report(self, result: ImpactResult) -> None:
+        """Display formatted impact analysis report"""
+        from rich.panel import Panel
+        from rich.table import Table
+
+        # Severity styling
+        severity_styles = {
+            ImpactSeverity.SAFE: ("green", "✅"),
+            ImpactSeverity.LOW: ("green", "💚"),
+            ImpactSeverity.MEDIUM: ("yellow", "🟡"),
+            ImpactSeverity.HIGH: ("orange1", "🟠"),
+            ImpactSeverity.CRITICAL: ("red", "🔴"),
+        }
+        style, icon = severity_styles.get(result.severity, ("white", "❓"))
+
+        # Header
+        console.print()
+        console.print(
+            Panel(f"[bold]{icon} Impact Analysis: {result.target_package}[/bold]", style=style)
+        )
+
+        # Display sections
+        self._display_warnings(result.warnings)
+        self._display_package_list(result.direct_dependents, "cyan", "📦 Direct dependents", 10)
+        self._display_services(result.affected_services)
+        self._display_summary_table(result, style, Table)
+        self._display_package_list(result.cascade_packages, "yellow", "🗑️  Cascade removal", 5)
+        self._display_package_list(result.orphaned_packages, "white", "👻 Would become orphaned", 5)
+        self._display_recommendations(result.recommendations)
+
+        # Final verdict
+        console.print()
+        if result.safe_to_remove:
+            console.print("[bold green]✅ Safe to remove[/bold green]")
+        else:
+            console.print("[bold yellow]⚠️  Review recommendations before proceeding[/bold yellow]")
+
+    def _display_warnings(self, warnings: list) -> None:
+        """Display warnings with appropriate styling."""
+        for warning in warnings:
+            if "not currently installed" in warning:
+                console.print(f"\n[bold yellow]ℹ️  {warning}[/bold yellow]")
+                console.print("[dim]   Showing potential impact analysis for this package.[/dim]")
+            else:
+                console.print(f"\n[bold red]⚠️  {warning}[/bold red]")
+
+    def _display_package_list(self, packages: list, color: str, title: str, limit: int) -> None:
+        """Display a list of packages with truncation."""
+        if packages:
+            console.print(f"\n[bold {color}]{title} ({len(packages)}):[/bold {color}]")
+            for pkg in packages[:limit]:
+                console.print(f"   • {pkg}")
+            if len(packages) > limit:
+                console.print(f"   [dim]... and {len(packages) - limit} more[/dim]")
+        elif "dependents" in title:
+            console.print(f"\n[bold {color}]{title}:[/bold {color}] None")
+
+    def _display_services(self, services: list) -> None:
+        """Display affected services."""
+        if services:
+            console.print(f"\n[bold magenta]🔧 Affected services ({len(services)}):[/bold magenta]")
+            for service in services:
+                status_icon = "🟢" if service.status == ServiceStatus.RUNNING else "⚪"
+                critical_marker = " [red][CRITICAL][/red]" if service.is_critical else ""
+                console.print(f"   {status_icon} {service.name}{critical_marker}")
+        else:
+            console.print("\n[bold magenta]🔧 Affected services:[/bold magenta] None")
+
+    def _display_summary_table(self, result, style: str, table_class) -> None:
+        """Display the impact summary table."""
+        summary_table = table_class(show_header=False, box=None, padding=(0, 2))
+        summary_table.add_column("Metric", style="dim")
+        summary_table.add_column("Value")
+        summary_table.add_row("Total packages affected", str(result.total_affected))
+        summary_table.add_row("Cascade depth", str(result.cascade_depth))
+        summary_table.add_row("Services at risk", str(len(result.affected_services)))
+        summary_table.add_row("Severity", f"[{style}]{result.severity.value.upper()}[/{style}]")
+        console.print("\n[bold]📊 Impact Summary:[/bold]")
+        console.print(summary_table)
+
+    def _display_recommendations(self, recommendations: list) -> None:
+        """Display recommendations."""
+        if recommendations:
+            console.print("\n[bold green]💡 Recommendations:[/bold green]")
+            for rec in recommendations:
+                console.print(f"   • {rec}")
+
+    def _execute_removal(self, package: str, purge: bool = False) -> int:
+        """Execute the actual package removal with audit logging"""
+        import datetime
+        import subprocess
+
+        cx_print(f"Removing '{package}'...", "info")
+
+        # Initialize history for audit logging
+        history = InstallationHistory()
+        start_time = datetime.datetime.now()
+        operation_type = InstallationType.PURGE if purge else InstallationType.REMOVE
+
+        # Build removal command (with -y since user already confirmed)
+        if purge:
+            cmd = ["sudo", "apt-get", "purge", "-y", package]
+        else:
+            cmd = ["sudo", "apt-get", "remove", "-y", package]
+
+        # Record the operation start
+        try:
+            install_id = history.record_installation(
+                operation_type=operation_type,
+                packages=[package],
+                commands=[" ".join(cmd)],
+                start_time=start_time,
+            )
+        except Exception as e:
+            self._debug(f"Failed to record installation start: {e}")
+            install_id = None
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+            if result.returncode == 0:
+                self._print_success(f"'{package}' removed successfully")
+
+                # Record successful removal
+                if install_id:
+                    try:
+                        history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    except Exception as e:
+                        self._debug(f"Failed to update installation record: {e}")
+
+                # Run autoremove to clean up orphaned packages
+                console.print()
+                cx_print("Running autoremove to clean up orphaned packages...", "info")
+                autoremove_cmd = ["sudo", "apt-get", "autoremove", "-y"]
+                autoremove_start = datetime.datetime.now()
+
+                # Record autoremove operation start
+                autoremove_id = None
+                try:
+                    autoremove_id = history.record_installation(
+                        operation_type=InstallationType.REMOVE,
+                        packages=[f"{package}-autoremove"],
+                        commands=[" ".join(autoremove_cmd)],
+                        start_time=autoremove_start,
+                    )
+                except Exception as e:
+                    self._debug(f"Failed to record autoremove start: {e}")
+
+                try:
+                    autoremove_result = subprocess.run(
+                        autoremove_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+
+                    if autoremove_result.returncode == 0:
+                        cx_print("Cleanup complete", "success")
+                        if autoremove_id:
+                            try:
+                                history.update_installation(
+                                    autoremove_id, InstallationStatus.SUCCESS
+                                )
+                            except Exception as e:
+                                self._debug(f"Failed to update autoremove record: {e}")
+                    else:
+                        cx_print("Autoremove completed with warnings", "warning")
+                        if autoremove_id:
+                            try:
+                                history.update_installation(
+                                    autoremove_id,
+                                    InstallationStatus.FAILED,
+                                    error_message=(
+                                        autoremove_result.stderr[:500]
+                                        if autoremove_result.stderr
+                                        else "Autoremove returned non-zero exit code"
+                                    ),
+                                )
+                            except Exception as e:
+                                self._debug(f"Failed to update autoremove record: {e}")
+                except subprocess.TimeoutExpired:
+                    cx_print("Autoremove timed out", "warning")
+                    if autoremove_id:
+                        try:
+                            history.update_installation(
+                                autoremove_id,
+                                InstallationStatus.FAILED,
+                                error_message="Autoremove timed out after 300 seconds",
+                            )
+                        except Exception:
+                            pass
+                except Exception as e:
+                    cx_print(f"Autoremove failed: {e}", "warning")
+                    if autoremove_id:
+                        try:
+                            history.update_installation(
+                                autoremove_id,
+                                InstallationStatus.FAILED,
+                                error_message=str(e)[:500],
+                            )
+                        except Exception:
+                            pass
+
+                return 0
+            else:
+                self._print_error(f"Removal failed: {result.stderr}")
+                # Record failed removal
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id,
+                            InstallationStatus.FAILED,
+                            error_message=result.stderr[:500],
+                        )
+                    except Exception as e:
+                        self._debug(f"Failed to update installation record: {e}")
+                return 1
+
+        except subprocess.TimeoutExpired:
+            self._print_error("Removal timed out")
+            # Record timeout failure
+            if install_id:
+                try:
+                    history.update_installation(
+                        install_id,
+                        InstallationStatus.FAILED,
+                        error_message="Operation timed out after 300 seconds",
+                    )
+                except Exception:
+                    pass
+            return 1
+        except Exception as e:
+            self._print_error(f"Removal failed: {e}")
+            # Record exception failure
+            if install_id:
+                try:
+                    history.update_installation(
+                        install_id,
+                        InstallationStatus.FAILED,
+                        error_message=str(e)[:500],
+                    )
+                except Exception:
+                    pass
             return 1
 
     def cache_stats(self) -> int:
@@ -2469,6 +2855,7 @@ def show_rich_help():
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
     table.add_row("install <pkg>", "Install software")
+    table.add_row("remove <pkg>", "Remove packages with impact analysis")
     table.add_row("import <file>", "Import deps from package files")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
@@ -2569,7 +2956,7 @@ def main():
     )
 
     # Provide an option to skip the manual confirmation prompt
-    perm_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    perm_parser.add_argument("--yes", "-y", action="store_true", help=HELP_SKIP_CONFIRM)
 
     perm_parser.add_argument(
         "--execute", "-e", action="store_true", help="Apply ownership changes (default: dry-run)"
@@ -2638,6 +3025,47 @@ def main():
         "--parallel",
         action="store_true",
         help="Enable parallel execution for multi-step installs",
+    )
+
+    # Remove command - uninstall with impact analysis
+    remove_parser = subparsers.add_parser(
+        "remove",
+        help="Remove packages with impact analysis",
+        description="Analyze and remove packages safely with dependency impact analysis.",
+    )
+    remove_parser.add_argument("package", type=str, help="Package to remove")
+    remove_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=True,
+        help="Show impact analysis without removing (default)",
+    )
+    remove_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually remove the package after analysis",
+    )
+    remove_parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Also remove configuration files",
+    )
+    remove_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force removal even if impact is high",
+    )
+    remove_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help=HELP_SKIP_CONFIRM,
+    )
+    remove_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output impact analysis as JSON",
     )
 
     # Import command - import dependencies from package manager files
@@ -2770,9 +3198,7 @@ def main():
     sandbox_promote_parser.add_argument(
         "--dry-run", action="store_true", help="Show command without executing"
     )
-    sandbox_promote_parser.add_argument(
-        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
-    )
+    sandbox_promote_parser.add_argument("-y", "--yes", action="store_true", help=HELP_SKIP_CONFIRM)
 
     # sandbox cleanup <name> [--force]
     sandbox_cleanup_parser = sandbox_subs.add_parser("cleanup", help="Remove a sandbox environment")
@@ -3171,6 +3597,11 @@ def main():
                 dry_run=args.dry_run,
                 parallel=args.parallel,
             )
+        elif args.command == "remove":
+            # Handle --execute flag to override default dry-run
+            if args.execute:
+                args.dry_run = False
+            return cli.remove(args)
         elif args.command == "import":
             return cli.import_deps(args)
         elif args.command == "history":
