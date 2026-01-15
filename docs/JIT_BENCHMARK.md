@@ -8,11 +8,9 @@ As Cortex moves toward supporting modern Python features, this suite provides de
 
 ## 🛠 Command Reference
 
-The suite is fully integrated into the `cortex` CLI. Use the following commands to manage and run your benchmarks.
+### 1. Environment Information
 
-### 1. Environment Status
-
-Check if your current system supports JIT and verify if it is currently active.
+Show Python JIT status and system compatibility.
 
 ```bash
 cortex jit-benchmark info
@@ -20,36 +18,27 @@ cortex jit-benchmark info
 
 ### 2. Available Tests
 
-List the specific benchmark categories available for execution.
+List all specific benchmark categories supported by the current version.
 
 ```bash
 cortex jit-benchmark list
 ```
 
-### 3. Execution
+### 3. Running Benchmarks
 
-Run the full suite or target specific operations.
+The `run` subcommand supports several parameters for granular testing:
 
-```bash
-# Run all benchmarks with default (100) iterations
-cortex jit-benchmark run
-
-# Run a specific benchmark (cli, parse, cache, or stream)
-cortex jit-benchmark run -b cache
-
-# Customize precision with iterations
-cortex jit-benchmark run -i 500
-
-# Export results for comparison
-cortex jit-benchmark run -o baseline_results.json
-```
+- **Default Run**: `cortex jit-benchmark run`
+- **Custom Iterations**: `cortex jit-benchmark run --iterations 50`
+- **Specific Category**: `cortex jit-benchmark run --benchmark cli` (Choices: `cli`, `parse`, `cache`, `stream`)
+- **Export Data**: `cortex jit-benchmark run --output results.json`
 
 ### 4. Comparison
 
-Compare two sets of results (e.g., Baseline vs. JIT) to calculate speedup percentages.
+Compare a baseline result against a JIT-enabled result.
 
 ```bash
-cortex jit-benchmark compare --baseline baseline.json --jit jit_enabled.json
+cortex jit-benchmark compare --baseline base.json --jit enabled.json
 ```
 
 ---

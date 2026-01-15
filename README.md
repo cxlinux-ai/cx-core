@@ -183,10 +183,14 @@ cortex role set <slug>
 Measure the speed impact of Python's new JIT compiler on Cortex:
 
 ```bash
-# Run all benchmarks
-cortex jit-benchmark run
+# Check status and list tests
+cortex jit-benchmark info
+cortex jit-benchmark list
 
-# Compare a non-JIT baseline with a JIT-enabled run
+# Run with custom iterations and export
+cortex jit-benchmark run --iterations 50 --output results.json
+
+# Compare results
 cortex jit-benchmark compare --baseline base.json --jit enabled.json
 ```
 
@@ -200,7 +204,7 @@ cortex jit-benchmark compare --baseline base.json --jit enabled.json
 | `cortex docker permissions` | Fix file ownership for Docker bind mounts |
 | `cortex role detect` | Automatically identifies the system's purpose |
 | `cortex role set <slug>` | Manually declare a system role |
-| `cortex jit-benchmark` | Run Python 3.13+ JIT performance benchmarks |
+| `cortex jit-benchmark <subcommand>` | Run, compare, and analyze Python 3.13+ JIT performance benchmarks |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
