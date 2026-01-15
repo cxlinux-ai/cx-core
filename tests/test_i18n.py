@@ -232,6 +232,118 @@ class TestLanguageConfig(unittest.TestCase):
 
         reset_translator()
 
+    def test_malformed_yaml_returns_empty_dict(self):
+        """Test that malformed YAML in preferences file returns empty dict and doesn't crash."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create malformed YAML file
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("invalid: yaml: content: [broken")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
+    def test_empty_yaml_file_returns_empty_dict(self):
+        """Test that empty preferences file returns empty dict."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create empty file
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
+    def test_whitespace_only_yaml_file_returns_empty_dict(self):
+        """Test that whitespace-only preferences file returns empty dict."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create whitespace-only file
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("   \n\t\n  ")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
+    def test_invalid_type_in_yaml_returns_empty_dict(self):
+        """Test that YAML with invalid root type (not dict) returns empty dict."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create YAML file with list instead of dict
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("- item1\n- item2\n- item3")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
+    def test_yaml_with_string_root_returns_empty_dict(self):
+        """Test that YAML with string root type returns empty dict."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create YAML file with just a string
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("just a plain string")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
+    def test_yaml_with_invalid_language_type_uses_default(self):
+        """Test that YAML with non-string language value uses default."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create YAML file with integer language
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("language: 123")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
+    def test_yaml_with_null_language_uses_default(self):
+        """Test that YAML with null language value uses default."""
+        with patch("pathlib.Path.home", return_value=self.temp_home):
+            from cortex.i18n.config import LanguageConfig
+
+            config = LanguageConfig()
+
+            # Create YAML file with null language
+            prefs_file = self.temp_home / ".cortex" / "preferences.yaml"
+            prefs_file.parent.mkdir(parents=True, exist_ok=True)
+            prefs_file.write_text("language: null")
+
+            # Should not crash, should return default language
+            lang = config.get_language()
+            self.assertEqual(lang, "en")
+
     def test_get_language_default(self):
         """Test default language when no preference is set."""
         with patch("pathlib.Path.home", return_value=self.temp_home):
@@ -897,6 +1009,24 @@ class TestResolveLanguageName(unittest.TestCase):
         self.assertIsNone(_resolve_language_name("Japanese"))
         self.assertIsNone(_resolve_language_name("invalid"))
         self.assertIsNone(_resolve_language_name(""))
+
+    def test_resolve_non_latin_scripts_no_collision(self):
+        """Test that non-Latin scripts don't create key collisions."""
+        from cortex.cli import _resolve_language_name
+
+        # Chinese should resolve correctly
+        self.assertEqual(_resolve_language_name("中文"), "zh")
+
+        # Different non-Latin strings should not collide
+        self.assertIsNone(_resolve_language_name("日本語"))  # Japanese
+        self.assertIsNone(_resolve_language_name("한국어"))  # Korean
+
+    def test_resolve_mixed_case_non_latin(self):
+        """Test that non-Latin scripts are matched exactly."""
+        from cortex.cli import _resolve_language_name
+
+        # Non-Latin script should work exactly as-is
+        self.assertEqual(_resolve_language_name("中文"), "zh")
 
     def test_resolve_with_whitespace(self):
         """Test that whitespace is handled."""

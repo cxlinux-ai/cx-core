@@ -84,6 +84,52 @@ cli:
 config:
   missing_subcommand: "请指定子命令 (language/show)"
   unknown_action: "未知的配置操作: {action}"
+  header: "Cortex 配置"
+  language_label: "语言"
+  source_label: "来源"
+  llm_provider_label: "LLM 提供商"
+  config_paths_label: "配置路径"
+  preferences_path: "偏好设置"
+  history_path: "历史记录"
+  use_command_hint: "使用: cortex config language <代码> 更改语言"
+  list_hint: "使用: cortex config language --list 查看详情"
+  code_label: "代码"
+  
+# =============================================================================
+# UI标签（界面中常用的标签）
+# =============================================================================
+ui:
+  operation_cancelled: "操作已取消"
+  error_prefix: "错误"
+  promotion_cancelled: "推广已取消"
+  install_required_sdk: "安装所需的SDK或使用 CORTEX_PROVIDER=ollama"
+  would_run: "将执行"
+  note_add_persist: "注意: 添加 --persist 使其永久生效"
+  install_with_pip: "使用以下命令安装: pip install {package}"
+  no_variables_found: "未找到 '{app}' 的环境变量"
+  no_variables_to_export: "没有可导出的 '{app}' 环境变量"
+  no_variables_imported: "未导入任何变量"
+  no_env_data_found: "未找到 '{app}' 的环境数据"
+  no_applications_found: "没有存储环境的应用程序"
+  no_variables_to_load: "没有可加载的 '{app}' 变量"
+  fix_path_duplicates: "运行 'cortex env path dedupe' 修复PATH重复项"
+  usage_env_import: "用法: cortex env import <应用> <文件>"
+  use_template_details: "使用 'cortex env template show <名称>' 查看详情"
+  scanning_directory: "正在扫描目录..."
+  no_dependency_files: "当前目录未找到依赖文件"
+  no_packages_found: "文件中未找到软件包"
+  no_packages_in_deps: "依赖文件中未找到软件包"
+  no_install_commands: "未生成安装命令"
+  install_with_execute: "要安装所有软件包，请使用 --execute 标志运行"
+  example_import: "示例: cortex import {file_path} --execute"
+  example_import_all: "示例: cortex import --all --execute"
+  installation_cancelled: "安装已取消"
+  
+# =============================================================================
+# 语言配置（附加键）
+# =============================================================================
+language:
+  set_failed: "设置语言失败: {error}"
     
 # =============================================================================
 # 安装
@@ -153,11 +199,18 @@ sandbox:
   
   test_passed: "测试通过"
   test_failed: "测试失败"
+  all_tests_passed: "所有测试通过"
   tests_summary: "{passed}/{total}个测试通过"
   
   docker_required: "沙箱命令需要Docker"
+  docker_only_for_sandbox: "Docker仅用于沙箱命令。"
   not_found: "未找到沙箱"
   already_exists: "沙箱已存在"
+  no_sandboxes: "未找到沙箱环境"
+  create_hint: "使用以下命令创建: cortex sandbox create <名称>"
+  list_hint: "使用 'cortex sandbox list' 查看可用沙箱。"
+  
+  promote_package: "正在主系统上安装 '{package}'..."
   
 # =============================================================================
 # 历史
@@ -217,6 +270,7 @@ wizard:
   api_key_prompt: "请输入您的API密钥"
   api_key_saved: "API密钥保存成功"
   api_key_invalid: "API密钥格式无效"
+  export_api_key_hint: "请在shell配置文件中导出您的API密钥。"
   
   select_provider: "选择您的LLM提供商"
   provider_anthropic: "Anthropic (Claude)"

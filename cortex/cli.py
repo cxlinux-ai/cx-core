@@ -1449,17 +1449,17 @@ class CortexCLI:
             stats = cache.stats()
             hit_rate = f"{stats.hit_rate * 100:.1f}%" if stats.total else "0.0%"
 
-            cx_header("Cache Stats")
-            cx_print(f"Hits: {stats.hits}", "info")
-            cx_print(f"Misses: {stats.misses}", "info")
-            cx_print(f"Hit rate: {hit_rate}", "info")
-            cx_print(f"Saved calls (approx): {stats.hits}", "info")
+            cx_header(t("cache.stats_header"))
+            cx_print(f"{t('cache.hits')}: {stats.hits}", "info")
+            cx_print(f"{t('cache.misses')}: {stats.misses}", "info")
+            cx_print(f"{t('cache.hit_rate')}: {hit_rate}", "info")
+            cx_print(f"{t('cache.saved_calls')}: {stats.hits}", "info")
             return 0
         except (ImportError, OSError) as e:
-            self._print_error(f"Unable to read cache stats: {e}")
+            self._print_error(t("cache.read_error", error=str(e)))
             return 1
         except Exception as e:
-            self._print_error(f"Unexpected error reading cache stats: {e}")
+            self._print_error(t("cache.unexpected_error", error=str(e)))
             if self.verbose:
                 import traceback
 
@@ -1562,34 +1562,42 @@ class CortexCLI:
             cx_print(t("language.changed", language=lang_info["native"]), "success")
             return 0
         except (ValueError, RuntimeError) as e:
-            self._print_error(f"Failed to set language: {e}")
+            self._print_error(t("language.set_failed", error=str(e)))
             return 1
 
     def _config_show(self) -> int:
         """Show all current configuration."""
-        cx_header("Cortex Configuration")
+        cx_header(t("config.header"))
 
         # Language
         lang_config = LanguageConfig()
         lang_info = lang_config.get_language_info()
-        console.print("[bold]Language:[/bold]")
+        console.print(f"[bold]{t('config.language_label')}:[/bold]")
         console.print(
             f"  {lang_info['name']} ({lang_info['native_name']}) "
             f"[dim][{lang_info['language']}][/dim]"
         )
-        console.print(f"  [dim]Source: {lang_info['source']}[/dim]")
+        # Translate the source identifier to user-friendly text
+        source_translations = {
+            "environment": t("language.set_from_env"),
+            "config": t("language.set_from_config"),
+            "auto-detected": t("language.auto_detected"),
+            "default": t("language.default"),
+        }
+        source_display = source_translations.get(lang_info["source"], lang_info["source"])
+        console.print(f"  [dim]{t('config.source_label')}: {source_display}[/dim]")
         console.print()
 
         # API Provider
         provider = self._get_provider()
-        console.print("[bold]LLM Provider:[/bold]")
+        console.print(f"[bold]{t('config.llm_provider_label')}:[/bold]")
         console.print(f"  {provider}")
         console.print()
 
         # Config paths
-        console.print("[bold]Config Paths:[/bold]")
-        console.print("  Preferences: ~/.cortex/preferences.yaml")
-        console.print("  History: ~/.cortex/history.db")
+        console.print(f"[bold]{t('config.config_paths_label')}:[/bold]")
+        console.print(f"  {t('config.preferences_path')}: ~/.cortex/preferences.yaml")
+        console.print(f"  {t('config.history_path')}: ~/.cortex/history.db")
         console.print()
 
         return 0
@@ -2963,6 +2971,31 @@ class CortexCLI:
     # --------------------------
 
 
+def _is_ascii(s: str) -> bool:
+    """Check if a string contains only ASCII characters."""
+    try:
+        s.encode("ascii")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def _normalize_for_lookup(s: str) -> str:
+    """
+    Normalize a string for lookup, handling Latin and non-Latin scripts differently.
+
+    For ASCII/Latin text: lowercase for case-insensitive matching
+    For non-Latin text (e.g., 中文): keep unchanged to preserve meaning
+
+    This prevents issues like:
+    - "中文".lower() producing the same string but creating duplicate keys
+    - Meaningless normalization of non-Latin scripts
+    """
+    if _is_ascii(s):
+        return s.lower()
+    return s
+
+
 def _resolve_language_name(name: str) -> str | None:
     """
     Resolve a language name or code to a supported language code.
@@ -2977,27 +3010,45 @@ def _resolve_language_name(name: str) -> str | None:
 
     Returns:
         Language code if found, None otherwise
-    """
-    # Normalize input (lowercase for comparison, but keep original for native names)
-    name_lower = name.lower().strip()
 
-    # Direct code match
-    if name_lower in SUPPORTED_LANGUAGES:
-        return name_lower
+    Note:
+        Non-Latin scripts (e.g., Chinese 中文) are matched exactly without
+        case normalization, since .lower() is meaningless for these scripts
+        and could create key collisions.
+    """
+    name = name.strip()
+    name_normalized = _normalize_for_lookup(name)
+
+    # Direct code match (codes are always ASCII/lowercase)
+    if name_normalized in SUPPORTED_LANGUAGES:
+        return name_normalized
 
     # Build lookup tables for names
-    name_to_code = {}
-    for code, info in SUPPORTED_LANGUAGES.items():
-        # English names (case-insensitive)
-        name_to_code[info["name"].lower()] = code
-        # Native names (exact match for non-Latin scripts, case-insensitive for Latin)
-        native = info["native"]
-        name_to_code[native.lower()] = code
-        name_to_code[native] = code  # Also exact match
+    # Using a list of tuples to handle potential key collisions properly
+    name_to_code: dict[str, str] = {}
 
-    # Try to find a match
-    if name_lower in name_to_code:
-        return name_to_code[name_lower]
+    for code, info in SUPPORTED_LANGUAGES.items():
+        english_name = info["name"]
+        native_name = info["native"]
+
+        # English names are always ASCII, safe to lowercase
+        name_to_code[english_name.lower()] = code
+
+        # Native names: normalize only if ASCII (Latin scripts like Español, Français)
+        # For non-Latin scripts (中文), store as-is only
+        native_normalized = _normalize_for_lookup(native_name)
+        name_to_code[native_normalized] = code
+
+        # Also store original native name for exact match
+        # (handles case where user types exactly "Español" with correct accent)
+        if native_name != native_normalized:
+            name_to_code[native_name] = code
+
+    # Try to find a match using normalized input
+    if name_normalized in name_to_code:
+        return name_to_code[name_normalized]
+
+    # Try exact match for non-ASCII input
     if name in name_to_code:
         return name_to_code[name]
 
@@ -3041,7 +3092,7 @@ def _handle_set_language(language_input: str) -> int:
         cx_print(t("language.changed", language=lang_info["native"]), "success")
         return 0
     except Exception as e:
-        cx_print(f"Failed to set language: {e}", "error")
+        cx_print(t("language.set_failed", error=str(e)), "error")
         return 1
 
 

@@ -8,7 +8,23 @@ Provides locale-specific formatting for:
 - Durations
 """
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Any
+
+# =============================================================================
+# Time Constants
+# =============================================================================
+# These named constants replace magic numbers for improved readability
+# and maintainability. All values are in seconds.
+
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600  # 60 * 60
+SECONDS_PER_DAY = 86400  # 60 * 60 * 24
+SECONDS_PER_WEEK = 604800  # 60 * 60 * 24 * 7
+SECONDS_PER_MONTH = 2592000  # 60 * 60 * 24 * 30 (approximate)
+SECONDS_PER_YEAR = 31536000  # 60 * 60 * 24 * 365 (approximate)
 
 # Language-specific formatting configurations
 LOCALE_CONFIGS = {
@@ -174,7 +190,7 @@ class LocaleFormatter:
         else:
             self._language = "en"
 
-    def _get_config(self) -> dict:
+    def _get_config(self) -> dict[str, Any]:
         """Get the locale configuration for the current language."""
         return LOCALE_CONFIGS.get(self._language, LOCALE_CONFIGS["en"])
 
@@ -306,25 +322,25 @@ class LocaleFormatter:
 
         if seconds < 5:
             return time_ago["just_now"]
-        elif seconds < 60:
+        elif seconds < SECONDS_PER_MINUTE:
             return time_ago["second"] if seconds == 1 else time_ago["seconds"].format(n=seconds)
-        elif seconds < 3600:
-            minutes = seconds // 60
+        elif seconds < SECONDS_PER_HOUR:
+            minutes = seconds // SECONDS_PER_MINUTE
             return time_ago["minute"] if minutes == 1 else time_ago["minutes"].format(n=minutes)
-        elif seconds < 86400:
-            hours = seconds // 3600
+        elif seconds < SECONDS_PER_DAY:
+            hours = seconds // SECONDS_PER_HOUR
             return time_ago["hour"] if hours == 1 else time_ago["hours"].format(n=hours)
-        elif seconds < 604800:
-            days = seconds // 86400
+        elif seconds < SECONDS_PER_WEEK:
+            days = seconds // SECONDS_PER_DAY
             return time_ago["day"] if days == 1 else time_ago["days"].format(n=days)
-        elif seconds < 2592000:
-            weeks = seconds // 604800
+        elif seconds < SECONDS_PER_MONTH:
+            weeks = seconds // SECONDS_PER_WEEK
             return time_ago["week"] if weeks == 1 else time_ago["weeks"].format(n=weeks)
-        elif seconds < 31536000:
-            months = seconds // 2592000
+        elif seconds < SECONDS_PER_YEAR:
+            months = seconds // SECONDS_PER_MONTH
             return time_ago["month"] if months == 1 else time_ago["months"].format(n=months)
         else:
-            years = seconds // 31536000
+            years = seconds // SECONDS_PER_YEAR
             return time_ago["year"] if years == 1 else time_ago["years"].format(n=years)
 
     def format_duration(self, seconds: float) -> str:
@@ -339,15 +355,15 @@ class LocaleFormatter:
         """
         if seconds < 1:
             return f"{seconds * 1000:.0f}ms"
-        elif seconds < 60:
+        elif seconds < SECONDS_PER_MINUTE:
             return f"{seconds:.1f}s"
-        elif seconds < 3600:
-            minutes = int(seconds // 60)
-            secs = int(seconds % 60)
+        elif seconds < SECONDS_PER_HOUR:
+            minutes = int(seconds // SECONDS_PER_MINUTE)
+            secs = int(seconds % SECONDS_PER_MINUTE)
             return f"{minutes}m {secs}s" if secs > 0 else f"{minutes}m"
         else:
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
+            hours = int(seconds // SECONDS_PER_HOUR)
+            minutes = int((seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE)
             return f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
 
 

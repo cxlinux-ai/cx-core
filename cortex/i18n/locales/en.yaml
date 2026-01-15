@@ -55,6 +55,8 @@ language:
   select_prompt: "Select a language"
   # {language} - language name
   switched_to: "Switched to {language}"
+  # {error} - error message
+  set_failed: "Failed to set language: {error}"
   
 # =============================================================================
 # CLI commands
@@ -101,6 +103,58 @@ cli:
 config:
   missing_subcommand: "Please specify a subcommand (language/show)"
   unknown_action: "Unknown config action: {action}"
+  header: "Cortex Configuration"
+  language_label: "Language"
+  source_label: "Source"
+  llm_provider_label: "LLM Provider"
+  config_paths_label: "Config Paths"
+  preferences_path: "Preferences"
+  history_path: "History"
+  use_command_hint: "Use: cortex config language <code> to change"
+  list_hint: "Use: cortex config language --list for details"
+  code_label: "Code"
+  
+# =============================================================================
+# Cache statistics
+# =============================================================================
+cache:
+  stats_header: "Cache Stats"
+  hits: "Hits"
+  misses: "Misses"
+  hit_rate: "Hit rate"
+  saved_calls: "Saved calls (approx)"
+  read_error: "Unable to read cache stats: {error}"
+  unexpected_error: "Unexpected error reading cache stats: {error}"
+  
+# =============================================================================
+# UI Labels (common labels used throughout the interface)
+# =============================================================================
+ui:
+  operation_cancelled: "Operation cancelled"
+  error_prefix: "Error"
+  promotion_cancelled: "Promotion cancelled"
+  install_required_sdk: "Install required SDK or use CORTEX_PROVIDER=ollama"
+  would_run: "Would run"
+  note_add_persist: "Note: Add --persist to make this permanent"
+  install_with_pip: "Install with: pip install {package}"
+  no_variables_found: "No environment variables set for '{app}'"
+  no_variables_to_export: "No environment variables to export for '{app}'"
+  no_variables_imported: "No variables imported"
+  no_env_data_found: "No environment data found for '{app}'"
+  no_applications_found: "No applications with stored environments"
+  no_variables_to_load: "No variables to load for '{app}'"
+  fix_path_duplicates: "Run 'cortex env path dedupe' to fix PATH duplicates"
+  usage_env_import: "Usage: cortex env import <app> <file>"
+  use_template_details: "Use 'cortex env template show <name>' for details"
+  scanning_directory: "Scanning directory..."
+  no_dependency_files: "No dependency files found in current directory"
+  no_packages_found: "No packages found in file"
+  no_packages_in_deps: "No packages found in dependency files"
+  no_install_commands: "No install commands generated"
+  install_with_execute: "To install all packages, run with --execute flag"
+  example_import: "Example: cortex import {file_path} --execute"
+  example_import_all: "Example: cortex import --all --execute"
+  installation_cancelled: "Installation cancelled"
     
 # =============================================================================
 # Installation
@@ -179,6 +233,7 @@ sandbox:
   usage: "Usage: cortex sandbox <command> [options]"
   commands_header: "Commands"
   example_workflow: "Example workflow"
+  environments_header: "Sandbox Environments"
   
   # Actions
   # {name} - sandbox name
@@ -187,6 +242,7 @@ sandbox:
   # {package}, {name} - package and sandbox names
   installing: "Installing '{package}' in sandbox '{name}'..."
   installed_in_sandbox: "{package} installed in sandbox"
+  installed_main_system: "{package} installed on main system"
   # {name} - sandbox name
   testing: "Running tests in sandbox '{name}'..."
   # {name} - sandbox name
@@ -196,13 +252,23 @@ sandbox:
   # Results
   test_passed: "Test passed"
   test_failed: "Test failed"
+  all_tests_passed: "All tests passed"
   # {passed}, {total} - test counts
   tests_summary: "{passed}/{total} tests passed"
   
   # Errors
   docker_required: "Docker is required for sandbox commands"
+  docker_only_for_sandbox: "Docker is required only for sandbox commands."
   not_found: "Sandbox not found"
   already_exists: "Sandbox already exists"
+  no_sandboxes: "No sandbox environments found"
+  create_hint: "Create one with: cortex sandbox create <name>"
+  list_hint: "Use 'cortex sandbox list' to see available sandboxes."
+  
+  # Promotion
+  promote_package: "Installing '{package}' on main system..."
+  promotion_cancelled: "Promotion cancelled"
+  would_run: "Would run: {command}"
   
 # =============================================================================
 # History
@@ -274,6 +340,7 @@ wizard:
   api_key_prompt: "Enter your API key"
   api_key_saved: "API key saved successfully"
   api_key_invalid: "Invalid API key format"
+  export_api_key_hint: "Please export your API key in your shell profile."
   
   # Provider selection
   select_provider: "Select your LLM provider"
@@ -284,6 +351,57 @@ wizard:
   # Completion
   setup_complete: "Setup complete!"
   ready_message: "Cortex is ready to use"
+
+# =============================================================================
+# Docker permissions
+# =============================================================================
+docker:
+  scanning_permissions: "Scanning for Docker-related permission issues..."
+  operation_cancelled: "Operation cancelled"
+  permissions_fixed: "Permissions fixed successfully!"
+  permission_check_failed: "Permission check failed: {error}"
+
+# =============================================================================
+# Roles
+# =============================================================================
+role:
+  sensing_context: "AI is sensing system context and activity patterns..."
+  set_success: "Role set to: {role}"
+  persist_failed: "Failed to persist role: {error}"
+  fetching_recommendations: "Fetching tailored AI recommendations for {role}..."
+
+# =============================================================================
+# Environment management (extended)
+# =============================================================================
+env:
+  audit_header: "Environment Audit"
+  config_files_scanned: "Config Files Scanned"
+  variables_found: "Environment Variables Found"
+  template_header: "Template: {name}"
+  templates_available: "Available Environment Templates"
+  applications_header: "Applications with Environments"
+  health_check_header: "Environment Health Check ({shell} shell)"
+  path_entries_header: "PATH Entries"
+  path_dedupe_header: "PATH Deduplication"
+  path_cleanup_header: "PATH Cleanup"
+  environment_header: "Environment: {app}"
+  encrypted_stored: "Variable encrypted and stored"
+  variable_set: "Environment variable set"
+  install_cryptography: "Install with: pip install cryptography"
+  write_file_failed: "Failed to write file: {error}"
+  read_file_failed: "Failed to read file: {error}"
+  apply_template_failed: "Failed to apply template '{name}'"
+  persist_failed: "Failed to persist: {error}"
+  persist_removal_failed: "Failed to persist removal: {error}"
+  
+  # PATH operations
+  path_added: "Added '{path}' to PATH"
+  path_removed: "Removed '{path}' from PATH"
+  path_already_exists: "'{path}' is already in PATH"
+  path_not_found: "'{path}' not found in PATH"
+  
+  # {path} - config file path
+  persist_note: "To use in current shell: source {path}"
   
 # =============================================================================
 # Notifications
@@ -360,6 +478,9 @@ errors:
   file_not_found: "File not found"
   invalid_input: "Invalid input"
   timeout: "Operation timed out"
+  failed_to: "Failed to {action}: {error}"
+  history_retrieve_failed: "Failed to retrieve history: {error}"
+  sdk_required: "Install required SDK or use CORTEX_PROVIDER=ollama"
   
 # =============================================================================
 # Progress indicators

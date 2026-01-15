@@ -8,11 +8,31 @@ Detects the system language from environment variables:
 - LANG
 """
 
+from __future__ import annotations
+
 import os
 import re
+from typing import TYPE_CHECKING
 
-# Supported language codes
-SUPPORTED_LANGUAGES = {"en", "es", "fr", "de", "zh"}
+if TYPE_CHECKING:
+    pass
+
+
+def _get_supported_language_codes() -> set[str]:
+    """
+    Get supported language codes from the single source of truth.
+
+    This dynamically derives language codes from SUPPORTED_LANGUAGES in translator.py,
+    eliminating duplication and ensuring consistency across the codebase.
+
+    Returns:
+        Set of supported language codes (e.g., {"en", "es", "fr", "de", "zh"})
+    """
+    # Import here to avoid circular import
+    from cortex.i18n.translator import SUPPORTED_LANGUAGES
+
+    return set(SUPPORTED_LANGUAGES.keys())
+
 
 # Extended language code mappings (handle variants)
 LANGUAGE_MAPPINGS = {
@@ -133,11 +153,11 @@ def detect_os_language() -> str:
         if var == "LANGUAGE":
             for lang_part in value.split(":"):
                 parsed = _parse_locale(lang_part)
-                if parsed and parsed in SUPPORTED_LANGUAGES:
+                if parsed and parsed in _get_supported_language_codes():
                     return parsed
         else:
             parsed = _parse_locale(value)
-            if parsed and parsed in SUPPORTED_LANGUAGES:
+            if parsed and parsed in _get_supported_language_codes():
                 return parsed
 
     # Default fallback
