@@ -43,7 +43,6 @@ FEATURE_REQUIREMENTS = {
     "parallel_ops": FeatureTier.PRO,
     "priority_support": FeatureTier.PRO,
     "usage_analytics": FeatureTier.PRO,
-
     # Enterprise features ($99/month)
     "sso": FeatureTier.ENTERPRISE,
     "ldap": FeatureTier.ENTERPRISE,
@@ -183,12 +182,15 @@ def require_feature(feature_name: str):
     Raises:
         FeatureNotAvailableError: If feature not available
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             if not check_feature(feature_name):
                 raise FeatureNotAvailableError(feature_name)
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -199,7 +201,8 @@ def show_upgrade_prompt(feature: str, required_tier: str) -> None:
 
     price = "$20" if required_tier == FeatureTier.PRO else "$99"
 
-    print(f"""
+    print(
+        f"""
 ┌─────────────────────────────────────────────────────────┐
 │  ⚡ UPGRADE REQUIRED                                    │
 ├─────────────────────────────────────────────────────────┤
@@ -213,7 +216,8 @@ def show_upgrade_prompt(feature: str, required_tier: str) -> None:
 │  🌐 {PRICING_URL}
 │                                                         │
 └─────────────────────────────────────────────────────────┘
-""")
+"""
+    )
 
 
 def show_license_status() -> None:
@@ -226,12 +230,14 @@ def show_license_status() -> None:
         FeatureTier.ENTERPRISE: "yellow",
     }
 
-    print(f"""
+    print(
+        f"""
 ┌─────────────────────────────────────────────────────────┐
 │  CORTEX LICENSE STATUS                                  │
 ├─────────────────────────────────────────────────────────┤
 │  Tier:         {info.tier.upper():12}                          │
-│  Status:       {"ACTIVE" if info.valid else "EXPIRED":12}                          │""")
+│  Status:       {"ACTIVE" if info.valid else "EXPIRED":12}                          │"""
+    )
 
     if info.organization:
         print(f"│  Organization: {info.organization[:12]:12}                          │")
@@ -280,14 +286,18 @@ def activate_license(license_key: str) -> bool:
         if data.get("success"):
             # Save license locally
             LICENSE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            LICENSE_FILE.write_text(json.dumps({
-                "key": license_key,
-                "tier": data["tier"],
-                "valid": True,
-                "expires": data.get("expires"),
-                "organization": data.get("organization"),
-                "email": data.get("email"),
-            }))
+            LICENSE_FILE.write_text(
+                json.dumps(
+                    {
+                        "key": license_key,
+                        "tier": data["tier"],
+                        "valid": True,
+                        "expires": data.get("expires"),
+                        "organization": data.get("organization"),
+                        "email": data.get("email"),
+                    }
+                )
+            )
 
             # Clear cache
             _cached_license = None
@@ -316,6 +326,7 @@ def open_upgrade_page() -> None:
 def _get_hostname() -> str:
     """Get system hostname."""
     import platform
+
     return platform.node()
 
 

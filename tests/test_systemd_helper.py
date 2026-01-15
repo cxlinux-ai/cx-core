@@ -4,18 +4,18 @@ Tests for Systemd Helper Module
 Issue: #448 - Systemd Service Helper (Plain English)
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from cortex.systemd_helper import (
+    FAILURE_SOLUTIONS,
+    SERVICE_STATE_EXPLANATIONS,
+    SUB_STATE_EXPLANATIONS,
     ServiceConfig,
     ServiceStatus,
     ServiceType,
     SystemdHelper,
-    SERVICE_STATE_EXPLANATIONS,
-    SUB_STATE_EXPLANATIONS,
-    FAILURE_SOLUTIONS,
     run_systemd_helper,
 )
 
@@ -25,11 +25,7 @@ class TestServiceConfig:
 
     def test_default_values(self):
         """Test default configuration values."""
-        config = ServiceConfig(
-            name="test",
-            description="Test service",
-            exec_start="/usr/bin/test"
-        )
+        config = ServiceConfig(name="test", description="Test service", exec_start="/usr/bin/test")
         assert config.name == "test"
         assert config.service_type == ServiceType.SIMPLE
         assert config.restart == "on-failure"
@@ -137,11 +133,7 @@ class TestSystemdHelper:
     def test_run_systemctl_success(self, helper):
         """Test successful systemctl command."""
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="ActiveState=active",
-                stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="ActiveState=active", stderr="")
             code, stdout, stderr = helper._run_systemctl("status", "test")
             assert code == 0
             assert "active" in stdout.lower()
@@ -149,6 +141,7 @@ class TestSystemdHelper:
     def test_run_systemctl_timeout(self, helper):
         """Test systemctl timeout handling."""
         import subprocess
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("cmd", 30)
             code, stdout, stderr = helper._run_systemctl("status", "test")

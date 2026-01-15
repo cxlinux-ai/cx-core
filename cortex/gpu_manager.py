@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from rich import box
 from rich.console import Console
@@ -131,12 +131,7 @@ class HybridGPUManager:
     def _run_command(self, cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
         """Run a command and return (returncode, stdout, stderr)."""
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             return result.returncode, result.stdout, result.stderr
         except FileNotFoundError:
             return 1, "", f"Command not found: {cmd[0]}"
@@ -202,11 +197,13 @@ class HybridGPUManager:
 
     def _detect_nvidia_gpu(self) -> GPUDevice | None:
         """Detect NVIDIA GPU with detailed info."""
-        returncode, stdout, _ = self._run_command([
-            "nvidia-smi",
-            "--query-gpu=name,memory.total,power.draw",
-            "--format=csv,noheader,nounits"
-        ])
+        returncode, stdout, _ = self._run_command(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,power.draw",
+                "--format=csv,noheader,nounits",
+            ]
+        )
 
         if returncode != 0 or not stdout.strip():
             return None
@@ -216,9 +213,9 @@ class HybridGPUManager:
         memory = int(float(parts[1].strip())) if len(parts) > 1 else 0
 
         # Check power state
-        power_returncode, power_stdout, _ = self._run_command([
-            "cat", "/sys/bus/pci/devices/0000:01:00.0/power/runtime_status"
-        ])
+        power_returncode, power_stdout, _ = self._run_command(
+            ["cat", "/sys/bus/pci/devices/0000:01:00.0/power/runtime_status"]
+        )
         power_state = power_stdout.strip() if power_returncode == 0 else "unknown"
 
         return GPUDevice(
@@ -278,10 +275,15 @@ class HybridGPUManager:
 
         # Find active GPU
         for device in state.devices:
-            if device.is_active or (state.mode == GPUMode.NVIDIA and device.vendor == GPUVendor.NVIDIA):
+            if device.is_active or (
+                state.mode == GPUMode.NVIDIA and device.vendor == GPUVendor.NVIDIA
+            ):
                 state.active_gpu = device
                 break
-            elif state.mode == GPUMode.INTEGRATED and device.vendor in [GPUVendor.INTEL, GPUVendor.AMD]:
+            elif state.mode == GPUMode.INTEGRATED and device.vendor in [
+                GPUVendor.INTEL,
+                GPUVendor.AMD,
+            ]:
                 state.active_gpu = device
                 break
 
@@ -347,7 +349,11 @@ class HybridGPUManager:
                     command = f"sudo system76-power graphics {mode_map[mode]}"
 
         if not command:
-            return False, "No GPU switching tool found. Install prime-select, envycontrol, or system76-power.", None
+            return (
+                False,
+                "No GPU switching tool found. Install prime-select, envycontrol, or system76-power.",
+                None,
+            )
 
         if apply:
             # Actually run the command (would need sudo)
@@ -444,12 +450,14 @@ class HybridGPUManager:
 [dim]{mode_info['description']}[/dim]
 Battery Impact: {mode_info['impact']}
 """
-        console.print(Panel(
-            mode_panel,
-            title="[bold cyan]GPU Mode[/bold cyan]",
-            border_style=CORTEX_CYAN,
-            padding=(1, 2),
-        ))
+        console.print(
+            Panel(
+                mode_panel,
+                title="[bold cyan]GPU Mode[/bold cyan]",
+                border_style=CORTEX_CYAN,
+                padding=(1, 2),
+            )
+        )
 
         if state.is_hybrid_system:
             console.print()
@@ -517,11 +525,7 @@ Battery Impact: {mode_info['impact']}
         console.print(table)
 
 
-def run_gpu_manager(
-    action: str = "status",
-    mode: str | None = None,
-    verbose: bool = False
-) -> int:
+def run_gpu_manager(action: str = "status", mode: str | None = None, verbose: bool = False) -> int:
     """
     Main entry point for cortex gpu command.
 

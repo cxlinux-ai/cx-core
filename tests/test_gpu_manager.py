@@ -4,18 +4,18 @@ Tests for GPU Manager Module
 Issue: #454 - Hybrid GPU (Optimus) Manager
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from cortex.gpu_manager import (
+    APP_GPU_RECOMMENDATIONS,
+    BATTERY_IMPACT,
     GPUDevice,
     GPUMode,
     GPUState,
     GPUVendor,
     HybridGPUManager,
-    BATTERY_IMPACT,
-    APP_GPU_RECOMMENDATIONS,
     run_gpu_manager,
 )
 
@@ -47,10 +47,7 @@ class TestGPUDevice:
 
     def test_default_values(self):
         """Test default device values."""
-        device = GPUDevice(
-            vendor=GPUVendor.INTEL,
-            name="Intel HD Graphics"
-        )
+        device = GPUDevice(vendor=GPUVendor.INTEL, name="Intel HD Graphics")
         assert device.vendor == GPUVendor.INTEL
         assert device.name == "Intel HD Graphics"
         assert device.driver == ""
@@ -167,11 +164,7 @@ class TestHybridGPUManager:
     def test_run_command_success(self, manager):
         """Test successful command execution."""
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="output",
-                stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="output", stderr="")
             code, stdout, stderr = manager._run_command(["test"])
             assert code == 0
             assert stdout == "output"
@@ -298,9 +291,7 @@ class TestSwitchMode:
 
     def test_switch_mode_non_hybrid(self, manager):
         """Test switching on non-hybrid system."""
-        state = GPUState(devices=[
-            GPUDevice(vendor=GPUVendor.INTEL, name="Intel")
-        ])
+        state = GPUState(devices=[GPUDevice(vendor=GPUVendor.INTEL, name="Intel")])
         with patch.object(manager, "get_state") as mock_state:
             mock_state.return_value = state
 
@@ -310,10 +301,12 @@ class TestSwitchMode:
 
     def test_switch_mode_with_prime_select(self, manager):
         """Test switching with prime-select available."""
-        state = GPUState(devices=[
-            GPUDevice(vendor=GPUVendor.INTEL, name="Intel"),
-            GPUDevice(vendor=GPUVendor.NVIDIA, name="NVIDIA"),
-        ])
+        state = GPUState(
+            devices=[
+                GPUDevice(vendor=GPUVendor.INTEL, name="Intel"),
+                GPUDevice(vendor=GPUVendor.NVIDIA, name="NVIDIA"),
+            ]
+        )
 
         with patch.object(manager, "get_state") as mock_state:
             mock_state.return_value = state

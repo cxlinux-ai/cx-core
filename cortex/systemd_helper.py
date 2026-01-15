@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from rich import box
 from rich.console import Console
@@ -63,7 +63,10 @@ FAILURE_SOLUTIONS = {
         ("Verify dependencies are running", "systemctl list-dependencies {service}"),
     ],
     "signal": [
-        ("Service was killed by a signal", "Check if OOM killer terminated it: dmesg | grep -i oom"),
+        (
+            "Service was killed by a signal",
+            "Check if OOM killer terminated it: dmesg | grep -i oom",
+        ),
         ("Check resource limits", "systemctl show {service} | grep -i limit"),
     ],
     "timeout": [
@@ -75,8 +78,14 @@ FAILURE_SOLUTIONS = {
         ("Review application logs", "The application has a bug or invalid input."),
     ],
     "start-limit-hit": [
-        ("Service crashed too many times", "Reset the failure count: systemctl reset-failed {service}"),
-        ("Fix the underlying issue", "Check logs before restarting: journalctl -u {service} -n 100"),
+        (
+            "Service crashed too many times",
+            "Reset the failure count: systemctl reset-failed {service}",
+        ),
+        (
+            "Fix the underlying issue",
+            "Check logs before restarting: journalctl -u {service} -n 100",
+        ),
     ],
 }
 
@@ -154,12 +163,7 @@ class SystemdHelper:
         """Run a systemctl command and return (returncode, stdout, stderr)."""
         cmd = ["systemctl"] + list(args)
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=capture,
-                text=True,
-                timeout=30
-            )
+            result = subprocess.run(cmd, capture_output=capture, text=True, timeout=30)
             return result.returncode, result.stdout, result.stderr
         except FileNotFoundError:
             return 1, "", "systemctl not found. Is systemd installed?"
@@ -173,7 +177,7 @@ class SystemdHelper:
                 ["journalctl", "-u", service, "-n", str(lines), "--no-pager"],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
             return result.stdout
         except Exception:
@@ -252,15 +256,17 @@ class SystemdHelper:
             return False, f"Service '{service}' is not installed on this system."
 
         if status.load_state == "masked":
-            return True, f"Service '{service}' is MASKED (disabled by administrator and cannot be started)."
+            return (
+                True,
+                f"Service '{service}' is MASKED (disabled by administrator and cannot be started).",
+            )
 
         # Build explanation
         parts = []
 
         # Main state
         state_explanation = SERVICE_STATE_EXPLANATIONS.get(
-            status.active_state,
-            f"in an unknown state ({status.active_state})"
+            status.active_state, f"in an unknown state ({status.active_state})"
         )
         parts.append(f"**{service}** is **{status.active_state}**: {state_explanation}")
 
@@ -328,7 +334,9 @@ class SystemdHelper:
         # Analyze logs for common issues
         log_text = logs.lower()
         if "permission denied" in log_text:
-            recommendations.append("- **Permission issue detected**: Check file permissions and service user")
+            recommendations.append(
+                "- **Permission issue detected**: Check file permissions and service user"
+            )
         if "address already in use" in log_text:
             recommendations.append("- **Port conflict**: Another process is using the same port")
             recommendations.append("  Run: `ss -tlnp | grep <port>` to find conflicting process")
@@ -365,9 +373,9 @@ class SystemdHelper:
             service = f"{service}.service"
 
         # Get dependency info
-        returncode, stdout, _ = self._run_systemctl("show", service,
-            "-p", "Wants,Requires,After,Before,WantedBy,RequiredBy",
-            "--no-pager")
+        returncode, stdout, _ = self._run_systemctl(
+            "show", service, "-p", "Wants,Requires,After,Before,WantedBy,RequiredBy", "--no-pager"
+        )
 
         if returncode == 0:
             for line in stdout.split("\n"):
@@ -489,8 +497,8 @@ class SystemdHelper:
         """
         # Auto-generate name from description if not provided
         if not name:
-            name = re.sub(r'[^a-z0-9]+', '-', description.lower())[:40]
-            name = name.strip('-')
+            name = re.sub(r"[^a-z0-9]+", "-", description.lower())[:40]
+            name = name.strip("-")
 
         # Detect service type
         service_type = ServiceType.SIMPLE
@@ -562,12 +570,14 @@ class SystemdHelper:
         console.print()
         success, explanation = self.explain_status(service)
         if success:
-            console.print(Panel(
-                explanation,
-                title="[bold cyan]Plain English Explanation[/bold cyan]",
-                border_style=CORTEX_CYAN,
-                padding=(1, 2),
-            ))
+            console.print(
+                Panel(
+                    explanation,
+                    title="[bold cyan]Plain English Explanation[/bold cyan]",
+                    border_style=CORTEX_CYAN,
+                    padding=(1, 2),
+                )
+            )
 
     def display_diagnosis(self, service: str):
         """Display failure diagnosis for a service."""
@@ -576,12 +586,14 @@ class SystemdHelper:
         found_issues, explanation, logs = self.diagnose_failure(service)
 
         if explanation:
-            console.print(Panel(
-                explanation,
-                title="[bold yellow]Diagnosis[/bold yellow]",
-                border_style="yellow",
-                padding=(1, 2),
-            ))
+            console.print(
+                Panel(
+                    explanation,
+                    title="[bold yellow]Diagnosis[/bold yellow]",
+                    border_style="yellow",
+                    padding=(1, 2),
+                )
+            )
 
         if logs:
             console.print()
@@ -595,11 +607,7 @@ class SystemdHelper:
                     console.print(f"[dim]{line}[/dim]")
 
 
-def run_systemd_helper(
-    service: str,
-    action: str = "status",
-    verbose: bool = False
-) -> int:
+def run_systemd_helper(service: str, action: str = "status", verbose: bool = False) -> int:
     """
     Main entry point for cortex systemd command.
 

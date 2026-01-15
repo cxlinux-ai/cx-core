@@ -144,10 +144,7 @@ class VersionConstraint:
             # ~1.2.3 means >=1.2.3 <1.3.0
             if version < self.version:
                 return False
-            return (
-                version.major == self.version.major
-                and version.minor == self.version.minor
-            )
+            return version.major == self.version.major and version.minor == self.version.minor
 
         elif self.constraint_type == ConstraintType.GREATER:
             return version > self.version
@@ -203,9 +200,7 @@ class VersionConflict:
                     return True
         return False
 
-    def _constraints_compatible(
-        self, c1: VersionConstraint, c2: VersionConstraint
-    ) -> bool:
+    def _constraints_compatible(self, c1: VersionConstraint, c2: VersionConstraint) -> bool:
         """Check if two constraints can be satisfied simultaneously."""
         if c1.constraint_type == ConstraintType.ANY:
             return True
@@ -403,9 +398,7 @@ class SemVerResolver:
 
         return None
 
-    def add_dependency(
-        self, package: str, constraint_str: str, source: str = ""
-    ) -> bool:
+    def add_dependency(self, package: str, constraint_str: str, source: str = "") -> bool:
         """Add a dependency constraint.
 
         Args:
@@ -446,9 +439,7 @@ class SemVerResolver:
 
         return self.conflicts
 
-    def suggest_resolutions(
-        self, conflict: VersionConflict
-    ) -> list[ResolutionStrategy]:
+    def suggest_resolutions(self, conflict: VersionConflict) -> list[ResolutionStrategy]:
         """Suggest resolution strategies for a conflict.
 
         Args:
@@ -512,9 +503,7 @@ class SemVerResolver:
 
         return strategies
 
-    def _find_common_version_strategy(
-        self, conflict: VersionConflict
-    ) -> ResolutionStrategy | None:
+    def _find_common_version_strategy(self, conflict: VersionConflict) -> ResolutionStrategy | None:
         """Try to find a common version that satisfies all constraints."""
         constraints = [d.constraint for d in conflict.dependencies]
 
@@ -707,9 +696,7 @@ def run_semver_resolver(
             return 1
 
         if constraint.satisfies(version):
-            console.print(
-                f"[green]Version {version} satisfies constraint {constraint_str}[/green]"
-            )
+            console.print(f"[green]Version {version} satisfies constraint {constraint_str}[/green]")
             return 0
         else:
             console.print(

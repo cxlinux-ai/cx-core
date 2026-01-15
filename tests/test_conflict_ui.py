@@ -56,6 +56,7 @@ class TestConflictResolutionUI(unittest.TestCase):
 
         # Should raise InstallationCancelledError on choice 3
         from cortex.cli import InstallationCancelledError
+
         with self.assertRaises(InstallationCancelledError):
             self.cli._resolve_conflicts_interactive(conflicts)
 
@@ -346,6 +347,7 @@ class TestConflictDetectionWorkflow(unittest.TestCase):
 
         # Should raise InstallationCancelledError on choice 3
         from cortex.cli import InstallationCancelledError
+
         with self.assertRaises(InstallationCancelledError):
             self.cli._resolve_conflicts_interactive(conflicts)
 

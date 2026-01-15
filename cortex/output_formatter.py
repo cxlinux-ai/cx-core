@@ -11,7 +11,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 from rich import box
 from rich.console import Console, Group

@@ -14,9 +14,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from cortex.update_checker import ReleaseInfo, UpdateCheckResult
 from cortex.updater import (
     BackupInfo,
+    Updater,
     UpdateResult,
     UpdateStatus,
-    Updater,
     download_with_progress,
     verify_checksum,
 )

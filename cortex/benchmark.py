@@ -15,7 +15,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 from rich import box
 from rich.console import Console
@@ -118,7 +118,9 @@ class CortexBenchmark:
             elif platform.system() == "Darwin":
                 result = subprocess.run(
                     ["sysctl", "-n", "machdep.cpu.brand_string"],
-                    capture_output=True, text=True, timeout=5
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if result.returncode == 0:
                     info["cpu_model"] = result.stdout.strip()
@@ -139,8 +141,7 @@ class CortexBenchmark:
                             break
             elif platform.system() == "Darwin":
                 result = subprocess.run(
-                    ["sysctl", "-n", "hw.memsize"],
-                    capture_output=True, text=True, timeout=5
+                    ["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0:
                     mem_bytes = int(result.stdout.strip())
@@ -160,7 +161,9 @@ class CortexBenchmark:
         try:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                capture_output=True, text=True, timeout=10
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             return result.returncode == 0 and result.stdout.strip() != ""
         except Exception:
@@ -171,7 +174,9 @@ class CortexBenchmark:
         try:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=10
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if result.returncode == 0:
                 return int(result.stdout.strip().split("\n")[0])
@@ -223,7 +228,7 @@ class CortexBenchmark:
             score=score,
             raw_value=round(avg_time * 1000, 2),
             unit="ms",
-            description="Matrix computation speed"
+            description="Matrix computation speed",
         )
 
     def _benchmark_memory(self) -> BenchmarkResult:
@@ -250,7 +255,7 @@ class CortexBenchmark:
 
         # Calculate approximate bandwidth (bytes per second)
         bytes_processed = size * 8 * 2  # 8 bytes per int, 2 operations
-        bandwidth_gbps = (bytes_processed / avg_time) / (1024 ** 3)
+        bandwidth_gbps = (bytes_processed / avg_time) / (1024**3)
 
         # Score based on bandwidth
         # Baseline: 10 GB/s = 50, 50 GB/s = 100, 1 GB/s = 10
@@ -267,7 +272,7 @@ class CortexBenchmark:
             score=score,
             raw_value=round(bandwidth_gbps, 2),
             unit="GB/s",
-            description="Memory throughput"
+            description="Memory throughput",
         )
 
     def _benchmark_gpu(self, system_info: dict) -> BenchmarkResult:
@@ -298,7 +303,7 @@ class CortexBenchmark:
                 score=score,
                 raw_value=vram_mb,
                 unit="MB",
-                description="NVIDIA GPU VRAM"
+                description="NVIDIA GPU VRAM",
             )
 
         elif system_info.get("has_apple_silicon"):
@@ -320,7 +325,7 @@ class CortexBenchmark:
                 score=score,
                 raw_value=int(ram_gb * 1024),
                 unit="MB (unified)",
-                description="Apple Silicon unified memory"
+                description="Apple Silicon unified memory",
             )
 
         else:
@@ -330,7 +335,7 @@ class CortexBenchmark:
                 score=15,
                 raw_value=0,
                 unit="MB",
-                description="No dedicated GPU detected"
+                description="No dedicated GPU detected",
             )
 
     def _benchmark_inference_simulation(self) -> BenchmarkResult:
@@ -348,9 +353,11 @@ class CortexBenchmark:
             # Simulate embedding lookup (string hashing)
             embeddings = [hash(token) % 10000 for token in tokens]
             # Simulate attention (nested loops)
-            attention = sum(embeddings[i] * embeddings[j]
-                          for i in range(min(50, len(embeddings)))
-                          for j in range(min(50, len(embeddings))))
+            attention = sum(
+                embeddings[i] * embeddings[j]
+                for i in range(min(50, len(embeddings)))
+                for j in range(min(50, len(embeddings)))
+            )
             _ = attention
         elapsed = time.perf_counter() - start
 
@@ -372,7 +379,7 @@ class CortexBenchmark:
             score=score,
             raw_value=round(tokens_per_sec / 1000, 2),
             unit="K tok/s",
-            description="Simulated inference throughput"
+            description="Simulated inference throughput",
         )
 
     def _benchmark_token_generation(self) -> BenchmarkResult:
@@ -390,8 +397,10 @@ class CortexBenchmark:
             context = [0] * 10
             for _ in range(sequence_length):
                 # Simulate softmax over vocabulary
-                logits = [(hash((i, tuple(context[-10:]))) % 1000) / 1000
-                         for i in range(min(1000, vocab_size))]
+                logits = [
+                    (hash((i, tuple(context[-10:]))) % 1000) / 1000
+                    for i in range(min(1000, vocab_size))
+                ]
                 next_token = max(range(len(logits)), key=lambda i: logits[i])
                 generated.append(next_token)
                 context.append(next_token)
@@ -415,7 +424,7 @@ class CortexBenchmark:
             score=score,
             raw_value=round(tokens_per_sec, 1),
             unit="tok/s",
-            description="Simulated generation speed"
+            description="Simulated generation speed",
         )
 
     def _calculate_overall_score(self, results: list[BenchmarkResult]) -> tuple[int, str]:
@@ -579,8 +588,9 @@ class CortexBenchmark:
         report.overall_score, report.rating = self._calculate_overall_score(report.results)
 
         # Get model recommendations
-        report.can_run, report.needs_upgrade, report.upgrade_suggestion = \
+        report.can_run, report.needs_upgrade, report.upgrade_suggestion = (
             self._get_model_recommendations(report.system_info, report.overall_score)
+        )
 
         # Save to history
         if save_history:
@@ -633,11 +643,7 @@ class CortexBenchmark:
             else:
                 score_str = f"[red]{result.score}/100[/red]"
 
-            table.add_row(
-                result.name,
-                score_str,
-                f"{result.raw_value} {result.unit}"
-            )
+            table.add_row(result.name, score_str, f"{result.raw_value} {result.unit}")
 
         console.print(table)
         console.print()
@@ -650,12 +656,16 @@ class CortexBenchmark:
         else:
             score_color = "red"
 
-        score_content = f"[bold {score_color}]{report.overall_score}/100[/bold {score_color}] ({report.rating})"
-        console.print(Panel(
-            f"[bold]OVERALL SCORE:[/bold]  {score_content}",
-            border_style="cyan",
-            box=box.ROUNDED,
-        ))
+        score_content = (
+            f"[bold {score_color}]{report.overall_score}/100[/bold {score_color}] ({report.rating})"
+        )
+        console.print(
+            Panel(
+                f"[bold]OVERALL SCORE:[/bold]  {score_content}",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
         console.print()
 
         # Model recommendations

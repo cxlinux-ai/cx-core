@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from rich import box
 from rich.console import Console
@@ -106,12 +106,7 @@ class PrinterSetup:
     def _run_command(self, cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
         """Run a command and return (returncode, stdout, stderr)."""
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             return result.returncode, result.stdout, result.stderr
         except FileNotFoundError:
             return 1, "", f"Command not found: {cmd[0]}"
@@ -161,13 +156,15 @@ class PrinterSetup:
                     else:
                         device_type = DeviceType.PRINTER
 
-                    devices.append(PrinterDevice(
-                        name=name,
-                        device_type=device_type,
-                        connection=ConnectionType.USB,
-                        vendor=vendor,
-                        usb_id=usb_id,
-                    ))
+                    devices.append(
+                        PrinterDevice(
+                            name=name,
+                            device_type=device_type,
+                            connection=ConnectionType.USB,
+                            vendor=vendor,
+                            usb_id=usb_id,
+                        )
+                    )
 
         return devices
 
@@ -188,13 +185,15 @@ class PrinterSetup:
                         uri = parts[1]
                         name = uri.split("/")[-1] if "/" in uri else uri
 
-                        devices.append(PrinterDevice(
-                            name=name,
-                            device_type=DeviceType.PRINTER,
-                            connection=ConnectionType.NETWORK,
-                            uri=uri,
-                            vendor=self._detect_vendor(name),
-                        ))
+                        devices.append(
+                            PrinterDevice(
+                                name=name,
+                                device_type=DeviceType.PRINTER,
+                                connection=ConnectionType.NETWORK,
+                                uri=uri,
+                                vendor=self._detect_vendor(name),
+                            )
+                        )
 
         return devices
 
@@ -221,16 +220,26 @@ class PrinterSetup:
                 parts = line.split()
                 if len(parts) >= 2:
                     name = parts[1]
-                    state = "idle" if "is idle" in line else "printing" if "printing" in line else "disabled" if "disabled" in line else "unknown"
+                    state = (
+                        "idle"
+                        if "is idle" in line
+                        else (
+                            "printing"
+                            if "printing" in line
+                            else "disabled" if "disabled" in line else "unknown"
+                        )
+                    )
 
-                    devices.append(PrinterDevice(
-                        name=name,
-                        device_type=DeviceType.PRINTER,
-                        connection=ConnectionType.UNKNOWN,
-                        is_configured=True,
-                        is_default=name == default_printer,
-                        state=state,
-                    ))
+                    devices.append(
+                        PrinterDevice(
+                            name=name,
+                            device_type=DeviceType.PRINTER,
+                            connection=ConnectionType.UNKNOWN,
+                            is_configured=True,
+                            is_default=name == default_printer,
+                            state=state,
+                        )
+                    )
 
         return devices
 
@@ -256,14 +265,16 @@ class PrinterSetup:
                         if "net:" in uri or "airscan:" in uri:
                             connection = ConnectionType.NETWORK
 
-                        devices.append(PrinterDevice(
-                            name=name,
-                            device_type=DeviceType.SCANNER,
-                            connection=connection,
-                            uri=uri,
-                            vendor=self._detect_vendor(name),
-                            is_configured=True,
-                        ))
+                        devices.append(
+                            PrinterDevice(
+                                name=name,
+                                device_type=DeviceType.SCANNER,
+                                connection=connection,
+                                uri=uri,
+                                vendor=self._detect_vendor(name),
+                                is_configured=True,
+                            )
+                        )
 
         return devices
 
@@ -360,7 +371,7 @@ class PrinterSetup:
             return False, f"Could not find driver for {device.name}"
 
         # Generate a safe printer name
-        printer_name = re.sub(r'[^a-zA-Z0-9_-]', '_', device.name)[:30]
+        printer_name = re.sub(r"[^a-zA-Z0-9_-]", "_", device.name)[:30]
 
         # Determine URI
         uri = device.uri
@@ -379,9 +390,12 @@ class PrinterSetup:
         # Add printer
         cmd = [
             "lpadmin",
-            "-p", printer_name,
-            "-v", uri,
-            "-m", driver.ppd_path,
+            "-p",
+            printer_name,
+            "-v",
+            uri,
+            "-m",
+            driver.ppd_path,
             "-E",  # Enable
         ]
 
@@ -401,10 +415,9 @@ class PrinterSetup:
             return False, "CUPS is not installed"
 
         # Use CUPS test page
-        returncode, _, stderr = self._run_command([
-            "lp", "-d", printer_name,
-            "/usr/share/cups/data/testprint"
-        ])
+        returncode, _, stderr = self._run_command(
+            ["lp", "-d", printer_name, "/usr/share/cups/data/testprint"]
+        )
 
         if returncode == 0:
             return True, "Test page sent to printer"
@@ -454,11 +467,15 @@ class PrinterSetup:
             table.add_column("Default", style="green")
 
             for printer in configured:
-                status_color = "green" if printer.state == "idle" else "yellow" if printer.state == "printing" else "red"
+                status_color = (
+                    "green"
+                    if printer.state == "idle"
+                    else "yellow" if printer.state == "printing" else "red"
+                )
                 table.add_row(
                     printer.name,
                     f"[{status_color}]{printer.state}[/{status_color}]",
-                    "✓" if printer.is_default else ""
+                    "✓" if printer.is_default else "",
                 )
 
             console.print(table)
@@ -469,7 +486,11 @@ class PrinterSetup:
         if usb_printers:
             console.print("[bold]Detected USB Devices:[/bold]")
             for printer in usb_printers:
-                icon = "🖨️" if printer.device_type == DeviceType.PRINTER else "📠" if printer.device_type == DeviceType.MULTIFUNCTION else "📷"
+                icon = (
+                    "🖨️"
+                    if printer.device_type == DeviceType.PRINTER
+                    else "📠" if printer.device_type == DeviceType.MULTIFUNCTION else "📷"
+                )
                 console.print(f"  {icon} {printer.name} ({printer.vendor})")
             console.print()
 
@@ -519,12 +540,14 @@ class PrinterSetup:
             if driver.recommended:
                 content_lines.append("[green]✓ Recommended driver available[/green]")
 
-        console.print(Panel(
-            "\n".join(content_lines),
-            title="[bold cyan]Setup Information[/bold cyan]",
-            border_style=CORTEX_CYAN,
-            padding=(1, 2),
-        ))
+        console.print(
+            Panel(
+                "\n".join(content_lines),
+                title="[bold cyan]Setup Information[/bold cyan]",
+                border_style=CORTEX_CYAN,
+                padding=(1, 2),
+            )
+        )
 
 
 def run_printer_setup(action: str = "status", verbose: bool = False) -> int:

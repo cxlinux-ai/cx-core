@@ -141,11 +141,7 @@ class StdinHandler:
             head = lines[:half]
             tail = lines[-half:]
             skipped = len(lines) - self.max_lines
-            truncated_lines = (
-                head
-                + [f"\n... [{skipped} lines truncated] ...\n\n"]
-                + tail
-            )
+            truncated_lines = head + [f"\n... [{skipped} lines truncated] ...\n\n"] + tail
         else:  # SAMPLE
             step = max(1, len(lines) // self.max_lines)
             truncated_lines = lines[::step][: self.max_lines]
@@ -155,9 +151,7 @@ class StdinHandler:
         # Check byte limit
         content_bytes = content.encode("utf-8", errors="replace")
         if len(content_bytes) > self.max_bytes:
-            content = content_bytes[: self.max_bytes].decode(
-                "utf-8", errors="replace"
-            )
+            content = content_bytes[: self.max_bytes].decode("utf-8", errors="replace")
             content += "\n... [truncated due to size limit] ..."
 
         new_lines = content.splitlines(keepends=True)
@@ -230,21 +224,19 @@ def detect_content_type(content: str) -> str:
         return "json"
 
     # CSV
-    if "," in first_line and lines[0].count(",") == lines[1].count(",") if len(lines) > 1 else False:
+    if (
+        "," in first_line and lines[0].count(",") == lines[1].count(",")
+        if len(lines) > 1
+        else False
+    ):
         return "csv"
 
     # Docker/container logs
-    if any(
-        pattern in content
-        for pattern in ["container", "docker", "kubernetes", "pod"]
-    ):
+    if any(pattern in content for pattern in ["container", "docker", "kubernetes", "pod"]):
         return "container_log"
 
     # System logs
-    if any(
-        pattern in content
-        for pattern in ["systemd", "journald", "kernel", "syslog"]
-    ):
+    if any(pattern in content for pattern in ["systemd", "journald", "kernel", "syslog"]):
         return "system_log"
 
     return "text"

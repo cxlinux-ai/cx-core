@@ -7,7 +7,7 @@ Issue: #271 - Stdin Piping Support for Log Analysis
 import io
 import json
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -188,7 +188,7 @@ class TestDetectContentType:
         content = '{"key": "value"}'
         assert detect_content_type(content) == "json"
 
-        content = '[1, 2, 3]'
+        content = "[1, 2, 3]"
         assert detect_content_type(content) == "json"
 
     def test_detect_python_traceback(self):
@@ -260,7 +260,7 @@ class TestAnalyzeStdin:
     def test_analyze_json_array(self):
         """Test JSON array analysis."""
         data = StdinData(
-            content='[1, 2, 3, 4, 5]',
+            content="[1, 2, 3, 4, 5]",
             line_count=1,
             byte_count=15,
         )
@@ -338,9 +338,7 @@ class TestRunStdinHandler:
             with patch.object(
                 handler,
                 "read_and_truncate",
-                return_value=StdinData(
-                    content="test\n", line_count=1, byte_count=5
-                ),
+                return_value=StdinData(content="test\n", line_count=1, byte_count=5),
             ):
                 with patch(
                     "cortex.stdin_handler.StdinHandler",
@@ -358,9 +356,7 @@ class TestRunStdinHandler:
             with patch.object(
                 handler,
                 "read_and_truncate",
-                return_value=StdinData(
-                    content="test\n", line_count=1, byte_count=5
-                ),
+                return_value=StdinData(content="test\n", line_count=1, byte_count=5),
             ):
                 with patch(
                     "cortex.stdin_handler.StdinHandler",
@@ -380,9 +376,7 @@ class TestRunStdinHandler:
             with patch.object(
                 handler,
                 "read_and_truncate",
-                return_value=StdinData(
-                    content="hello world", line_count=1, byte_count=11
-                ),
+                return_value=StdinData(content="hello world", line_count=1, byte_count=11),
             ):
                 with patch(
                     "cortex.stdin_handler.StdinHandler",
@@ -402,9 +396,7 @@ class TestRunStdinHandler:
             with patch.object(
                 handler,
                 "read_and_truncate",
-                return_value=StdinData(
-                    content="test\n", line_count=1, byte_count=5
-                ),
+                return_value=StdinData(content="test\n", line_count=1, byte_count=5),
             ):
                 with patch(
                     "cortex.stdin_handler.StdinHandler",
@@ -484,7 +476,7 @@ class TestEdgeCases:
         handler = StdinHandler()
 
         with patch("sys.stdin.isatty", return_value=False):
-            with patch("sys.stdin.read", side_effect=IOError("Read error")):
+            with patch("sys.stdin.read", side_effect=OSError("Read error")):
                 data = handler.read_stdin()
 
         assert data.is_empty

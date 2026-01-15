@@ -190,9 +190,7 @@ class WirelessDriverMatcher:
         self.verbose = verbose
         self.devices: list[WirelessDevice] = []
 
-    def _run_command(
-        self, cmd: list[str], timeout: int = 30
-    ) -> tuple[int, str, str]:
+    def _run_command(self, cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
         """Run a command and return exit code, stdout, stderr."""
         try:
             result = subprocess.run(
@@ -252,12 +250,8 @@ class WirelessDriverMatcher:
                     driver = ""
                     pci_addr = line.split()[0] if line.split() else ""
                     if pci_addr:
-                        _, drv_out, _ = self._run_command(
-                            ["lspci", "-k", "-s", pci_addr]
-                        )
-                        drv_match = re.search(
-                            r"Kernel driver in use:\s*(\S+)", drv_out
-                        )
+                        _, drv_out, _ = self._run_command(["lspci", "-k", "-s", pci_addr])
+                        drv_match = re.search(r"Kernel driver in use:\s*(\S+)", drv_out)
                         if drv_match:
                             driver = drv_match.group(1)
 
@@ -447,12 +441,20 @@ class WirelessDriverMatcher:
         conn_table.add_column("Item", style="cyan")
         conn_table.add_column("Value")
 
-        wifi_status = "[green]Connected[/green]" if connectivity["wifi_connected"] else "[red]Not connected[/red]"
+        wifi_status = (
+            "[green]Connected[/green]"
+            if connectivity["wifi_connected"]
+            else "[red]Not connected[/red]"
+        )
         if connectivity["wifi_ssid"]:
             wifi_status += f" ({connectivity['wifi_ssid']})"
         conn_table.add_row("WiFi", wifi_status)
 
-        bt_status = "[green]Available[/green]" if connectivity["bluetooth_available"] else "[red]Not available[/red]"
+        bt_status = (
+            "[green]Available[/green]"
+            if connectivity["bluetooth_available"]
+            else "[red]Not available[/red]"
+        )
         if connectivity["bluetooth_powered"]:
             bt_status += " (Powered)"
         conn_table.add_row("Bluetooth", bt_status)
@@ -597,7 +599,9 @@ def run_wifi_driver(
         console.print(f"WiFi: {'Connected' if status['wifi_connected'] else 'Not connected'}")
         if status["wifi_ssid"]:
             console.print(f"  SSID: {status['wifi_ssid']}")
-        console.print(f"Bluetooth: {'Available' if status['bluetooth_available'] else 'Not available'}")
+        console.print(
+            f"Bluetooth: {'Available' if status['bluetooth_available'] else 'Not available'}"
+        )
         return 0
 
     else:

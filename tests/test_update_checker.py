@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from cortex.update_checker import (
     CACHE_TTL_SECONDS,
     ReleaseInfo,
-    UpdateCheckResult,
     UpdateChecker,
+    UpdateCheckResult,
     check_for_updates,
     should_notify_update,
 )
@@ -99,9 +99,7 @@ class TestUpdateChecker(unittest.TestCase):
         """Set up test fixtures."""
         # Use temp directory for cache
         self.temp_dir = tempfile.mkdtemp()
-        self.cache_patch = patch(
-            "cortex.update_checker.CACHE_DIR", Path(self.temp_dir)
-        )
+        self.cache_patch = patch("cortex.update_checker.CACHE_DIR", Path(self.temp_dir))
         self.cache_patch.start()
         self.cache_file_patch = patch(
             "cortex.update_checker.UPDATE_CACHE_FILE",

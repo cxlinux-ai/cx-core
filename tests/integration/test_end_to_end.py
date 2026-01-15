@@ -19,8 +19,8 @@ BASE_ENV = {
 }
 # Install build dependencies first for packages with C extensions (e.g., ruamel.yaml.clib required by safety)
 APT_BUILD_DEPS = "apt-get update && apt-get install -y --no-install-recommends gcc libc-dev && rm -rf /var/lib/apt/lists/*"
-PIP_BOOTSTRAP = f"{APT_BUILD_DEPS} && python -m pip install --quiet --upgrade pip setuptools && python -m pip install --quiet --no-cache-dir -r /workspace/requirements.txt"
-PIP_BOOTSTRAP_DEV = f"{APT_BUILD_DEPS} && python -m pip install --quiet --upgrade pip setuptools && python -m pip install --quiet --no-cache-dir -r /workspace/requirements.txt -r /workspace/requirements-dev.txt"
+PIP_BOOTSTRAP = f"{APT_BUILD_DEPS} && python -m pip install --quiet --upgrade pip setuptools && python -m pip install --quiet --no-cache-dir -e /workspace"
+PIP_BOOTSTRAP_DEV = f"{APT_BUILD_DEPS} && python -m pip install --quiet --upgrade pip setuptools && python -m pip install --quiet --no-cache-dir -e '/workspace[dev]'"
 
 
 @unittest.skipUnless(docker_available(), "Docker is required for integration tests")

@@ -4,18 +4,18 @@ Tests for Printer/Scanner Setup Module
 Issue: #451 - Printer/Scanner Auto-Setup
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from cortex.printer_setup import (
+    DRIVER_PACKAGES,
+    SCANNER_PACKAGES,
     ConnectionType,
     DeviceType,
     DriverInfo,
     PrinterDevice,
     PrinterSetup,
-    DRIVER_PACKAGES,
-    SCANNER_PACKAGES,
     run_printer_setup,
 )
 
@@ -165,7 +165,11 @@ Bus 001 Device 005: ID 03f0:8711 HP, Inc HP LaserJet Pro M428"""
     def test_detect_usb_printers_empty(self, setup):
         """Test when no printers detected."""
         with patch.object(setup, "_run_command") as mock_cmd:
-            mock_cmd.return_value = (0, "Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub", "")
+            mock_cmd.return_value = (
+                0,
+                "Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub",
+                "",
+            )
 
             devices = setup.detect_usb_printers()
             assert devices == []

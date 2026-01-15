@@ -143,9 +143,7 @@ class HealthChecker:
         self.verbose = verbose
         self.history_path = Path.home() / ".cortex" / "health_history.json"
 
-    def _run_command(
-        self, cmd: list[str], timeout: int = 30
-    ) -> tuple[int, str, str]:
+    def _run_command(self, cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
         """Run a command and return exit code, stdout, stderr."""
         try:
             result = subprocess.run(
@@ -309,9 +307,7 @@ class HealthChecker:
                 pass
 
         # Check for unattended upgrades
-        code, _, _ = self._run_command(
-            ["dpkg", "-l", "unattended-upgrades"]
-        )
+        code, _, _ = self._run_command(["dpkg", "-l", "unattended-upgrades"])
         if code != 0:
             issues.append("Automatic updates not configured")
             score -= 10
@@ -484,10 +480,7 @@ class HealthChecker:
         entry = {
             "timestamp": report.timestamp.isoformat(),
             "overall_score": report.overall_score,
-            "factors": {
-                f.name: {"score": f.score, "details": f.details}
-                for f in report.factors
-            },
+            "factors": {f.name: {"score": f.score, "details": f.details} for f in report.factors},
         }
 
         history.append(entry)
@@ -588,9 +581,7 @@ class HealthChecker:
                     else:
                         trend = "→"
 
-                score_color = (
-                    "green" if score >= 75 else "yellow" if score >= 50 else "red"
-                )
+                score_color = "green" if score >= 75 else "yellow" if score >= 50 else "red"
 
                 table.add_row(
                     ts.strftime("%Y-%m-%d %H:%M"),

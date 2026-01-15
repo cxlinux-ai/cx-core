@@ -4,19 +4,19 @@ Tests for WiFi/Bluetooth Driver Auto-Matcher
 Issue: #444 - WiFi/Bluetooth Driver Auto-Matcher
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from cortex.wifi_driver import (
+    BLUETOOTH_DRIVERS,
+    DRIVER_DATABASE,
     ConnectionType,
     DeviceType,
     DriverInfo,
     DriverSource,
     WirelessDevice,
     WirelessDriverMatcher,
-    DRIVER_DATABASE,
-    BLUETOOTH_DRIVERS,
     run_wifi_driver,
 )
 

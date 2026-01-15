@@ -8,15 +8,15 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from cortex.benchmark import (
-    BenchmarkResult,
-    BenchmarkReport,
-    CortexBenchmark,
     MODEL_REQUIREMENTS,
+    BenchmarkReport,
+    BenchmarkResult,
+    CortexBenchmark,
     run_benchmark,
 )
 
@@ -27,11 +27,7 @@ class TestBenchmarkResult:
     def test_result_creation(self):
         """Test creating a benchmark result."""
         result = BenchmarkResult(
-            name="Test",
-            score=75,
-            raw_value=100.5,
-            unit="ms",
-            description="Test benchmark"
+            name="Test", score=75, raw_value=100.5, unit="ms", description="Test benchmark"
         )
         assert result.name == "Test"
         assert result.score == 75
@@ -40,12 +36,7 @@ class TestBenchmarkResult:
 
     def test_result_default_description(self):
         """Test default description is empty."""
-        result = BenchmarkResult(
-            name="Test",
-            score=50,
-            raw_value=10.0,
-            unit="s"
-        )
+        result = BenchmarkResult(name="Test", score=50, raw_value=10.0, unit="s")
         assert result.description == ""
 
 
@@ -64,11 +55,7 @@ class TestBenchmarkReport:
 
     def test_report_to_dict(self):
         """Test report serialization."""
-        report = BenchmarkReport(
-            timestamp="2025-01-01T00:00:00",
-            overall_score=75,
-            rating="Good"
-        )
+        report = BenchmarkReport(timestamp="2025-01-01T00:00:00", overall_score=75, rating="Good")
         result = report.to_dict()
         assert result["timestamp"] == "2025-01-01T00:00:00"
         assert result["overall_score"] == 75
@@ -250,9 +237,7 @@ class TestCortexBenchmark:
             benchmark.HISTORY_FILE = Path(tmpdir) / "benchmark_history.json"
 
             report = BenchmarkReport(
-                timestamp="2025-01-01T00:00:00",
-                overall_score=75,
-                rating="Good"
+                timestamp="2025-01-01T00:00:00", overall_score=75, rating="Good"
             )
             benchmark._save_to_history(report)
 
@@ -299,19 +284,13 @@ class TestNvidiaDetection:
     def test_detect_nvidia_gpu_available(self, benchmark):
         """Test when NVIDIA GPU is detected."""
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="NVIDIA GeForce RTX 3080"
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="NVIDIA GeForce RTX 3080")
             assert benchmark._detect_nvidia_gpu() is True
 
     def test_get_nvidia_vram(self, benchmark):
         """Test getting NVIDIA VRAM."""
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="10240"
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout="10240")
             assert benchmark._get_nvidia_vram() == 10240
 
 
