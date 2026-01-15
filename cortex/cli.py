@@ -3041,6 +3041,21 @@ def main():
     update_subs.add_parser("backups", help="List available backups for rollback")
     # --------------------------
 
+    # WiFi/Bluetooth Driver Matcher
+    wifi_parser = subparsers.add_parser("wifi", help="WiFi/Bluetooth driver auto-matcher")
+    wifi_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "detect", "recommend", "install", "connectivity"],
+        help="Action to perform (default: status)",
+    )
+    wifi_parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
     args = parser.parse_args()
 
     # The Guard: Check for empty commands before starting the CLI
@@ -3127,6 +3142,12 @@ def main():
             return 0 if activate_license(args.license_key) else 1
         elif args.command == "update":
             return cli.update(args)
+        elif args.command == "wifi":
+            from cortex.wifi_driver import run_wifi_driver
+            return run_wifi_driver(
+                action=getattr(args, "action", "status"),
+                verbose=getattr(args, "verbose", False),
+            )
         else:
             parser.print_help()
             return 1
