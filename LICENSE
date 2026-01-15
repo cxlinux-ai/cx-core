@@ -1,0 +1,57 @@
+# Business Source License 1.1
+
+## Parameters
+
+**Licensor:** AI Venture Holdings LLC
+
+**Licensed Work:** Cortex Linux v0.1.0 and later versions  
+The Licensed Work is (c) 2025 AI Venture Holdings LLC
+
+**Additional Use Grant:** You may use the Licensed Work for:
+- Personal, non-commercial use
+- Internal business operations (not offering as a service)
+- Educational and research purposes
+- Contributing to the Licensed Work
+
+**Change Date:** January 15, 2030 (4 years from release)
+
+**Change License:** Apache License, Version 2.0
+
+---
+
+## Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative works, redistribute, and make non-production use of the Licensed Work.
+
+**Effective on the Change Date**, the Licensor grants you rights under the terms of the Change License, and the rights granted above terminate.
+
+If your use of the Licensed Work does not comply with the requirements currently in effect as described in this License, you must purchase a commercial license from the Licensor, its affiliated entities, or authorized resellers, or you must refrain from using the Licensed Work.
+
+**All copies** of the original and modified Licensed Work must include:
+- This License
+- The copyright notice
+- The Change Date and Change License
+
+---
+
+## Commercial Use
+
+**"Commercial Use"** means using the Licensed Work to:
+1. Offer a competing product or service
+2. Provide managed services based on the Licensed Work
+3. Sell, resell, or sublicense the Licensed Work
+
+For Commercial Use licensing, contact: licensing@cortexlinux.com
+
+---
+
+## Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## Notice
+
+This license is based on the Business Source License 1.1, created by MariaDB Corporation.
+For more information, see https://mariadb.com/bsl11/
