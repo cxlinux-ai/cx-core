@@ -394,6 +394,20 @@ class TestUnifiedPackageManager(unittest.TestCase):
         self.assertIn("Permission denied", message)
 
     @patch("pathlib.Path.exists")
+    @patch("os.access")
+    def test_disable_snap_redirects_backup_already_exists(self, mock_access, mock_exists):
+        """Test disabling when backup already exists - should preserve existing backup."""
+        # config_path.exists() = True, then backup_path.exists() = True
+        mock_exists.side_effect = [True, True]
+        mock_access.return_value = True
+
+        success, message = self.upm.disable_snap_redirects()
+
+        self.assertTrue(success)
+        self.assertIn("already disabled", message.lower())
+        self.assertIn("preserved", message.lower())
+
+    @patch("pathlib.Path.exists")
     @patch("shutil.move")
     def test_restore_snap_redirects_success(self, mock_move, mock_exists):
         """Test successful restore of snap redirects from backup."""
@@ -431,6 +445,20 @@ class TestUnifiedPackageManager(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertIn("already exists", message)
+
+    @patch("pathlib.Path.exists")
+    @patch("shutil.move")
+    def test_restore_snap_redirects_move_failure(self, mock_move, mock_exists):
+        """Test restore when shutil.move raises an exception."""
+        # backup exists, config doesn't exist
+        mock_exists.side_effect = [True, False]
+        mock_move.side_effect = OSError("Permission denied")
+
+        success, message = self.upm.restore_snap_redirects()
+
+        self.assertFalse(success)
+        self.assertIn("Failed to restore", message)
+        self.assertIn("Permission denied", message)
 
     # =========================================================================
     # Storage Analysis Tests
