@@ -35,10 +35,11 @@ except ImportError:
 
 try:
     import psutil
+
+    PSUTIL_AVAILABLE = True
 except ImportError:
-    print("Error: The 'psutil' library is required but not installed.", file=sys.stderr)
-    print("Please install it with: pip install psutil>=5.0.0", file=sys.stderr)
-    sys.exit(1)
+    PSUTIL_AVAILABLE = False
+    psutil = None
 
 # Optional GPU support - graceful degradation if unavailable
 try:
@@ -1846,6 +1847,11 @@ class DashboardApp:
 
     def run(self) -> int:
         """Run the app and return exit code"""
+        if not PSUTIL_AVAILABLE:
+            print("Error: The 'psutil' library is required but not installed.", file=sys.stderr)
+            print("Please install it with: pip install psutil>=5.0.0", file=sys.stderr)
+            return 1
+
         console = Console()
         try:
             console.print("[bold cyan]Starting Cortex Dashboard...[/bold cyan]")
@@ -1870,6 +1876,11 @@ class DashboardApp:
 
 def main() -> int:
     """Entry point"""
+    if not PSUTIL_AVAILABLE:
+        print("Error: The 'psutil' library is required but not installed.", file=sys.stderr)
+        print("Please install it with: pip install psutil>=5.0.0", file=sys.stderr)
+        return 1
+
     app = DashboardApp()
     return app.run()
 
