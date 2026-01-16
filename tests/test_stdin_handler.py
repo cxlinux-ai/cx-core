@@ -6,7 +6,7 @@ Issue: #271 - Stdin Piping Support for Log Analysis
 
 import json
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
