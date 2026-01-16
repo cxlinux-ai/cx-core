@@ -3,7 +3,6 @@ name: Feature Request
 about: Suggest a new feature for Cortex
 title: "[FEATURE] "
 labels: enhancement
-assignees: "suyashd999, mikejmorgan-ai"
 ---
 
 ## Problem
