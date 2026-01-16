@@ -123,24 +123,19 @@ git remote add upstream https://github.com/cortexlinux/cortex.git
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-
-# Install in development mode
-pip install -e .
+# Install in development mode (includes all dependencies)
+pip install -e ".[dev]"
 
 # Run tests to verify setup
 pytest tests/ -v
 ```
 
-### Requirements Files
+### Dependencies
 
-If `requirements-dev.txt` doesn't exist, install these manually:
-
-```bash
-pip install pytest pytest-cov pytest-mock black pylint mypy bandit
-```
+All dependencies are defined in `pyproject.toml`. To install:
+- **Core dependencies**: `pip install -e .`
+- **With dev tools**: `pip install -e ".[dev]"`
+- **All extras**: `pip install -e ".[all]"`
 
 ### IDE Setup
 

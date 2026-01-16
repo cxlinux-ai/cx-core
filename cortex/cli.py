@@ -3,9 +3,12 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from rich.markdown import Markdown
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +28,21 @@ from cortex.installation_history import InstallationHistory, InstallationStatus,
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
+from cortex.role_manager import RoleManager
 from cortex.stack_manager import StackManager
+from cortex.uninstall_impact import (
+    ImpactResult,
+    ImpactSeverity,
+    ServiceStatus,
+    UninstallImpactAnalyzer,
+)
+from cortex.update_checker import UpdateChannel, should_notify_update
+from cortex.updater import Updater, UpdateStatus
 from cortex.validators import validate_api_key, validate_install_request
+from cortex.version_manager import get_version_string
+
+# CLI Help Constants
+HELP_SKIP_CONFIRM = "Skip confirmation prompt"
 
 if TYPE_CHECKING:
     from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
@@ -271,6 +287,169 @@ class CortexCLI:
             return 1
 
     # -------------------------------
+
+    def _ask_ai_and_render(self, question: str) -> int:
+        """Invoke AI with question and render response as Markdown."""
+        api_key = self._get_api_key()
+        if not api_key:
+            self._print_error("No API key found. Please configure an API provider.")
+            return 1
+
+        provider = self._get_provider()
+        try:
+            handler = AskHandler(api_key=api_key, provider=provider)
+            answer = handler.ask(question)
+            console.print(Markdown(answer))
+            return 0
+        except ImportError as e:
+            self._print_error(str(e))
+            cx_print("Install required SDK or use CORTEX_PROVIDER=ollama", "info")
+            return 1
+        except (ValueError, RuntimeError) as e:
+            self._print_error(str(e))
+            return 1
+
+    def role(self, args: argparse.Namespace) -> int:
+        """
+        Handles system role detection and manual configuration via AI context sensing.
+
+        This method supports two subcommands:
+        - 'detect': Analyzes the system and suggests appropriate roles based on
+                    installed binaries, hardware, and activity patterns.
+        - 'set': Manually assigns a role slug and provides tailored package recommendations.
+
+        Args:
+            args: The parsed command-line arguments containing the role_action
+                 and optional role_slug.
+
+        Returns:
+            int: Exit code - 0 on success, 1 on error.
+        """
+        manager = RoleManager()
+        action = getattr(args, "role_action", None)
+
+        # Step 1: Ensure a subcommand is provided to maintain a valid return state.
+        if not action:
+            self._print_error("Please specify a subcommand (detect/set)")
+            return 1
+
+        if action == "detect":
+            # Retrieve environmental facts including active persona and installation history.
+            context = manager.get_system_context()
+
+            # Step 2: Extract the most recent patterns for AI analysis.
+            # Python handles list slicing gracefully even if the list has fewer than 10 items.
+            patterns = context.get("patterns", [])
+            limited_patterns = patterns[-10:]
+            patterns_str = (
+                "\n".join([f"  • {p}" for p in limited_patterns]) or "  • No patterns sensed"
+            )
+
+            signals_str = ", ".join(context.get("binaries", [])) or "none detected"
+            gpu_status = (
+                "GPU Acceleration available" if context.get("has_gpu") else "Standard CPU only"
+            )
+
+            # Generate a unique timestamp for cache-busting and session tracking.
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+
+            # Construct the architectural analysis prompt for the LLM.
+            question = (
+                f"### SYSTEM ARCHITECT ANALYSIS [TIME: {timestamp}] ###\n"
+                f"ENVIRONMENTAL CONTEXT:\n"
+                f"- CURRENTLY SET ROLE: {context.get('active_role')}\n"
+                f"- Detected Binaries: [{signals_str}]\n"
+                f"- Hardware Acceleration: {gpu_status}\n"
+                f"- Installation History: {'Present' if context.get('has_install_history') else 'None'}\n\n"
+                f"OPERATIONAL_HISTORY (Technical Intents & Installed Packages):\n{patterns_str}\n\n"
+                f"TASK: Acting as a Senior Systems Architect, analyze the existing role and signals. "
+                f"Suggest 3-5 professional roles that complement the system.\n\n"
+                f"--- STRICT RESPONSE FORMAT ---\n"
+                f"YOUR RESPONSE MUST START WITH THE NUMBER '1.' AND CONTAIN ONLY THE LIST. "
+                f"DO NOT PROVIDE INTRODUCTIONS. DO NOT PROVIDE REASONING. DO NOT PROVIDE A SUMMARY. "
+                f"FAILURE TO COMPLY WILL BREAK THE CLI PARSER.\n\n"
+                f"Detected roles:\n"
+                f"1."
+            )
+
+            cx_print("🧠 AI is sensing system context and activity patterns...", "thinking")
+            if self._ask_ai_and_render(question) != 0:
+                return 1
+            console.print()
+
+            # Record the detection event in the installation history database for audit purposes.
+            history = InstallationHistory()
+            history.record_installation(
+                InstallationType.CONFIG,
+                ["system-detection"],
+                ["cortex role detect"],
+                datetime.now(timezone.utc),
+            )
+
+            console.print(
+                "\n[dim italic]💡 To install any recommended packages, simply run:[/dim italic]"
+            )
+            console.print("[bold cyan]    cortex install <package_name>[/bold cyan]\n")
+            return 0
+
+        elif action == "set":
+            if not args.role_slug:
+                self._print_error("Role slug is required for 'set' command.")
+                return 1
+
+            role_slug = args.role_slug
+
+            # Step 3: Persist the role and handle both validation and persistence errors.
+            try:
+                manager.save_role(role_slug)
+                history = InstallationHistory()
+                history.record_installation(
+                    InstallationType.CONFIG,
+                    [role_slug],
+                    [f"cortex role set {role_slug}"],
+                    datetime.now(timezone.utc),
+                )
+            except ValueError as e:
+                self._print_error(f"Invalid role slug: {e}")
+                return 1
+            except RuntimeError as e:
+                self._print_error(f"Failed to persist role: {e}")
+                return 1
+
+            cx_print(f"✓ Role set to: [bold cyan]{role_slug}[/bold cyan]", "success")
+
+            context = manager.get_system_context()
+            # Generate a unique request ID for cache-busting and tracking purposes.
+            req_id = f"{datetime.now().strftime('%H:%M:%S.%f')}-{uuid.uuid4().hex[:4]}"
+
+            cx_print(f"🔍 Fetching tailored AI recommendations for {role_slug}...", "info")
+
+            # Construct the recommendation prompt for the LLM.
+            rec_question = (
+                f"### ARCHITECTURAL ADVISORY [ID: {req_id}] ###\n"
+                f"NEW_TARGET_PERSONA: {role_slug}\n"
+                f"OS: {sys.platform} | GPU: {'Enabled' if context.get('has_gpu') else 'None'}\n\n"
+                f"TASK: Generate 3-5 unique packages for '{role_slug}' ONLY.\n"
+                f"--- PREFERRED RESPONSE FORMAT ---\n"
+                f"Please start with '1.' and provide only the list of roles. "
+                f"Omit introductions, reasoning, and summaries.\n\n"
+                f"💡 Recommended packages for {role_slug}:\n"
+                f"  - "
+            )
+
+            if self._ask_ai_and_render(rec_question) != 0:
+                return 1
+
+            console.print(
+                "\n[dim italic]💡 Ready to upgrade? Install any of these using:[/dim italic]"
+            )
+            console.print("[bold cyan]    cortex install <package_name>[/bold cyan]\n")
+            return 0
+
+        else:
+            self._print_error("Unknown role command")
+        return 1
+
     def demo(self):
         """
         Run the one-command investor demo
@@ -591,7 +770,7 @@ class CortexCLI:
     def _sandbox_exec(self, sandbox, args: argparse.Namespace) -> int:
         """Execute command in sandbox."""
         name = args.name
-        command = args.command
+        command = args.cmd
 
         result = sandbox.exec_command(name, command)
 
@@ -890,6 +1069,383 @@ class CortexCLI:
                 traceback.print_exc()
             return 1
 
+    def remove(self, args: argparse.Namespace) -> int:
+        """Handle package removal with impact analysis"""
+        package = args.package
+        dry_run = getattr(args, "dry_run", True)  # Default to dry-run for safety
+        purge = getattr(args, "purge", False)
+        force = getattr(args, "force", False)
+        json_output = getattr(args, "json", False)
+
+        # Initialize and analyze
+        result = self._analyze_package_removal(package)
+        if result is None:
+            return 1
+
+        # Check if package doesn't exist at all (not in repos)
+        if self._check_package_not_found(result):
+            return 1
+
+        # Output results
+        self._output_impact_result(result, json_output)
+
+        # Dry-run mode - stop here
+        if dry_run:
+            console.print()
+            cx_print("Dry run mode - no changes made", "info")
+            cx_print(f"To proceed with removal: cortex remove {package} --execute", "info")
+            return 0
+
+        # Safety check and confirmation
+        if not self._can_proceed_with_removal(result, force, args, package, purge):
+            return self._removal_blocked_or_cancelled(result, force)
+
+        return self._execute_removal(package, purge)
+
+    def _analyze_package_removal(self, package: str):
+        """Initialize analyzer and perform impact analysis. Returns None on failure."""
+        try:
+            analyzer = UninstallImpactAnalyzer()
+        except Exception as e:
+            self._print_error(f"Failed to initialize impact analyzer: {e}")
+            return None
+
+        cx_print(f"Analyzing impact of removing '{package}'...", "info")
+        try:
+            return analyzer.analyze(package)
+        except Exception as e:
+            self._print_error(f"Impact analysis failed: {e}")
+            if self.verbose:
+                import traceback
+
+                traceback.print_exc()
+            return None
+
+    def _check_package_not_found(self, result) -> bool:
+        """Check if package doesn't exist in repos and print warnings."""
+        if result.warnings and "not found in repositories" in str(result.warnings):
+            for warning in result.warnings:
+                cx_print(warning, "warning")
+            for rec in result.recommendations:
+                cx_print(rec, "info")
+            return True
+        return False
+
+    def _output_impact_result(self, result, json_output: bool) -> None:
+        """Output the impact result in JSON or rich format."""
+        if json_output:
+            import json as json_module
+
+            data = {
+                "target_package": result.target_package,
+                "direct_dependents": result.direct_dependents,
+                "transitive_dependents": result.transitive_dependents,
+                "affected_services": [
+                    {
+                        "name": s.name,
+                        "status": s.status.value,
+                        "package": s.package,
+                        "is_critical": s.is_critical,
+                    }
+                    for s in result.affected_services
+                ],
+                "orphaned_packages": result.orphaned_packages,
+                "cascade_packages": result.cascade_packages,
+                "severity": result.severity.value,
+                "total_affected": result.total_affected,
+                "cascade_depth": result.cascade_depth,
+                "recommendations": result.recommendations,
+                "warnings": result.warnings,
+                "safe_to_remove": result.safe_to_remove,
+            }
+            console.print(json_module.dumps(data, indent=2))
+        else:
+            self._display_impact_report(result)
+
+    def _can_proceed_with_removal(
+        self, result, force: bool, args, package: str, purge: bool
+    ) -> bool:
+        """Check safety and get user confirmation. Returns True if can proceed."""
+        if not result.safe_to_remove and not force:
+            return False
+
+        skip_confirm = getattr(args, "yes", False)
+        if skip_confirm:
+            return True
+
+        return self._confirm_removal(package, purge)
+
+    def _confirm_removal(self, package: str, purge: bool) -> bool:
+        """Prompt user for removal confirmation."""
+        console.print()
+        confirm_msg = f"Remove '{package}'"
+        if purge:
+            confirm_msg += " and purge configuration"
+        confirm_msg += "? [y/N]: "
+        try:
+            response = input(confirm_msg).strip().lower()
+            return response in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return False
+
+    def _removal_blocked_or_cancelled(self, result, force: bool) -> int:
+        """Handle blocked or cancelled removal."""
+        if not result.safe_to_remove and not force:
+            console.print()
+            self._print_error(
+                "Package removal has high impact. Use --force to proceed anyway, "
+                "or address the recommendations first."
+            )
+            return 1
+        cx_print("Removal cancelled", "info")
+        return 0
+
+    def _display_impact_report(self, result: ImpactResult) -> None:
+        """Display formatted impact analysis report"""
+        from rich.panel import Panel
+        from rich.table import Table
+
+        # Severity styling
+        severity_styles = {
+            ImpactSeverity.SAFE: ("green", "✅"),
+            ImpactSeverity.LOW: ("green", "💚"),
+            ImpactSeverity.MEDIUM: ("yellow", "🟡"),
+            ImpactSeverity.HIGH: ("orange1", "🟠"),
+            ImpactSeverity.CRITICAL: ("red", "🔴"),
+        }
+        style, icon = severity_styles.get(result.severity, ("white", "❓"))
+
+        # Header
+        console.print()
+        console.print(
+            Panel(f"[bold]{icon} Impact Analysis: {result.target_package}[/bold]", style=style)
+        )
+
+        # Display sections
+        self._display_warnings(result.warnings)
+        self._display_package_list(result.direct_dependents, "cyan", "📦 Direct dependents", 10)
+        self._display_services(result.affected_services)
+        self._display_summary_table(result, style, Table)
+        self._display_package_list(result.cascade_packages, "yellow", "🗑️  Cascade removal", 5)
+        self._display_package_list(result.orphaned_packages, "white", "👻 Would become orphaned", 5)
+        self._display_recommendations(result.recommendations)
+
+        # Final verdict
+        console.print()
+        if result.safe_to_remove:
+            console.print("[bold green]✅ Safe to remove[/bold green]")
+        else:
+            console.print("[bold yellow]⚠️  Review recommendations before proceeding[/bold yellow]")
+
+    def _display_warnings(self, warnings: list) -> None:
+        """Display warnings with appropriate styling."""
+        for warning in warnings:
+            if "not currently installed" in warning:
+                console.print(f"\n[bold yellow]ℹ️  {warning}[/bold yellow]")
+                console.print("[dim]   Showing potential impact analysis for this package.[/dim]")
+            else:
+                console.print(f"\n[bold red]⚠️  {warning}[/bold red]")
+
+    def _display_package_list(self, packages: list, color: str, title: str, limit: int) -> None:
+        """Display a list of packages with truncation."""
+        if packages:
+            console.print(f"\n[bold {color}]{title} ({len(packages)}):[/bold {color}]")
+            for pkg in packages[:limit]:
+                console.print(f"   • {pkg}")
+            if len(packages) > limit:
+                console.print(f"   [dim]... and {len(packages) - limit} more[/dim]")
+        elif "dependents" in title:
+            console.print(f"\n[bold {color}]{title}:[/bold {color}] None")
+
+    def _display_services(self, services: list) -> None:
+        """Display affected services."""
+        if services:
+            console.print(f"\n[bold magenta]🔧 Affected services ({len(services)}):[/bold magenta]")
+            for service in services:
+                status_icon = "🟢" if service.status == ServiceStatus.RUNNING else "⚪"
+                critical_marker = " [red][CRITICAL][/red]" if service.is_critical else ""
+                console.print(f"   {status_icon} {service.name}{critical_marker}")
+        else:
+            console.print("\n[bold magenta]🔧 Affected services:[/bold magenta] None")
+
+    def _display_summary_table(self, result, style: str, table_class) -> None:
+        """Display the impact summary table."""
+        summary_table = table_class(show_header=False, box=None, padding=(0, 2))
+        summary_table.add_column("Metric", style="dim")
+        summary_table.add_column("Value")
+        summary_table.add_row("Total packages affected", str(result.total_affected))
+        summary_table.add_row("Cascade depth", str(result.cascade_depth))
+        summary_table.add_row("Services at risk", str(len(result.affected_services)))
+        summary_table.add_row("Severity", f"[{style}]{result.severity.value.upper()}[/{style}]")
+        console.print("\n[bold]📊 Impact Summary:[/bold]")
+        console.print(summary_table)
+
+    def _display_recommendations(self, recommendations: list) -> None:
+        """Display recommendations."""
+        if recommendations:
+            console.print("\n[bold green]💡 Recommendations:[/bold green]")
+            for rec in recommendations:
+                console.print(f"   • {rec}")
+
+    def _execute_removal(self, package: str, purge: bool = False) -> int:
+        """Execute the actual package removal with audit logging"""
+        import datetime
+        import subprocess
+
+        cx_print(f"Removing '{package}'...", "info")
+
+        # Initialize history for audit logging
+        history = InstallationHistory()
+        start_time = datetime.datetime.now()
+        operation_type = InstallationType.PURGE if purge else InstallationType.REMOVE
+
+        # Build removal command (with -y since user already confirmed)
+        if purge:
+            cmd = ["sudo", "apt-get", "purge", "-y", package]
+        else:
+            cmd = ["sudo", "apt-get", "remove", "-y", package]
+
+        # Record the operation start
+        try:
+            install_id = history.record_installation(
+                operation_type=operation_type,
+                packages=[package],
+                commands=[" ".join(cmd)],
+                start_time=start_time,
+            )
+        except Exception as e:
+            self._debug(f"Failed to record installation start: {e}")
+            install_id = None
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+            if result.returncode == 0:
+                self._print_success(f"'{package}' removed successfully")
+
+                # Record successful removal
+                if install_id:
+                    try:
+                        history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    except Exception as e:
+                        self._debug(f"Failed to update installation record: {e}")
+
+                # Run autoremove to clean up orphaned packages
+                console.print()
+                cx_print("Running autoremove to clean up orphaned packages...", "info")
+                autoremove_cmd = ["sudo", "apt-get", "autoremove", "-y"]
+                autoremove_start = datetime.datetime.now()
+
+                # Record autoremove operation start
+                autoremove_id = None
+                try:
+                    autoremove_id = history.record_installation(
+                        operation_type=InstallationType.REMOVE,
+                        packages=[f"{package}-autoremove"],
+                        commands=[" ".join(autoremove_cmd)],
+                        start_time=autoremove_start,
+                    )
+                except Exception as e:
+                    self._debug(f"Failed to record autoremove start: {e}")
+
+                try:
+                    autoremove_result = subprocess.run(
+                        autoremove_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+
+                    if autoremove_result.returncode == 0:
+                        cx_print("Cleanup complete", "success")
+                        if autoremove_id:
+                            try:
+                                history.update_installation(
+                                    autoremove_id, InstallationStatus.SUCCESS
+                                )
+                            except Exception as e:
+                                self._debug(f"Failed to update autoremove record: {e}")
+                    else:
+                        cx_print("Autoremove completed with warnings", "warning")
+                        if autoremove_id:
+                            try:
+                                history.update_installation(
+                                    autoremove_id,
+                                    InstallationStatus.FAILED,
+                                    error_message=(
+                                        autoremove_result.stderr[:500]
+                                        if autoremove_result.stderr
+                                        else "Autoremove returned non-zero exit code"
+                                    ),
+                                )
+                            except Exception as e:
+                                self._debug(f"Failed to update autoremove record: {e}")
+                except subprocess.TimeoutExpired:
+                    cx_print("Autoremove timed out", "warning")
+                    if autoremove_id:
+                        try:
+                            history.update_installation(
+                                autoremove_id,
+                                InstallationStatus.FAILED,
+                                error_message="Autoremove timed out after 300 seconds",
+                            )
+                        except Exception:
+                            pass
+                except Exception as e:
+                    cx_print(f"Autoremove failed: {e}", "warning")
+                    if autoremove_id:
+                        try:
+                            history.update_installation(
+                                autoremove_id,
+                                InstallationStatus.FAILED,
+                                error_message=str(e)[:500],
+                            )
+                        except Exception:
+                            pass
+
+                return 0
+            else:
+                self._print_error(f"Removal failed: {result.stderr}")
+                # Record failed removal
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id,
+                            InstallationStatus.FAILED,
+                            error_message=result.stderr[:500],
+                        )
+                    except Exception as e:
+                        self._debug(f"Failed to update installation record: {e}")
+                return 1
+
+        except subprocess.TimeoutExpired:
+            self._print_error("Removal timed out")
+            # Record timeout failure
+            if install_id:
+                try:
+                    history.update_installation(
+                        install_id,
+                        InstallationStatus.FAILED,
+                        error_message="Operation timed out after 300 seconds",
+                    )
+                except Exception:
+                    pass
+            return 1
+        except Exception as e:
+            self._print_error(f"Removal failed: {e}")
+            # Record exception failure
+            if install_id:
+                try:
+                    history.update_installation(
+                        install_id,
+                        InstallationStatus.FAILED,
+                        error_message=str(e)[:500],
+                    )
+                except Exception:
+                    pass
+            return 1
+
     def cache_stats(self) -> int:
         try:
             from cortex.semantic_cache import SemanticCache
@@ -1023,6 +1579,274 @@ class CortexCLI:
         # plus all the detailed health checks from doctor
         doctor = SystemDoctor()
         return doctor.run_checks()
+
+    def update(self, args: argparse.Namespace) -> int:
+        """Handle the update command for self-updating Cortex."""
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        from rich.table import Table
+
+        # Parse channel
+        channel_str = getattr(args, "channel", "stable")
+        try:
+            channel = UpdateChannel(channel_str)
+        except ValueError:
+            channel = UpdateChannel.STABLE
+
+        updater = Updater(channel=channel)
+
+        # Handle subcommands
+        action = getattr(args, "update_action", None)
+
+        if action == "check" or (not action and getattr(args, "check", False)):
+            # Check for updates only
+            cx_print("Checking for updates...", "thinking")
+            result = updater.check_update_available(force=True)
+
+            if result.error:
+                self._print_error(f"Update check failed: {result.error}")
+                return 1
+
+            console.print()
+            cx_print(f"Current version: [cyan]{result.current_version}[/cyan]", "info")
+
+            if result.update_available and result.latest_release:
+                cx_print(
+                    f"Update available: [green]{result.latest_version}[/green]",
+                    "success",
+                )
+                console.print()
+                console.print("[bold]Release notes:[/bold]")
+                console.print(result.latest_release.release_notes_summary)
+                console.print()
+                cx_print(
+                    "Run [bold]cortex update install[/bold] to upgrade",
+                    "info",
+                )
+            else:
+                cx_print("Cortex is up to date!", "success")
+
+            return 0
+
+        elif action == "install":
+            # Install update
+            target = getattr(args, "version", None)
+            dry_run = getattr(args, "dry_run", False)
+
+            if dry_run:
+                cx_print("Dry run mode - no changes will be made", "warning")
+
+            cx_header("Cortex Self-Update")
+
+            def progress_callback(message: str, percent: float) -> None:
+                if percent >= 0:
+                    cx_print(f"{message} ({percent:.0f}%)", "info")
+                else:
+                    cx_print(message, "info")
+
+            updater.progress_callback = progress_callback
+
+            result = updater.update(target_version=target, dry_run=dry_run)
+
+            console.print()
+
+            if result.success:
+                if result.status == UpdateStatus.SUCCESS:
+                    if result.new_version == result.previous_version:
+                        cx_print("Already up to date!", "success")
+                    else:
+                        cx_print(
+                            f"Updated: {result.previous_version} → {result.new_version}",
+                            "success",
+                        )
+                        if result.duration_seconds:
+                            console.print(f"[dim]Completed in {result.duration_seconds:.1f}s[/dim]")
+                elif result.status == UpdateStatus.PENDING:
+                    # Dry run
+                    cx_print(
+                        f"Would update: {result.previous_version} → {result.new_version}",
+                        "info",
+                    )
+                return 0
+            else:
+                if result.status == UpdateStatus.ROLLED_BACK:
+                    cx_print("Update failed - rolled back to previous version", "warning")
+                else:
+                    self._print_error(f"Update failed: {result.error}")
+                return 1
+
+        elif action == "rollback":
+            # Rollback to previous version
+            backup_id = getattr(args, "backup_id", None)
+
+            backups = updater.list_backups()
+
+            if not backups:
+                self._print_error("No backups available for rollback")
+                return 1
+
+            if backup_id:
+                # Find specific backup
+                target_backup = None
+                for b in backups:
+                    if b.version == backup_id or str(b.path).endswith(backup_id):
+                        target_backup = b
+                        break
+
+                if not target_backup:
+                    self._print_error(f"Backup '{backup_id}' not found")
+                    return 1
+
+                backup_path = target_backup.path
+            else:
+                # Use most recent backup
+                backup_path = backups[0].path
+
+            cx_print(f"Rolling back to backup: {backup_path.name}", "info")
+            result = updater.rollback_to_backup(backup_path)
+
+            if result.success:
+                cx_print(
+                    f"Rolled back: {result.previous_version} → {result.new_version}",
+                    "success",
+                )
+                return 0
+            else:
+                self._print_error(f"Rollback failed: {result.error}")
+                return 1
+
+        elif action == "list" or getattr(args, "list_releases", False):
+            # List available versions
+            from cortex.update_checker import UpdateChecker
+
+            checker = UpdateChecker(channel=channel)
+            releases = checker.get_all_releases(limit=10)
+
+            if not releases:
+                cx_print("No releases found", "warning")
+                return 1
+
+            cx_header(f"Available Releases ({channel.value} channel)")
+
+            table = Table(show_header=True, header_style="bold cyan", box=None)
+            table.add_column("Version", style="green")
+            table.add_column("Date")
+            table.add_column("Channel")
+            table.add_column("Notes")
+
+            current = get_version_string()
+
+            for release in releases:
+                version_str = str(release.version)
+                if version_str == current:
+                    version_str = f"{version_str} [dim](current)[/dim]"
+
+                # Truncate notes
+                notes = release.name or release.body[:50] if release.body else ""
+                if len(notes) > 50:
+                    notes = notes[:47] + "..."
+
+                table.add_row(
+                    version_str,
+                    release.formatted_date,
+                    release.version.channel.value,
+                    notes,
+                )
+
+            console.print(table)
+            return 0
+
+        elif action == "backups":
+            # List backups
+            backups = updater.list_backups()
+
+            if not backups:
+                cx_print("No backups available", "info")
+                return 0
+
+            cx_header("Available Backups")
+
+            table = Table(show_header=True, header_style="bold cyan", box=None)
+            table.add_column("Version", style="green")
+            table.add_column("Date")
+            table.add_column("Size")
+            table.add_column("Path")
+
+            for backup in backups:
+                # Format size
+                size_mb = backup.size_bytes / (1024 * 1024)
+                size_str = f"{size_mb:.1f} MB"
+
+                # Format date
+                try:
+                    dt = datetime.fromisoformat(backup.timestamp)
+                    date_str = dt.strftime("%Y-%m-%d %H:%M")
+                except ValueError:
+                    date_str = backup.timestamp[:16]
+
+                table.add_row(
+                    backup.version,
+                    date_str,
+                    size_str,
+                    str(backup.path.name),
+                )
+
+            console.print(table)
+            console.print()
+            cx_print(
+                "Use [bold]cortex update rollback <version>[/bold] to restore",
+                "info",
+            )
+            return 0
+
+        else:
+            # Default: show current version and check for updates
+            cx_print(f"Current version: [cyan]{get_version_string()}[/cyan]", "info")
+            cx_print("Checking for updates...", "thinking")
+
+            result = updater.check_update_available()
+
+            if result.update_available and result.latest_release:
+                console.print()
+                cx_print(
+                    f"Update available: [green]{result.latest_version}[/green]",
+                    "success",
+                )
+                console.print()
+                console.print("[bold]What's new:[/bold]")
+                console.print(result.latest_release.release_notes_summary)
+                console.print()
+                cx_print(
+                    "Run [bold]cortex update install[/bold] to upgrade",
+                    "info",
+                )
+            else:
+                cx_print("Cortex is up to date!", "success")
+
+            return 0
+
+    def benchmark(self, verbose: bool = False):
+        """Run AI performance benchmark and display scores"""
+        from cortex.benchmark import run_benchmark
+
+        return run_benchmark(verbose=verbose)
+
+    def systemd(self, service: str, action: str = "status", verbose: bool = False):
+        """Systemd service helper with plain English explanations"""
+        from cortex.systemd_helper import run_systemd_helper
+
+        return run_systemd_helper(service, action, verbose)
+
+    def gpu(self, action: str = "status", mode: str = None, verbose: bool = False):
+        """Hybrid GPU (Optimus) manager"""
+        from cortex.gpu_manager import run_gpu_manager
+
+        return run_gpu_manager(action, mode, verbose)
+
+    def printer(self, action: str = "status", verbose: bool = False):
+        """Printer/Scanner auto-setup"""
+        from cortex.printer_setup import run_printer_setup
+
+        return run_printer_setup(action, verbose)
 
     def wizard(self):
         """Interactive setup wizard for API key configuration"""
@@ -2240,16 +3064,18 @@ def show_rich_help():
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
     table.add_row("install <pkg>", "Install software")
+    table.add_row("remove <pkg>", "Remove packages with impact analysis")
     table.add_row("import <file>", "Import deps from package files")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
+    table.add_row("role", "AI-driven system role detection")
+    table.add_row("stack <name>", "Install the stack")
     table.add_row("notify", "Manage desktop notifications")
     table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
-    table.add_row("stack <name>", "Install the stack")
     table.add_row("docker permissions", "Fix Docker bind-mount permissions")
     table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
-    table.add_row("doctor", "System health check")
+    table.add_row("update", "Check for and install updates")
 
     console.print(table)
     console.print()
@@ -2302,6 +3128,21 @@ def main():
         # Network config is optional - don't block execution if it fails
         console.print(f"[yellow]⚠️  Network auto-config failed: {e}[/yellow]")
 
+    # Check for updates on startup (cached, non-blocking)
+    # Only show notification for commands that aren't 'update' itself
+    try:
+        if temp_args.command not in ["update", None]:
+            update_release = should_notify_update()
+            if update_release:
+                console.print(
+                    f"[cyan]🔔 Cortex update available:[/cyan] "
+                    f"[green]{update_release.version}[/green]"
+                )
+                console.print("   [dim]Run 'cortex update' to upgrade[/dim]")
+                console.print()
+    except Exception:
+        pass  # Don't block CLI on update check failures
+
     parser = argparse.ArgumentParser(
         prog="cortex",
         description="AI-powered Linux command interpreter",
@@ -2324,7 +3165,7 @@ def main():
     )
 
     # Provide an option to skip the manual confirmation prompt
-    perm_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    perm_parser.add_argument("--yes", "-y", action="store_true", help=HELP_SKIP_CONFIRM)
 
     perm_parser.add_argument(
         "--execute", "-e", action="store_true", help="Apply ownership changes (default: dry-run)"
@@ -2338,6 +3179,47 @@ def main():
 
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
+
+    # Benchmark command
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run AI performance benchmark")
+    benchmark_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
+    # Systemd helper command
+    systemd_parser = subparsers.add_parser("systemd", help="Systemd service helper (plain English)")
+    systemd_parser.add_argument("service", help="Service name")
+    systemd_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "diagnose", "deps"],
+        help="Action: status (default), diagnose, deps",
+    )
+    systemd_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
+    # GPU manager command
+    gpu_parser = subparsers.add_parser("gpu", help="Hybrid GPU (Optimus) manager")
+    gpu_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "modes", "switch", "apps"],
+        help="Action: status (default), modes, switch, apps",
+    )
+    gpu_parser.add_argument(
+        "mode", nargs="?", help="Mode for switch action (integrated/hybrid/nvidia)"
+    )
+    gpu_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
+    # Printer/Scanner setup command
+    printer_parser = subparsers.add_parser("printer", help="Printer/Scanner auto-setup")
+    printer_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "detect"],
+        help="Action: status (default), detect",
+    )
+    printer_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
@@ -2367,6 +3249,47 @@ def main():
         "--pkg-version",
         type=str,
         help="Version to build (for --from-source)",
+    )
+
+    # Remove command - uninstall with impact analysis
+    remove_parser = subparsers.add_parser(
+        "remove",
+        help="Remove packages with impact analysis",
+        description="Analyze and remove packages safely with dependency impact analysis.",
+    )
+    remove_parser.add_argument("package", type=str, help="Package to remove")
+    remove_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=True,
+        help="Show impact analysis without removing (default)",
+    )
+    remove_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually remove the package after analysis",
+    )
+    remove_parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Also remove configuration files",
+    )
+    remove_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force removal even if impact is high",
+    )
+    remove_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help=HELP_SKIP_CONFIRM,
+    )
+    remove_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output impact analysis as JSON",
     )
 
     # Import command - import dependencies from package manager files
@@ -2428,6 +3351,29 @@ def main():
     send_parser.add_argument("--actions", nargs="*", help="Action buttons")
     # --------------------------
 
+    # Role Management Commands
+    # This parser defines the primary interface for system personality and contextual sensing.
+    role_parser = subparsers.add_parser(
+        "role", help="AI-driven system personality and context management"
+    )
+    role_subs = role_parser.add_subparsers(dest="role_action", help="Role actions")
+
+    # Subcommand: role detect
+    # Dynamically triggers the sensing layer to analyze system context and suggest roles.
+    role_subs.add_parser(
+        "detect", help="Dynamically sense system context and shell patterns to suggest an AI role"
+    )
+
+    # Subcommand: role set <slug>
+    # Allows manual override for role persistence and provides tailored recommendations.
+    role_set_parser = role_subs.add_parser(
+        "set", help="Manually override the system role and receive tailored recommendations"
+    )
+    role_set_parser.add_argument(
+        "role_slug",
+        help="The role identifier (e.g., 'data-scientist', 'web-server', 'ml-workstation')",
+    )
+
     # Stack command
     stack_parser = subparsers.add_parser("stack", help="Manage pre-built package stacks")
     stack_parser.add_argument(
@@ -2476,9 +3422,7 @@ def main():
     sandbox_promote_parser.add_argument(
         "--dry-run", action="store_true", help="Show command without executing"
     )
-    sandbox_promote_parser.add_argument(
-        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
-    )
+    sandbox_promote_parser.add_argument("-y", "--yes", action="store_true", help=HELP_SKIP_CONFIRM)
 
     # sandbox cleanup <name> [--force]
     sandbox_cleanup_parser = sandbox_subs.add_parser("cleanup", help="Remove a sandbox environment")
@@ -2491,7 +3435,7 @@ def main():
     # sandbox exec <name> <command...>
     sandbox_exec_parser = sandbox_subs.add_parser("exec", help="Execute command in sandbox")
     sandbox_exec_parser.add_argument("name", help="Sandbox name")
-    sandbox_exec_parser.add_argument("command", nargs="+", help="Command to execute")
+    sandbox_exec_parser.add_argument("cmd", nargs="+", help="Command to execute")
     # --------------------------
 
     # --- Environment Variable Management Commands ---
@@ -2702,6 +3646,130 @@ def main():
     )
     # --------------------------
 
+    # License and upgrade commands
+    subparsers.add_parser("upgrade", help="Upgrade to Cortex Pro")
+    subparsers.add_parser("license", help="Show license status")
+
+    activate_parser = subparsers.add_parser("activate", help="Activate a license key")
+    activate_parser.add_argument("license_key", help="Your license key")
+
+    # --- Update Command ---
+    update_parser = subparsers.add_parser("update", help="Check for and install Cortex updates")
+    update_parser.add_argument(
+        "--channel",
+        "-c",
+        choices=["stable", "beta", "dev"],
+        default="stable",
+        help="Update channel (default: stable)",
+    )
+    update_subs = update_parser.add_subparsers(dest="update_action", help="Update actions")
+
+    # update check
+    update_check_parser = update_subs.add_parser("check", help="Check for available updates")
+
+    # update install [version] [--dry-run]
+    update_install_parser = update_subs.add_parser("install", help="Install available update")
+    update_install_parser.add_argument(
+        "version", nargs="?", help="Specific version to install (default: latest)"
+    )
+    update_install_parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be updated without installing"
+    )
+
+    # update rollback [backup_id]
+    update_rollback_parser = update_subs.add_parser("rollback", help="Rollback to previous version")
+    update_rollback_parser.add_argument(
+        "backup_id", nargs="?", help="Backup ID or version to restore (default: most recent)"
+    )
+
+    # update list
+    update_subs.add_parser("list", help="List available versions")
+
+    # update backups
+    update_subs.add_parser("backups", help="List available backups for rollback")
+    # --------------------------
+
+    # WiFi/Bluetooth Driver Matcher
+    wifi_parser = subparsers.add_parser("wifi", help="WiFi/Bluetooth driver auto-matcher")
+    wifi_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "detect", "recommend", "install", "connectivity"],
+        help="Action to perform (default: status)",
+    )
+    wifi_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+    # Stdin Piping Support
+    stdin_parser = subparsers.add_parser("stdin", help="Process piped stdin data")
+    stdin_parser.add_argument(
+        "action",
+        nargs="?",
+        default="info",
+        choices=["info", "analyze", "passthrough", "stats"],
+        help="Action to perform (default: info)",
+    )
+    stdin_parser.add_argument(
+        "--max-lines",
+        type=int,
+        default=1000,
+        help="Maximum lines to process (default: 1000)",
+    )
+    stdin_parser.add_argument(
+        "--truncation",
+        choices=["head", "tail", "middle", "sample"],
+        default="middle",
+        help="Truncation mode for large input (default: middle)",
+    )
+    stdin_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+    # Semantic Version Resolver
+    deps_parser = subparsers.add_parser("deps", help="Dependency version resolver")
+    deps_parser.add_argument(
+        "action",
+        nargs="?",
+        default="analyze",
+        choices=["analyze", "parse", "check", "compare"],
+        help="Action to perform (default: analyze)",
+    )
+    deps_parser.add_argument(
+        "packages",
+        nargs="*",
+        help="Package constraints (format: pkg:constraint:source)",
+    )
+    deps_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+    # System Health Score
+    health_parser = subparsers.add_parser("health", help="System health score and recommendations")
+    health_parser.add_argument(
+        "action",
+        nargs="?",
+        default="check",
+        choices=["check", "history", "factors", "quick"],
+        help="Action to perform (default: check)",
+    )
+    health_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
     args = parser.parse_args()
 
     # The Guard: Check for empty commands before starting the CLI
@@ -2726,6 +3794,24 @@ def main():
             return cli.wizard()
         elif args.command == "status":
             return cli.status()
+        elif args.command == "benchmark":
+            return cli.benchmark(verbose=getattr(args, "verbose", False))
+        elif args.command == "systemd":
+            return cli.systemd(
+                args.service,
+                action=getattr(args, "action", "status"),
+                verbose=getattr(args, "verbose", False),
+            )
+        elif args.command == "gpu":
+            return cli.gpu(
+                action=getattr(args, "action", "status"),
+                mode=getattr(args, "mode", None),
+                verbose=getattr(args, "verbose", False),
+            )
+        elif args.command == "printer":
+            return cli.printer(
+                action=getattr(args, "action", "status"), verbose=getattr(args, "verbose", False)
+            )
         elif args.command == "ask":
             return cli.ask(args.question)
         elif args.command == "install":
@@ -2738,13 +3824,19 @@ def main():
                 source_url=getattr(args, "source_url", None),
                 version=getattr(args, "pkg_version", None),
             )
+        elif args.command == "remove":
+            # Handle --execute flag to override default dry-run
+            if args.execute:
+                args.dry_run = False
+            return cli.remove(args)
         elif args.command == "import":
             return cli.import_deps(args)
         elif args.command == "history":
             return cli.history(limit=args.limit, status=args.status, show_id=args.show_id)
         elif args.command == "rollback":
             return cli.rollback(args.id, dry_run=args.dry_run)
-        # Handle the new notify command
+        elif args.command == "role":
+            return cli.role(args)
         elif args.command == "notify":
             return cli.notify(args)
         elif args.command == "stack":
@@ -2758,6 +3850,53 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
+        elif args.command == "upgrade":
+            from cortex.licensing import open_upgrade_page
+
+            open_upgrade_page()
+            return 0
+        elif args.command == "license":
+            from cortex.licensing import show_license_status
+
+            show_license_status()
+            return 0
+        elif args.command == "activate":
+            from cortex.licensing import activate_license
+
+            return 0 if activate_license(args.license_key) else 1
+        elif args.command == "update":
+            return cli.update(args)
+        elif args.command == "wifi":
+            from cortex.wifi_driver import run_wifi_driver
+
+            return run_wifi_driver(
+                action=getattr(args, "action", "status"),
+                verbose=getattr(args, "verbose", False),
+            )
+        elif args.command == "stdin":
+            from cortex.stdin_handler import run_stdin_handler
+
+            return run_stdin_handler(
+                action=getattr(args, "action", "info"),
+                max_lines=getattr(args, "max_lines", 1000),
+                truncation=getattr(args, "truncation", "middle"),
+                verbose=getattr(args, "verbose", False),
+            )
+        elif args.command == "deps":
+            from cortex.semver_resolver import run_semver_resolver
+
+            return run_semver_resolver(
+                action=getattr(args, "action", "analyze"),
+                packages=getattr(args, "packages", None),
+                verbose=getattr(args, "verbose", False),
+            )
+        elif args.command == "health":
+            from cortex.health_score import run_health_check
+
+            return run_health_check(
+                action=getattr(args, "action", "check"),
+                verbose=getattr(args, "verbose", False),
+            )
         else:
             parser.print_help()
             return 1

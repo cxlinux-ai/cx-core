@@ -3,16 +3,29 @@ Cortex Linux Branding Module
 
 Provides consistent visual branding across all Cortex CLI output.
 Uses Rich library for cross-platform terminal styling.
+
+Enhanced with rich output formatting (Issue #242):
+- Color-coded status messages
+- Formatted boxes and panels
+- Progress spinners and bars
+- Consistent visual language
 """
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
 # Brand colors
 CORTEX_CYAN = "cyan"
 CORTEX_DARK = "dark_cyan"
+CORTEX_SUCCESS = "green"
+CORTEX_WARNING = "yellow"
+CORTEX_ERROR = "red"
+CORTEX_INFO = "blue"
+CORTEX_MUTED = "dim"
 
 # ASCII Logo - matches the CX circular logo
 LOGO_LARGE = """
@@ -119,26 +132,252 @@ def show_goodbye():
     console.print()
 
 
+# ============================================
+# Rich Output Formatting (Issue #242)
+# ============================================
+
+
+def cx_box(
+    content: str,
+    title: str | None = None,
+    subtitle: str | None = None,
+    status: str = "info",
+) -> None:
+    """
+    Print content in a styled box/panel.
+
+    Args:
+        content: Content to display
+        title: Optional box title
+        subtitle: Optional box subtitle
+        status: Style - "info", "success", "warning", "error"
+    """
+    border_colors = {
+        "info": CORTEX_CYAN,
+        "success": CORTEX_SUCCESS,
+        "warning": CORTEX_WARNING,
+        "error": CORTEX_ERROR,
+    }
+    border_style = border_colors.get(status, CORTEX_CYAN)
+
+    panel = Panel(
+        content,
+        title=f"[bold]{title}[/bold]" if title else None,
+        subtitle=f"[dim]{subtitle}[/dim]" if subtitle else None,
+        border_style=border_style,
+        padding=(1, 2),
+        box=box.ROUNDED,
+    )
+    console.print(panel)
+
+
+def cx_status_box(
+    title: str,
+    items: list[tuple[str, str, str]],
+) -> None:
+    """
+    Print a status box with aligned key-value pairs.
+
+    Example output:
+    ┌─────────────────────────────────────────┐
+    │  CORTEX ML SCHEDULER                    │
+    ├─────────────────────────────────────────┤
+    │  Status:    Active                      │
+    │  Uptime:    0.5 seconds                 │
+    └─────────────────────────────────────────┘
+
+    Args:
+        title: Box title
+        items: List of (label, value, status) tuples
+               status: "success", "warning", "error", "info", "default"
+    """
+    style_colors = {
+        "success": CORTEX_SUCCESS,
+        "warning": CORTEX_WARNING,
+        "error": CORTEX_ERROR,
+        "info": CORTEX_CYAN,
+        "default": "white",
+    }
+
+    max_label_len = max(len(item[0]) for item in items) if items else 0
+    lines = []
+
+    for label, value, status in items:
+        color = style_colors.get(status, "white")
+        padded_label = label.ljust(max_label_len)
+        lines.append(f"  [dim]{padded_label}:[/dim]  [{color}]{value}[/{color}]")
+
+    content = "\n".join(lines)
+    panel = Panel(
+        content,
+        title=f"[bold cyan]{title}[/bold cyan]",
+        border_style=CORTEX_CYAN,
+        padding=(1, 2),
+        box=box.ROUNDED,
+    )
+    console.print(panel)
+
+
+def cx_table(
+    headers: list[str],
+    rows: list[list[str]],
+    title: str | None = None,
+    row_styles: list[str] | None = None,
+) -> None:
+    """
+    Print a formatted table with Cortex styling.
+
+    Args:
+        headers: Column header names
+        rows: List of rows (each row is a list of cell values)
+        title: Optional table title
+        row_styles: Optional list of styles for each row
+    """
+    table = Table(
+        title=f"[bold cyan]{title}[/bold cyan]" if title else None,
+        show_header=True,
+        header_style="bold cyan",
+        border_style=CORTEX_CYAN,
+        box=box.ROUNDED,
+        padding=(0, 1),
+    )
+
+    for header in headers:
+        table.add_column(header, style="cyan")
+
+    for i, row in enumerate(rows):
+        style = row_styles[i] if row_styles and i < len(row_styles) else None
+        table.add_row(*row, style=style)
+
+    console.print(table)
+
+
+def cx_package_table(
+    packages: list[tuple[str, str, str]],
+    title: str = "Packages",
+) -> None:
+    """
+    Print a formatted package table.
+
+    Args:
+        packages: List of (name, version, action) tuples
+        title: Table title
+    """
+    table = Table(
+        title=f"[bold cyan]{title}[/bold cyan]",
+        show_header=True,
+        header_style="bold cyan",
+        border_style=CORTEX_CYAN,
+        box=box.ROUNDED,
+        padding=(0, 1),
+    )
+
+    table.add_column("Package", style="cyan", no_wrap=True)
+    table.add_column("Version", style="white")
+    table.add_column("Action", style="green")
+
+    for name, version, action in packages:
+        # Color-code actions
+        if "install" in action.lower():
+            action_styled = f"[green]{action}[/green]"
+        elif "remove" in action.lower() or "uninstall" in action.lower():
+            action_styled = f"[red]{action}[/red]"
+        elif "update" in action.lower() or "upgrade" in action.lower():
+            action_styled = f"[yellow]{action}[/yellow]"
+        else:
+            action_styled = action
+        table.add_row(name, version, action_styled)
+
+    console.print(table)
+
+
+def cx_divider(title: str | None = None) -> None:
+    """
+    Print a horizontal divider with optional title.
+
+    Args:
+        title: Optional section title
+    """
+    if title:
+        console.print(f"\n[bold cyan]━━━ {title} ━━━[/bold cyan]\n")
+    else:
+        console.print(f"[{CORTEX_CYAN}]{'━' * 50}[/{CORTEX_CYAN}]")
+
+
+def cx_success(message: str) -> None:
+    """Print a success message with checkmark."""
+    console.print(f"[{CORTEX_SUCCESS}]✓[/{CORTEX_SUCCESS}] {message}")
+
+
+def cx_error(message: str) -> None:
+    """Print an error message with X."""
+    console.print(f"[{CORTEX_ERROR}]✗[/{CORTEX_ERROR}] [{CORTEX_ERROR}]{message}[/{CORTEX_ERROR}]")
+
+
+def cx_warning(message: str) -> None:
+    """Print a warning message with warning icon."""
+    console.print(
+        f"[{CORTEX_WARNING}]⚠[/{CORTEX_WARNING}] [{CORTEX_WARNING}]{message}[/{CORTEX_WARNING}]"
+    )
+
+
+def cx_info(message: str) -> None:
+    """Print an info message with info icon."""
+    console.print(f"[{CORTEX_INFO}]ℹ[/{CORTEX_INFO}] {message}")
+
+
+def cx_spinner_message(message: str) -> None:
+    """Print a message with spinner icon (static, for logs)."""
+    console.print(f"[{CORTEX_CYAN}]⠋[/{CORTEX_CYAN}] {message}")
+
+
 # Demo
 if __name__ == "__main__":
     # Full banner
     show_banner()
     print()
 
-    # Simulated operation flow
-    cx_print("Understanding request...", "thinking")
-    cx_print("Planning installation...", "info")
-    cx_header("Installation Plan")
-
-    cx_print("docker.io (24.0.5) — Container runtime", "info")
-    cx_print("docker-compose (2.20.2) — Multi-container orchestration", "info")
-
+    # Status box demo (Issue #242 format)
+    cx_status_box(
+        "CORTEX ML SCHEDULER",
+        [
+            ("Status", "Active", "success"),
+            ("Uptime", "0.5 seconds", "default"),
+            ("CPU Usage", "12%", "info"),
+            ("Memory", "256 MB", "warning"),
+        ],
+    )
     print()
+
+    # Package table demo
+    cx_package_table(
+        [
+            ("docker.io", "24.0.5", "Install"),
+            ("docker-compose", "2.20.2", "Install"),
+            ("nginx", "1.24.0", "Update"),
+        ],
+        title="Installation Plan",
+    )
+    print()
+
+    # Simulated operation flow
+    cx_divider("Installation Progress")
     cx_step(1, 4, "Updating package lists...")
     cx_step(2, 4, "Installing docker.io...")
     cx_step(3, 4, "Installing docker-compose...")
     cx_step(4, 4, "Configuring services...")
-
     print()
-    cx_print("Installation complete!", "success")
-    cx_print("Docker is ready to use.", "info")
+
+    # Status messages
+    cx_success("Package installed successfully")
+    cx_warning("Disk space running low")
+    cx_error("Installation failed")
+    cx_info("Checking dependencies...")
+    print()
+
+    # Box demo
+    cx_box(
+        "Installation completed!\nAll packages are now available.",
+        title="Success",
+        status="success",
+    )
