@@ -32,6 +32,7 @@ class InstallationType(Enum):
     REMOVE = "remove"
     PURGE = "purge"
     ROLLBACK = "rollback"
+    CONFIG = "config"
 
 
 class InstallationStatus(Enum):

@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Self-Update & Version Management** (`cortex/version_manager.py`, `cortex/update_checker.py`, `cortex/updater.py`)
+  - Automatic update checking on startup (cached, non-blocking)
+  - `cortex update` command with subcommands:
+    - `cortex update check` - Check for available updates
+    - `cortex update install [version]` - Install latest or specific version
+    - `cortex update rollback [backup_id]` - Rollback to previous version
+    - `cortex update list` - List available releases
+    - `cortex update backups` - List available backups
+  - Support for update channels (stable, beta, dev)
+  - Safe upgrade process with automatic rollback on failure
+  - Backup management with automatic cleanup (keeps last 3 backups)
+  - Semantic version parsing and comparison
+  - GitHub Releases API integration for update checking
+  - Release notes display in CLI
+  - Environment variable `CORTEX_UPDATE_CHECK=0` to disable auto-check
 - Comprehensive code assessment (ASSESSMENT.md)
 - Detailed improvement roadmap (ROADMAP.md)
 - Enhanced contribution guidelines (CONTRIBUTING.md)

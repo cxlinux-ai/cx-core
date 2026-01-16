@@ -1,0 +1,40 @@
+name: autofix.ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  autofix:
+    name: Auto-fix formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install formatters
+        run: |
+          python -m pip install -U pip
+          pip install ruff black isort
+
+      - name: Fix with ruff
+        run: ruff check . --fix || true
+
+      - name: Format with black
+        run: black . --exclude "(venv|\.venv|build|dist)" --line-length 100
+
+      - name: Sort imports with isort
+        run: isort . --profile black --line-length 100
+
+      - name: Apply autofix
+        uses: autofix-ci/action@635ffb0c9798bd160680f18fd73371e355b85f27

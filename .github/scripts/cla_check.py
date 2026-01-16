@@ -337,6 +337,7 @@ def main():
 
     # Allowlist for bots
     bot_patterns = [
+        "autofix-ci",
         "dependabot",
         "github-actions",
         "renovate",

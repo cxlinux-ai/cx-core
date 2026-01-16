@@ -3,7 +3,6 @@ name: Bug Report
 about: Report something broken in Cortex
 title: "[BUG] "
 labels: bug
-assignees: "suyashd999, mikejmorgan-ai"
 ---
 
 ## What happened?

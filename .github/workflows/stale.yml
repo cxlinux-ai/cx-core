@@ -1,0 +1,37 @@
+name: 'Stale PR Management'
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs daily at midnight UTC
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # PR settings: warn at 7 days, close at 14 days total
+          days-before-pr-stale: 7
+          days-before-pr-close: 7
+
+          stale-pr-label: 'state: inactive'
+
+          stale-pr-message: |
+            Action required: PR inactive for 7 days.
+            Status update or closure in 7 days.
+
+          close-pr-message: |
+            PR closed after 14 days of inactivity.
+
+          # Issue settings: disable for issues (only handle PRs)
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+
+          # Exempt draft PRs and certain labels
+          exempt-draft-pr: true
+          exempt-pr-labels: 'work-in-progress,do-not-close'
+
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
