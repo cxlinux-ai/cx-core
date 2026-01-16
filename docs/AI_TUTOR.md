@@ -605,10 +605,7 @@ exit_code = cmd_reset(package_name="docker")  # Specific
 
 ```bash
 # Required: API key for Claude
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: Override model (default: claude-sonnet-4-20250514)
-export TUTOR_MODEL=claude-sonnet-4-20250514
+export ANTHROPIC_API_KEY=your-api-key-here
 
 # Optional: Enable debug output
 export TUTOR_DEBUG=true
@@ -623,7 +620,6 @@ Configuration can also be set in `~/.cortex/config.yaml`:
 
 ```yaml
 tutor:
-  model: claude-sonnet-4-20250514
   cache_ttl_hours: 24
   max_retries: 3
   debug: false
