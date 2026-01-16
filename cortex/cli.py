@@ -2830,8 +2830,7 @@ class CortexCLI:
     # --------------------------
 
     def daemon(self, args: argparse.Namespace) -> int:
-        """
-        Handle daemon commands: install, uninstall, config, reload-config, version, ping.
+        """Handle daemon commands: install, uninstall, config, reload-config, version, ping, shutdown.
 
         PR1 available commands:
         - install/uninstall: Manage systemd service files (Python-side)
@@ -2839,6 +2838,7 @@ class CortexCLI:
         - reload-config: Reload daemon configuration via IPC
         - version: Get daemon version via IPC
         - ping: Test daemon connectivity via IPC
+        - shutdown: Request daemon shutdown via IPC
         """
         action = getattr(args, "daemon_action", None)
 
@@ -2854,6 +2854,8 @@ class CortexCLI:
             return self._daemon_version()
         elif action == "ping":
             return self._daemon_ping()
+        elif action == "shutdown":
+            return self._daemon_shutdown()
         elif action == "run-tests":
             return self._daemon_run_tests(args)
         else:
@@ -2866,6 +2868,7 @@ class CortexCLI:
             cx_print("  reload-config  Reload daemon configuration", "info")
             cx_print("  version        Show daemon version", "info")
             cx_print("  ping           Test daemon connectivity", "info")
+            cx_print("  shutdown       Request daemon shutdown", "info")
             cx_print("  run-tests      Run daemon test suite", "info")
             return 0
 
@@ -3338,6 +3341,20 @@ class CortexCLI:
         else:
             cx_print(f"Ping failed: {response.error}", "error")
             return 1
+
+    def _daemon_shutdown(self) -> int:
+        """Request daemon shutdown via IPC."""
+        cx_header("Requesting Daemon Shutdown")
+
+        success, response = self._daemon_ipc_call("shutdown", lambda c: c.shutdown())
+        if not success:
+            return 1
+
+        if response.success:
+            cx_print("Daemon shutdown requested successfully!", "success")
+            return 0
+        cx_print(f"Failed to request shutdown: {response.error}", "error")
+        return 1
 
     def _daemon_run_tests(self, args: argparse.Namespace) -> int:
         """Run the daemon test suite."""
@@ -4179,6 +4196,9 @@ def main():
 
     # daemon ping - uses ping IPC handler
     daemon_subs.add_parser("ping", help="Test daemon connectivity")
+
+    # daemon shutdown - uses shutdown IPC handler
+    daemon_subs.add_parser("shutdown", help="Request daemon shutdown")
 
     # daemon run-tests - run daemon test suite
     daemon_run_tests_parser = daemon_subs.add_parser("run-tests", help="Run daemon test suite")
