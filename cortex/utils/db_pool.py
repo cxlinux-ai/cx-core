@@ -5,7 +5,7 @@ Provides connection pooling to prevent database lock contention
 and enable safe concurrent access in Python 3.14 free-threading mode.
 
 Author: Cortex Linux Team
-License: Apache 2.0
+SPDX-License-Identifier: BUSL-1.1
 """
 
 import queue

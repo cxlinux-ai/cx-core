@@ -129,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Infrastructure
 - GitHub Actions CI/CD pipeline
 - Unit test suite with pytest
-- Apache 2.0 License
+- BUSL-1.1 License (Business Source License 1.1)
 - Discord community integration
 - Bounty program for contributions
 

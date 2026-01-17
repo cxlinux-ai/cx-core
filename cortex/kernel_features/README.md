@@ -172,4 +172,4 @@ ls -la /var/lib/cortex/models/
 
 ## License
 
-Apache 2.0 - See LICENSE file
+BUSL-1.1 - See LICENSE file
