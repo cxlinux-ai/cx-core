@@ -379,18 +379,18 @@ class TestOllamaConfig(unittest.TestCase):
 
     def test_env_overrides_default(self):
         """Environment variable should take precedence and strip trailing slash."""
-        with patch.dict(os.environ, {"OLLAMA_API_BASE": "http://example.com:9999/"}, clear=True):
+        with patch.dict(os.environ, {"OLLAMA_API_BASE": "https://example.com:9999/"}, clear=True):
             base = dashboard._get_ollama_api_base()
-        self.assertEqual(base, "http://example.com:9999")
+        self.assertEqual(base, "https://example.com:9999")
 
     def test_config_file_used_when_env_missing(self):
         """preferences.yaml should be read when env is absent."""
-        mock_prefs = "ollama_api_base: http://config.example.com:7777"
+        mock_prefs = "ollama_api_base: https://config.example.com:7777"
         with patch.dict(os.environ, {}, clear=True):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch("builtins.open", mock_open(read_data=mock_prefs)):
                     base = dashboard._get_ollama_api_base()
-        self.assertEqual(base, "http://config.example.com:7777")
+        self.assertEqual(base, "https://config.example.com:7777")
 
     def test_default_used_when_no_sources(self):
         """Fallback to default when env and config are unavailable."""

@@ -3559,25 +3559,6 @@ class CortexCLI:
             from cortex.dashboard import DashboardApp
 
             app = DashboardApp()
-            app.run()
-            return 0
-        except ImportError as e:
-            self._print_error(f"Dashboard dependencies not available: {e}")
-            cx_print("Install required packages with:", "info")
-            cx_print("  pip install psutil pynvml", "info")
-            return 1
-        except KeyboardInterrupt:
-            return 0
-        except Exception as e:
-            self._print_error(f"Dashboard error: {e}")
-            return 1
-
-    def dashboard(self) -> int:
-        """Launch the real-time system monitoring dashboard"""
-        try:
-            from cortex.dashboard import DashboardApp
-
-            app = DashboardApp()
             rc = app.run()
             return rc
         except ImportError as e:
