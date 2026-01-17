@@ -722,6 +722,7 @@ class UIRenderer:
         # Thread synchronization
         self.state_lock = threading.Lock()
         self.stop_event = threading.Event()
+        self.audit_lock = threading.Lock()  # Protects audit file read-modify-write
 
         # Installation state
         self.installation_progress = InstallationProgress()
@@ -1403,37 +1404,39 @@ class UIRenderer:
             outcome: One of: started, succeeded, failed, cancelled
         """
         try:
-            audit_file = Path.home() / ".cortex" / "history.db"
-            audit_file.parent.mkdir(parents=True, exist_ok=True)
+            # Acquire lock for thread-safe file operations
+            with self.audit_lock:
+                audit_file = Path.home() / ".cortex" / "history.db"
+                audit_file.parent.mkdir(parents=True, exist_ok=True)
 
-            entry = {
-                "action": action,
-                "target": target,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "outcome": outcome,
-            }
+                entry = {
+                    "action": action,
+                    "target": target,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "outcome": outcome,
+                }
 
-            # Atomic write using temp file and rename
-            with tempfile.NamedTemporaryFile(
-                mode="a",
-                dir=audit_file.parent,
-                delete=False,
-                prefix=".audit_",
-                suffix=".tmp",
-            ) as tmp:
-                # Read existing entries if file exists
-                if audit_file.exists():
-                    with open(audit_file, encoding="utf-8") as f:
-                        tmp.write(f.read())
+                # Atomic write using temp file and rename
+                with tempfile.NamedTemporaryFile(
+                    mode="a",
+                    dir=audit_file.parent,
+                    delete=False,
+                    prefix=".audit_",
+                    suffix=".tmp",
+                ) as tmp:
+                    # Read existing entries if file exists
+                    if audit_file.exists():
+                        with open(audit_file, encoding="utf-8") as f:
+                            tmp.write(f.read())
 
-                # Append new entry
-                tmp.write(json.dumps(entry) + "\n")
-                tmp.flush()
-                os.fsync(tmp.fileno())
-                temp_name = tmp.name
+                    # Append new entry
+                    tmp.write(json.dumps(entry) + "\n")
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+                    temp_name = tmp.name
 
-            # Atomic rename
-            os.replace(temp_name, audit_file)
+                # Atomic rename
+                os.replace(temp_name, audit_file)
 
         except OSError as e:
             # Never crash UI on logging failure - use specific exceptions
