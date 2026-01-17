@@ -1,0 +1,20 @@
+# Cortexd Daemon Configuration
+# Copy this file to /etc/cortex/daemon.yaml or ~/.cortex/daemon.yaml
+#
+# - Socket and logging config
+# - Additional configuration options may be added in future versions
+
+# Socket configuration
+socket:
+  path: /run/cortex/cortex.sock
+  backlog: 16
+  timeout_ms: 5000
+
+# Rate limiting
+rate_limit:
+  # Maximum IPC requests per second
+  max_requests_per_sec: 100
+
+# Logging level
+# 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
+log_level: 1

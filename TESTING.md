@@ -150,6 +150,64 @@ python -m src.sandbox_executor "echo hello" --dry-run
 - [ ] Works in fish (if installed)
 - [ ] Works in tmux/screen
 
+## Daemon Tests (C++)
+
+The daemon has its own test suite that tests the C++ code directly.
+
+### Prerequisites
+
+```bash
+# Build daemon with tests
+cd daemon
+./scripts/build.sh Release --with-tests
+```
+
+### Running Daemon Tests
+
+**Via Cortex CLI:**
+
+- [ ] `cortex daemon run-tests` - Runs all daemon tests
+- [ ] `cortex daemon run-tests --unit` - Runs unit tests only
+- [ ] `cortex daemon run-tests --integration` - Runs integration tests only
+- [ ] `cortex daemon run-tests -t config` - Runs specific test
+- [ ] `cortex daemon run-tests -v` - Verbose output
+
+**Via ctest:**
+
+```bash
+cd daemon/build
+ctest --output-on-failure
+```
+
+### Test Structure
+
+| Test | Type | What It Tests |
+|------|------|---------------|
+| `test_config` | Unit | Configuration loading/validation |
+| `test_protocol` | Unit | IPC message serialization |
+| `test_rate_limiter` | Unit | Request rate limiting |
+| `test_logger` | Unit | Logging subsystem |
+| `test_common` | Unit | Common constants/types |
+| `test_ipc_server` | Integration | IPC server lifecycle |
+| `test_handlers` | Integration | IPC request handlers |
+| `test_daemon` | Integration | Daemon lifecycle/services |
+
+### Important Notes
+
+> **Tests don't require daemon installation!**
+> 
+> The tests link against a static library (`cortexd_lib`) containing all daemon code.
+> They instantiate classes directly in memory and test their behavior without needing
+> systemd or an installed binary.
+
+### Daemon Test Checklist
+
+- [ ] All unit tests pass
+- [ ] All integration tests pass
+- [ ] Tests complete in < 30 seconds
+- [ ] No memory leaks (run with valgrind if available)
+- [ ] Tests pass without root/sudo
+
 ## Notes
 
 Record any issues found:

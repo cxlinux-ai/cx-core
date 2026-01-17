@@ -2826,6 +2826,706 @@ class CortexCLI:
             return 1
 
     # --------------------------
+    # Daemon Commands
+    # --------------------------
+
+    def daemon(self, args: argparse.Namespace) -> int:
+        """Handle daemon commands: install, uninstall, config, reload-config, version, ping, shutdown.
+
+        PR1 available commands:
+        - install/uninstall: Manage systemd service files (Python-side)
+        - config: Get daemon configuration via IPC
+        - reload-config: Reload daemon configuration via IPC
+        - version: Get daemon version via IPC
+        - ping: Test daemon connectivity via IPC
+        - shutdown: Request daemon shutdown via IPC
+        """
+        action = getattr(args, "daemon_action", None)
+
+        if action == "install":
+            return self._daemon_install(args)
+        elif action == "uninstall":
+            return self._daemon_uninstall(args)
+        elif action == "config":
+            return self._daemon_config()
+        elif action == "reload-config":
+            return self._daemon_reload_config()
+        elif action == "version":
+            return self._daemon_version()
+        elif action == "ping":
+            return self._daemon_ping()
+        elif action == "shutdown":
+            return self._daemon_shutdown()
+        elif action == "run-tests":
+            return self._daemon_run_tests(args)
+        else:
+            cx_print("Usage: cortex daemon <command>", "info")
+            cx_print("", "info")
+            cx_print("Available commands:", "info")
+            cx_print("  install        Install and enable the daemon service", "info")
+            cx_print("  uninstall      Remove the daemon service", "info")
+            cx_print("  config         Show daemon configuration", "info")
+            cx_print("  reload-config  Reload daemon configuration", "info")
+            cx_print("  version        Show daemon version", "info")
+            cx_print("  ping           Test daemon connectivity", "info")
+            cx_print("  shutdown       Request daemon shutdown", "info")
+            cx_print("  run-tests      Run daemon test suite", "info")
+            return 0
+
+    def _daemon_ipc_call(self, operation_name: str, ipc_func):
+        """
+        Helper method for daemon IPC calls with centralized error handling.
+
+        Args:
+            operation_name: Human-readable name of the operation for error messages.
+            ipc_func: A callable that takes a DaemonClient and returns a DaemonResponse.
+
+        Returns:
+            Tuple of (success: bool, response: DaemonResponse | None)
+            On error, response is None and an error message is printed.
+        """
+        # Initialize audit logging
+        history = InstallationHistory()
+        start_time = datetime.now(timezone.utc)
+        install_id = None
+
+        try:
+            # Record operation start
+            install_id = history.record_installation(
+                InstallationType.CONFIG,
+                ["cortexd"],
+                [f"daemon.{operation_name}"],
+                start_time,
+            )
+        except Exception:
+            # Continue even if audit logging fails
+            pass
+
+        try:
+            from cortex.daemon_client import (
+                DaemonClient,
+                DaemonConnectionError,
+                DaemonNotInstalledError,
+            )
+
+            client = DaemonClient()
+            response = ipc_func(client)
+
+            # Update history with success/failure
+            if install_id:
+                try:
+                    if response and response.success:
+                        history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    else:
+                        error_msg = (
+                            response.error if response and response.error else "IPC call failed"
+                        )
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                except Exception:
+                    pass
+
+            return True, response
+
+        except DaemonNotInstalledError as e:
+            error_msg = str(e)
+            cx_print(f"{error_msg}", "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return False, None
+        except DaemonConnectionError as e:
+            error_msg = str(e)
+            cx_print(f"{error_msg}", "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return False, None
+        except ImportError:
+            error_msg = "Daemon client not available."
+            cx_print(error_msg, "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return False, None
+        except Exception as e:
+            error_msg = f"Unexpected error during {operation_name}: {e}"
+            cx_print(error_msg, "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return False, None
+
+    def _daemon_install(self, args: argparse.Namespace) -> int:
+        """Install the cortexd daemon using setup_daemon.py."""
+        import subprocess
+        from pathlib import Path
+
+        cx_header("Installing Cortex Daemon")
+
+        # Initialize audit logging
+        history = InstallationHistory()
+        start_time = datetime.now(timezone.utc)
+        install_id = None
+
+        try:
+            # Record operation start
+            install_id = history.record_installation(
+                InstallationType.CONFIG,
+                ["cortexd"],
+                ["cortex daemon install"],
+                start_time,
+            )
+        except Exception as e:
+            cx_print(f"Warning: Could not initialize audit logging: {e}", "warning")
+
+        # Find setup_daemon.py
+        daemon_dir = Path(__file__).parent.parent / "daemon"
+        setup_script = daemon_dir / "scripts" / "setup_daemon.py"
+
+        if not setup_script.exists():
+            error_msg = f"Setup script not found at {setup_script}"
+            cx_print(error_msg, "error")
+            cx_print("Please ensure the daemon directory is present.", "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return 1
+
+        execute = getattr(args, "execute", False)
+
+        if not execute:
+            cx_print("This will build and install the cortexd daemon.", "info")
+            cx_print("", "info")
+            cx_print("The setup wizard will:", "info")
+            cx_print("  1. Check and install build dependencies", "info")
+            cx_print("  2. Build the daemon from source", "info")
+            cx_print("  3. Install systemd service files", "info")
+            cx_print("  4. Enable and start the service", "info")
+            cx_print("", "info")
+            cx_print("Run with --execute to proceed:", "info")
+            cx_print("  cortex daemon install --execute", "dim")
+            if install_id:
+                try:
+                    history.update_installation(
+                        install_id,
+                        InstallationStatus.FAILED,
+                        "Operation cancelled (no --execute flag)",
+                    )
+                except Exception:
+                    pass
+            return 0
+
+        # Run setup_daemon.py
+        cx_print("Running daemon setup wizard...", "info")
+        try:
+            result = subprocess.run(
+                [sys.executable, str(setup_script)],
+                check=False,
+            )
+
+            # Record completion
+            if install_id:
+                try:
+                    if result.returncode == 0:
+                        history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    else:
+                        error_msg = f"Setup script returned exit code {result.returncode}"
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                except Exception:
+                    pass
+
+            return result.returncode
+        except subprocess.SubprocessError as e:
+            error_msg = f"Subprocess error during daemon install: {str(e)}"
+            cx_print(error_msg, "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return 1
+        except Exception as e:
+            error_msg = f"Unexpected error during daemon install: {str(e)}"
+            cx_print(error_msg, "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return 1
+
+    def _daemon_uninstall(self, args: argparse.Namespace) -> int:
+        """Uninstall the cortexd daemon."""
+        import subprocess
+        from pathlib import Path
+
+        cx_header("Uninstalling Cortex Daemon")
+
+        # Initialize audit logging
+        history = InstallationHistory()
+        start_time = datetime.now(timezone.utc)
+        install_id = None
+
+        try:
+            # Record operation start
+            install_id = history.record_installation(
+                InstallationType.CONFIG,
+                ["cortexd"],
+                ["cortex daemon uninstall"],
+                start_time,
+            )
+        except Exception as e:
+            cx_print(f"Warning: Could not initialize audit logging: {e}", "warning")
+
+        execute = getattr(args, "execute", False)
+
+        if not execute:
+            cx_print("This will stop and remove the cortexd daemon.", "warning")
+            cx_print("", "info")
+            cx_print("This will:", "info")
+            cx_print("  1. Stop the cortexd service", "info")
+            cx_print("  2. Disable the service", "info")
+            cx_print("  3. Remove systemd unit files", "info")
+            cx_print("  4. Remove the daemon binary", "info")
+            cx_print("", "info")
+            cx_print("Run with --execute to proceed:", "info")
+            cx_print("  cortex daemon uninstall --execute", "dim")
+            if install_id:
+                try:
+                    history.update_installation(
+                        install_id,
+                        InstallationStatus.FAILED,
+                        "Operation cancelled (no --execute flag)",
+                    )
+                except Exception:
+                    pass
+            return 0
+
+        # Find uninstall script
+        daemon_dir = Path(__file__).parent.parent / "daemon"
+        uninstall_script = daemon_dir / "scripts" / "uninstall.sh"
+
+        if uninstall_script.exists():
+            cx_print("Running uninstall script...", "info")
+            try:
+                # Log the uninstall script command
+                if install_id:
+                    try:
+                        history.record_installation(
+                            InstallationType.CONFIG,
+                            ["cortexd"],
+                            [f"sudo bash {uninstall_script}"],
+                            datetime.now(timezone.utc),
+                        )
+                    except Exception:
+                        pass
+
+                result = subprocess.run(
+                    ["sudo", "bash", str(uninstall_script)],
+                    check=False,
+                )
+
+                # Record completion
+                if install_id:
+                    try:
+                        if result.returncode == 0:
+                            history.update_installation(install_id, InstallationStatus.SUCCESS)
+                        else:
+                            error_msg = f"Uninstall script returned exit code {result.returncode}"
+                            if result.stderr:
+                                error_msg += f": {result.stderr[:500]}"
+                            history.update_installation(
+                                install_id, InstallationStatus.FAILED, error_msg
+                            )
+                    except Exception:
+                        pass
+
+                return result.returncode
+            except subprocess.SubprocessError as e:
+                error_msg = f"Subprocess error during daemon uninstall: {str(e)}"
+                cx_print(error_msg, "error")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+            except Exception as e:
+                error_msg = f"Unexpected error during daemon uninstall: {str(e)}"
+                cx_print(error_msg, "error")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+        else:
+            # Manual uninstall
+            cx_print("Running manual uninstall...", "info")
+            commands = [
+                ["sudo", "systemctl", "stop", "cortexd"],
+                ["sudo", "systemctl", "disable", "cortexd"],
+                ["sudo", "rm", "-f", "/etc/systemd/system/cortexd.service"],
+                ["sudo", "rm", "-f", "/etc/systemd/system/cortexd.socket"],
+                ["sudo", "rm", "-f", "/usr/local/bin/cortexd"],
+                ["sudo", "systemctl", "daemon-reload"],
+            ]
+
+            try:
+                any_failed = False
+                error_messages = []
+
+                for cmd in commands:
+                    cmd_str = " ".join(cmd)
+                    cx_print(f"  Running: {cmd_str}", "dim")
+
+                    # Log each critical command before execution
+                    if install_id:
+                        try:
+                            history.record_installation(
+                                InstallationType.CONFIG,
+                                ["cortexd"],
+                                [cmd_str],
+                                datetime.now(timezone.utc),
+                            )
+                        except Exception:
+                            pass
+
+                    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+
+                    # Track failures
+                    if result.returncode != 0:
+                        any_failed = True
+                        error_msg = (
+                            f"Command '{cmd_str}' failed with return code {result.returncode}"
+                        )
+                        if result.stderr:
+                            error_msg += f": {result.stderr[:500]}"
+                        error_messages.append(error_msg)
+                        cx_print(f"  Failed: {error_msg}", "error")
+
+                # Update history and return based on overall success
+                if any_failed:
+                    combined_error = "; ".join(error_messages)
+                    cx_print("Daemon uninstall failed.", "error")
+                    if install_id:
+                        try:
+                            history.update_installation(
+                                install_id, InstallationStatus.FAILED, combined_error
+                            )
+                        except Exception:
+                            pass
+                    return 1
+                else:
+                    cx_print("Daemon uninstalled.", "success")
+                    # Record success
+                    if install_id:
+                        try:
+                            history.update_installation(install_id, InstallationStatus.SUCCESS)
+                        except Exception:
+                            pass
+                    return 0
+            except subprocess.SubprocessError as e:
+                error_msg = f"Subprocess error during manual uninstall: {str(e)}"
+                cx_print(error_msg, "error")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+            except Exception as e:
+                error_msg = f"Unexpected error during manual uninstall: {str(e)}"
+                cx_print(error_msg, "error")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+
+    def _daemon_config(self) -> int:
+        """Get daemon configuration via IPC."""
+        from rich.table import Table
+
+        cx_header("Daemon Configuration")
+
+        success, response = self._daemon_ipc_call("config.get", lambda c: c.config_get())
+        if not success:
+            return 1
+
+        if response.success and response.result:
+            table = Table(title="Current Configuration", show_header=True)
+            table.add_column("Setting", style="cyan")
+            table.add_column("Value", style="green")
+
+            for key, value in response.result.items():
+                table.add_row(key, str(value))
+
+            console.print(table)
+            return 0
+        else:
+            cx_print(f"Failed to get config: {response.error}", "error")
+            return 1
+
+    def _daemon_reload_config(self) -> int:
+        """Reload daemon configuration via IPC."""
+        cx_header("Reloading Daemon Configuration")
+
+        success, response = self._daemon_ipc_call("config.reload", lambda c: c.config_reload())
+        if not success:
+            return 1
+
+        if response.success:
+            cx_print("Configuration reloaded successfully!", "success")
+            return 0
+        else:
+            cx_print(f"Failed to reload config: {response.error}", "error")
+            return 1
+
+    def _daemon_version(self) -> int:
+        """Get daemon version via IPC."""
+        cx_header("Daemon Version")
+
+        success, response = self._daemon_ipc_call("version", lambda c: c.version())
+        if not success:
+            return 1
+
+        if response.success and response.result:
+            name = response.result.get("name", "cortexd")
+            version = response.result.get("version", "unknown")
+            cx_print(f"{name} version {version}", "success")
+            return 0
+        else:
+            cx_print(f"Failed to get version: {response.error}", "error")
+            return 1
+
+    def _daemon_ping(self) -> int:
+        """Test daemon connectivity via IPC."""
+        import time
+
+        cx_header("Daemon Ping")
+
+        start = time.time()
+        success, response = self._daemon_ipc_call("ping", lambda c: c.ping())
+        elapsed = (time.time() - start) * 1000  # ms
+
+        if not success:
+            return 1
+
+        if response.success:
+            cx_print(f"Pong! Response time: {elapsed:.1f}ms", "success")
+            return 0
+        else:
+            cx_print(f"Ping failed: {response.error}", "error")
+            return 1
+
+    def _daemon_shutdown(self) -> int:
+        """Request daemon shutdown via IPC."""
+        cx_header("Requesting Daemon Shutdown")
+
+        success, response = self._daemon_ipc_call("shutdown", lambda c: c.shutdown())
+        if not success:
+            return 1
+
+        if response.success:
+            cx_print("Daemon shutdown requested successfully!", "success")
+            return 0
+        cx_print(f"Failed to request shutdown: {response.error}", "error")
+        return 1
+
+    def _daemon_run_tests(self, args: argparse.Namespace) -> int:
+        """Run the daemon test suite."""
+        import subprocess
+        from pathlib import Path
+
+        cx_header("Daemon Tests")
+
+        # Initialize audit logging
+        history = InstallationHistory()
+        start_time = datetime.now(timezone.utc)
+        install_id = None
+
+        try:
+            # Record operation start
+            install_id = history.record_installation(
+                InstallationType.CONFIG,
+                ["cortexd"],
+                ["daemon.run-tests"],
+                start_time,
+            )
+        except Exception:
+            # Continue even if audit logging fails
+            pass
+
+        # Find daemon directory
+        daemon_dir = Path(__file__).parent.parent / "daemon"
+        build_dir = daemon_dir / "build"
+        tests_dir = build_dir / "tests"  # Test binaries are in build/tests/
+
+        # Define test binaries
+        unit_tests = [
+            "test_config",
+            "test_protocol",
+            "test_rate_limiter",
+            "test_logger",
+            "test_common",
+        ]
+        integration_tests = ["test_ipc_server", "test_handlers", "test_daemon"]
+        all_tests = unit_tests + integration_tests
+
+        # Check if tests are built
+        def check_tests_built() -> tuple[bool, list[str]]:
+            """Check which test binaries exist."""
+            existing = []
+            for test in all_tests:
+                if (tests_dir / test).exists():
+                    existing.append(test)
+            return len(existing) > 0, existing
+
+        tests_built, existing_tests = check_tests_built()
+
+        if not tests_built:
+            error_msg = "Tests are not built."
+            cx_print(error_msg, "warning")
+            cx_print("", "info")
+            cx_print("To build tests, run the setup wizard with test building enabled:", "info")
+            cx_print("", "info")
+            cx_print("  [bold]python daemon/scripts/setup_daemon.py[/bold]", "info")
+            cx_print("", "info")
+            cx_print("When prompted, answer 'yes' to build the test suite.", "info")
+            cx_print("", "info")
+            cx_print("Or build manually:", "info")
+            cx_print("  cd daemon && ./scripts/build.sh Release --with-tests", "dim")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return 1
+
+        # Determine which tests to run
+        test_filter = getattr(args, "test", None)
+        run_unit = getattr(args, "unit", False)
+        run_integration = getattr(args, "integration", False)
+        verbose = getattr(args, "verbose", False)
+
+        tests_to_run = []
+
+        if test_filter:
+            # Run a specific test
+            # Allow partial matching (e.g., "config" matches "test_config")
+            test_name = test_filter if test_filter.startswith("test_") else f"test_{test_filter}"
+            if test_name in existing_tests:
+                tests_to_run = [test_name]
+            else:
+                error_msg = f"Test '{test_filter}' not found or not built."
+                cx_print(error_msg, "error")
+                cx_print("", "info")
+                cx_print("Available tests:", "info")
+                for t in existing_tests:
+                    cx_print(f"  • {t}", "info")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+        elif run_unit and not run_integration:
+            tests_to_run = [t for t in unit_tests if t in existing_tests]
+            if not tests_to_run:
+                error_msg = "No unit tests built."
+                cx_print(error_msg, "warning")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+        elif run_integration and not run_unit:
+            tests_to_run = [t for t in integration_tests if t in existing_tests]
+            if not tests_to_run:
+                error_msg = "No integration tests built."
+                cx_print(error_msg, "warning")
+                if install_id:
+                    try:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    except Exception:
+                        pass
+                return 1
+        else:
+            # Run all available tests
+            tests_to_run = existing_tests
+
+        # Show what we're running
+        cx_print(f"Running {len(tests_to_run)} test(s)...", "info")
+        cx_print("", "info")
+
+        # Use ctest for running tests
+        ctest_args = ["ctest", "--output-on-failure"]
+
+        if verbose:
+            ctest_args.append("-V")
+
+        # Filter specific tests if not running all
+        if test_filter or run_unit or run_integration:
+            # ctest uses -R for regex filtering
+            test_regex = "|".join(tests_to_run)
+            ctest_args.extend(["-R", test_regex])
+
+        result = subprocess.run(
+            ctest_args,
+            cwd=str(build_dir),
+            check=False,
+        )
+
+        if result.returncode == 0:
+            cx_print("", "info")
+            cx_print("All tests passed!", "success")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.SUCCESS)
+                except Exception:
+                    pass
+            return 0
+        else:
+            error_msg = f"Test execution failed with return code {result.returncode}"
+            cx_print("", "info")
+            cx_print("Some tests failed.", "error")
+            if install_id:
+                try:
+                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+                except Exception:
+                    pass
+            return 1
 
 
 def show_rich_help():
@@ -3465,6 +4165,62 @@ def main():
     update_subs.add_parser("backups", help="List available backups for rollback")
     # --------------------------
 
+    # --- Daemon Commands ---
+    daemon_parser = subparsers.add_parser("daemon", help="Manage the cortexd background daemon")
+    daemon_subs = daemon_parser.add_subparsers(dest="daemon_action", help="Daemon actions")
+
+    # daemon install [--execute]
+    daemon_install_parser = daemon_subs.add_parser(
+        "install", help="Install and enable the daemon service"
+    )
+    daemon_install_parser.add_argument(
+        "--execute", action="store_true", help="Actually run the installation"
+    )
+
+    # daemon uninstall [--execute]
+    daemon_uninstall_parser = daemon_subs.add_parser(
+        "uninstall", help="Stop and remove the daemon service"
+    )
+    daemon_uninstall_parser.add_argument(
+        "--execute", action="store_true", help="Actually run the uninstallation"
+    )
+
+    # daemon config - uses config.get IPC handler
+    daemon_subs.add_parser("config", help="Show current daemon configuration")
+
+    # daemon reload-config - uses config.reload IPC handler
+    daemon_subs.add_parser("reload-config", help="Reload daemon configuration from disk")
+
+    # daemon version - uses version IPC handler
+    daemon_subs.add_parser("version", help="Show daemon version")
+
+    # daemon ping - uses ping IPC handler
+    daemon_subs.add_parser("ping", help="Test daemon connectivity")
+
+    # daemon shutdown - uses shutdown IPC handler
+    daemon_subs.add_parser("shutdown", help="Request daemon shutdown")
+
+    # daemon run-tests - run daemon test suite
+    daemon_run_tests_parser = daemon_subs.add_parser(
+        "run-tests",
+        help="Run daemon test suite (runs all tests by default when no filters are provided)",
+    )
+    daemon_run_tests_parser.add_argument("--unit", action="store_true", help="Run only unit tests")
+    daemon_run_tests_parser.add_argument(
+        "--integration", action="store_true", help="Run only integration tests"
+    )
+    daemon_run_tests_parser.add_argument(
+        "--test",
+        "-t",
+        type=str,
+        metavar="NAME",
+        help="Run a specific test (e.g., test_config, test_daemon)",
+    )
+    daemon_run_tests_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show verbose test output"
+    )
+    # --------------------------
+
     # WiFi/Bluetooth Driver Matcher
     wifi_parser = subparsers.add_parser("wifi", help="WiFi/Bluetooth driver auto-matcher")
     wifi_parser.add_argument(
@@ -3639,6 +4395,8 @@ def main():
             return 0 if activate_license(args.license_key) else 1
         elif args.command == "update":
             return cli.update(args)
+        elif args.command == "daemon":
+            return cli.daemon(args)
         elif args.command == "wifi":
             from cortex.wifi_driver import run_wifi_driver
 
