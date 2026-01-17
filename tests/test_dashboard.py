@@ -456,11 +456,12 @@ class TestInstallFlows(unittest.TestCase):
 
         class FakeSandbox:
             def execute(self, cmd):
-                return SimpleNamespace(success=True, output=f"ran {cmd}")
+                return SimpleNamespace(success=True, stdout=f"ran {cmd}")
 
         class FakeCLI:
             def install(self, *_, **__):
-                print(json.dumps({"success": True, "commands": ["echo hi"]}))
+                import sys
+                sys.stdout.write(json.dumps({"success": True, "commands": ["echo hi"]}) + "\n")
                 return 0
 
         with patch("cortex.sandbox.sandbox_executor.SandboxExecutor", FakeSandbox):
