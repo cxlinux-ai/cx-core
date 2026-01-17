@@ -12,7 +12,7 @@ A: MVP is 95% complete (November 2025). Demo-ready, production release coming so
 A: Ubuntu 24.04 LTS currently. Other Debian-based distros coming soon.
 
 **Q: Is it free?**
-A: Free for personal use on 1 system (BUSL-1.1 license). Commercial use requires a subscription. See https://cortexlinux.com/pricing
+A: Free for personal use on 1 system (BUSL-1.1 license). Commercial use requires a subscription. See [pricing](https://cortexlinux.com/pricing).
 
 ## Usage
 

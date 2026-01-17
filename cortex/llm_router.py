@@ -8,7 +8,7 @@ Supports:
 - Kimi K2 API (Moonshot) - Best for system operations, debugging, tool use
 
 Author: Cortex Linux Team
-License: Modified MIT License
+SPDX-License-Identifier: BUSL-1.1
 """
 
 import asyncio
