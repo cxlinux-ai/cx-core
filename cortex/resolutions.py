@@ -5,8 +5,10 @@ This module handles the storage and retrieval of successful troubleshooting reso
 It uses a simple JSON file for storage and keyword matching for retrieval.
 """
 
+import fcntl
 import json
 import os
+import time
 from pathlib import Path
 from typing import TypedDict
 
@@ -34,7 +36,6 @@ class ResolutionManager:
 
     def save(self, issue: str, fix: str) -> None:
         """Save a new resolution."""
-        import time
 
         resolution: Resolution = {
             "issue": issue,
@@ -42,20 +43,29 @@ class ResolutionManager:
             "timestamp": time.time(),
         }
 
-        try:
-            with open(self.storage_path) as f:
-                resolutions = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            resolutions = []
+        # Use r+ to allow reading and writing with a lock
+        with open(self.storage_path, "r+") as f:
+            # Acquire an exclusive lock to prevent race conditions
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                try:
+                    resolutions = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    resolutions = []
 
-        resolutions.append(resolution)
+                resolutions.append(resolution)
 
-        # Keep only the last N resolutions to prevent unlimited growth
-        if len(resolutions) > MAX_RESOLUTIONS:
-            resolutions = resolutions[-MAX_RESOLUTIONS:]
+                # Keep only the last N resolutions to prevent unlimited growth
+                if len(resolutions) > MAX_RESOLUTIONS:
+                    resolutions = resolutions[-MAX_RESOLUTIONS:]
 
-        with open(self.storage_path, "w") as f:
-            json.dump(resolutions, f, indent=2)
+                # Rewind to the beginning of the file to overwrite
+                f.seek(0)
+                f.truncate()
+                json.dump(resolutions, f, indent=2)
+            finally:
+                # Always release the lock
+                fcntl.flock(f, fcntl.LOCK_UN)
 
     def search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[Resolution]:
         """

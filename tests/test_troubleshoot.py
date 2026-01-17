@@ -413,11 +413,13 @@ class TestInteractiveLoop(unittest.TestCase):
 
     @patch("cortex.troubleshoot.console")
     @patch("cortex.troubleshoot.Prompt")
+    @patch("cortex.troubleshoot.Confirm")
     @patch("cortex.doctor.SystemDoctor")
-    def test_doctor_command(self, mock_doctor, mock_prompt, mock_console):
+    def test_doctor_command(self, mock_doctor, mock_confirm, mock_prompt, mock_console):
         """Test that 'doctor' command runs SystemDoctor."""
         # First call returns 'doctor', second call returns 'exit'
         mock_prompt.ask.side_effect = ["doctor", "exit"]
+        mock_confirm.ask.return_value = False
         mock_doctor_instance = MagicMock()
         mock_doctor.return_value = mock_doctor_instance
 
@@ -432,9 +434,11 @@ class TestInteractiveLoop(unittest.TestCase):
 
     @patch("cortex.troubleshoot.console")
     @patch("cortex.troubleshoot.Prompt")
-    def test_help_command(self, mock_prompt, mock_console):
+    @patch("cortex.troubleshoot.Confirm")
+    def test_help_command(self, mock_confirm, mock_prompt, mock_console):
         """Test that 'help' command creates log file and prints instructions."""
         mock_prompt.ask.side_effect = ["help", "exit"]
+        mock_confirm.ask.return_value = False
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
@@ -452,14 +456,14 @@ class TestInteractiveLoop(unittest.TestCase):
                     with patch("os.path.abspath", return_value="/abs/path/to/log"):
                         with patch(
                             "os.path.expanduser",
-                            return_value="/home/krishna/.cortex/cortex_support_log.txt",
+                            return_value="/tmp/test/.cortex/cortex_support_log.txt",
                         ):
                             with patch("os.makedirs"):  # Prevent fallback to /tmp/
                                 troubleshooter._interactive_loop()
 
                             # Verify file was opened for writing
                             mock_file.assert_called_with(
-                                "/home/krishna/.cortex/cortex_support_log.txt", "w"
+                                "/tmp/test/.cortex/cortex_support_log.txt", "w", encoding="utf-8"
                             )
 
                             # Verify content was written
@@ -500,9 +504,11 @@ class TestInteractiveLoop(unittest.TestCase):
 
     @patch("cortex.troubleshoot.console")
     @patch("cortex.troubleshoot.Prompt")
-    def test_dynamic_recall(self, mock_prompt, mock_console):
+    @patch("cortex.troubleshoot.Confirm")
+    def test_dynamic_recall(self, mock_confirm, mock_prompt, mock_console):
         """Test that we search for resolutions and inject them."""
         mock_prompt.ask.side_effect = ["docker fail", "exit"]
+        mock_confirm.ask.return_value = False
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
@@ -536,9 +542,11 @@ class TestInteractiveLoop(unittest.TestCase):
     @patch("cortex.troubleshoot.console")
     @patch("cortex.troubleshoot.Prompt")
     @patch("cortex.troubleshoot.Markdown")
-    def test_user_input_sent_to_ai(self, mock_md, mock_prompt, mock_console):
+    @patch("cortex.troubleshoot.Confirm")
+    def test_user_input_sent_to_ai(self, mock_confirm, mock_md, mock_prompt, mock_console):
         """Test that user input is sent to AI."""
         mock_prompt.ask.side_effect = ["my issue", "exit"]
+        mock_confirm.ask.return_value = False
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")
@@ -593,9 +601,11 @@ class TestInteractiveLoop(unittest.TestCase):
     @patch("cortex.troubleshoot.Prompt")
     @patch("cortex.troubleshoot.Markdown")
     @patch("cortex.troubleshoot.Syntax")
-    def test_dangerous_command_blocked(self, mock_syntax, mock_md, mock_prompt, mock_console):
+    @patch("cortex.troubleshoot.Confirm")
+    def test_dangerous_command_blocked(self, mock_confirm, mock_syntax, mock_md, mock_prompt, mock_console):
         """Test that dangerous commands are blocked."""
         mock_prompt.ask.side_effect = ["delete everything", "exit"]
+        mock_confirm.ask.return_value = False
 
         with patch("cortex.troubleshoot.auto_detect_api_key") as mock_detect:
             mock_detect.return_value = (True, "test-key", "fake", "env")

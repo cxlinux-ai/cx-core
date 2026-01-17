@@ -47,10 +47,13 @@ DANGEROUS_PATTERNS = [
     r"\binit\s+0\b",  # Halt
     r"\bpoweroff\b",  # Poweroff
     r"\|\s*(?:.*/)?(?:bash|sh|zsh)\b",  # Pipe to shell (matches bash, sh, zsh, /bin/bash, etc.)
+    r"`[^`]*\b(rm|mkfs|dd|chmod|chown|shutdown|reboot)\b",  # Backtick with dangerous cmd
+    r"\$\([^)]*\b(rm|mkfs|dd|chmod|chown|shutdown|reboot)\b",  # $() with dangerous cmd
 ]
 
 # Number of recent messages to keep for context
 MAX_HISTORY_CONTEXT = 5
+MAX_INPUT_LENGTH = 10000
 
 
 class Troubleshooter:
@@ -168,6 +171,13 @@ class Troubleshooter:
         try:
             while True:
                 user_input = Prompt.ask("\n[bold green]You[/bold green]")
+
+                if len(user_input) > MAX_INPUT_LENGTH:
+                    console.print(
+                        f"[yellow]⚠️  Input too long ({len(user_input)} chars). "
+                        f"Please limit to {MAX_INPUT_LENGTH} characters.[/yellow]"
+                    )
+                    continue
 
                 if user_input.lower() in ["exit", "quit", "q"]:
                     # Learning Trigger

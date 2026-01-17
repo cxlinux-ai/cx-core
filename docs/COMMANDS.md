@@ -212,6 +212,7 @@ AI: The Docker daemon failed to start. Let's check the logs...
 | Command | Action |
 |---------|--------|
 | `doctor` | Run health checks mid-session |
+| `help` | Generate support log for escalation |
 | `exit`, `quit`, `q` | Exit troubleshooter |
 
 ---
