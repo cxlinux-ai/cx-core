@@ -11,7 +11,7 @@ Use cases:
 - Concurrent hardware config checks
 
 Author: Cortex Linux Team
-License: Apache 2.0
+SPDX-License-Identifier: BUSL-1.1
 """
 
 import asyncio

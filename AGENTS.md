@@ -5,7 +5,7 @@
 Cortex Linux is an AI-native package manager for Debian/Ubuntu that understands natural language commands. It wraps `apt` with LLM intelligence to parse requests, detect hardware, resolve dependencies, and execute installations safely.
 
 **Repository**: https://github.com/cortexlinux/cortex
-**License**: Apache 2.0
+**License**: BUSL-1.1 (Business Source License 1.1)
 **Primary Language**: Python 3.10+
 
 ## Quick Start

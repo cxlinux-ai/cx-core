@@ -6,7 +6,7 @@ Run with:
     PYTHON_GIL=0 python3.14t -m pytest tests/test_thread_safety.py -v  # Without GIL
 
 Author: Cortex Linux Team
-License: Apache 2.0
+SPDX-License-Identifier: BUSL-1.1
 """
 
 import concurrent.futures
