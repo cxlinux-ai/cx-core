@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-12",
+  "last_updated": "2026-01-13",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -236,6 +236,15 @@
       "github_username": "ThankaBharathi",
       "emails": [
         "thankabharathi0@gmail.com"
+      ],
+      "signed_date": "2026-01-13",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Dipesh Dalmia",
+      "github_username": "DipeshDalmia",
+      "emails": [
+        "dalmiaanshu9@gmail.com"
       ],
       "signed_date": "2026-01-13",
       "cla_version": "1.0"
