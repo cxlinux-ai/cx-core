@@ -447,7 +447,9 @@ class TestInstallFlows(unittest.TestCase):
                 self.ui._execute_dry_run()
 
         self.assertEqual(self.ui.installation_progress.state, InstallationState.FAILED)
-        self.assertEqual(self.ui.installation_progress.error_message, "Failed to parse installation plan")
+        self.assertEqual(
+            self.ui.installation_progress.error_message, "Failed to parse installation plan"
+        )
 
     def test_execute_confirmed_install_success(self):
         """Confirmed install should mark completion when sandbox commands succeed."""
@@ -494,7 +496,11 @@ class TestKeyboardInput(unittest.TestCase):
         with patch("cortex.dashboard.sys.stdin", mock_stdin):
             with patch(
                 "cortex.dashboard.select.select",
-                side_effect=[([mock_stdin], [], []), ([mock_stdin], [], []), ([mock_stdin], [], [])],
+                side_effect=[
+                    ([mock_stdin], [], []),
+                    ([mock_stdin], [], []),
+                    ([mock_stdin], [], []),
+                ],
             ):
                 key = self.ui._check_keyboard_input()
 
