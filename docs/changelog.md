@@ -251,6 +251,7 @@ As features stabilize some brief notes about them will accumulate here.
   #7283
 * [max_fps](config/lua/config/max_fps.md) can now be set to values larger than
   `255`. Thanks to @beckend! #7366
+* macOS: Fix toast notifications. Thanks to @nikhilm! #7483
 
 #### Updated
 * Bundled conpty.dll and OpenConsole.exe to build 1.22.250204002.nupkg
