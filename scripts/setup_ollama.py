@@ -17,7 +17,7 @@ Usage:
     python scripts/setup_ollama.py --skip-test       # Skip model testing
 
 Author: Cortex Linux Team
-License: Apache 2.0
+SPDX-License-Identifier: BUSL-1.1
 """
 
 import argparse

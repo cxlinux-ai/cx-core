@@ -7,7 +7,7 @@ name = "cortex-linux"
 version = "0.1.0"
 description = "AI-powered package manager for Debian/Ubuntu that understands natural language"
 readme = "README.md"
-license = "Apache-2.0"
+license = "BUSL-1.1"
 authors = [
     {name = "Cortex Linux", email = "mike@cortexlinux.com"}
 ]

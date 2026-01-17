@@ -158,10 +158,9 @@ history.db
 
 ### 3.4 License Clarification Needed
 
-- LICENSE file is Apache 2.0
-- README mentions "MIT License" in some contexts
-- `llm_router.py` header says "Modified MIT License"
-- **Action:** Standardize license references
+- LICENSE file is BUSL-1.1 (Business Source License 1.1)
+- Converts to Apache 2.0 on January 15, 2030
+- **Action:** All file headers standardized to SPDX-License-Identifier: BUSL-1.1
 
 ---
 
