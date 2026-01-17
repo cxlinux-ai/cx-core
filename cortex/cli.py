@@ -846,7 +846,9 @@ class CortexCLI:
         if not api_key:
             error_msg = "No API key found. Please configure an API provider."
             if json_output:
-                print(json.dumps({"success": False, "error": error_msg, "error_type": "RuntimeError"}))
+                print(
+                    json.dumps({"success": False, "error": error_msg, "error_type": "RuntimeError"})
+                )
             else:
                 self._print_error(error_msg)
             return 1
