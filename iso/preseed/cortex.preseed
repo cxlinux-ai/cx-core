@@ -115,9 +115,10 @@ d-i passwd/root-login boolean false
 # Create admin user
 d-i passwd/user-fullname string Cortex Administrator
 d-i passwd/username string cortex
-# Password: cortex (change on first login!)
-# Generate with: printf "cortex" | mkpasswd -s -m sha-512
-d-i passwd/user-password-crypted string $6$rounds=4096$randomsalt$HashedPasswordHere
+# Password: Must be set during installation or changed on first login
+# For automated installation, generate with: printf "YOUR_PASSWORD" | mkpasswd -s -m sha-512
+# SECURITY NOTE: Change default password immediately after first login!
+d-i passwd/user-password-crypted string
 
 # Add user to sudo group
 d-i passwd/user-default-groups string sudo docker
@@ -174,16 +175,16 @@ d-i grub-installer/timeout string 3
 # POST-INSTALLATION
 # =============================================================================
 d-i preseed/late_command string \
-    in-target mkdir -p /etc/apt/keyrings; \
-    in-target curl -fsSL https://repo.cortexlinux.com/keys/cortex-archive-keyring.gpg -o /usr/share/keyrings/cortex-archive-keyring.gpg; \
+    in-target mkdir -p /etc/apt/keyrings /etc/cortex /var/log/cortex; \
+    in-target curl -fsSL https://repo.cortexlinux.com/keys/cortex-archive-keyring.gpg -o /usr/share/keyrings/cortex-archive-keyring.gpg 2>/dev/null || true; \
     in-target chmod 644 /usr/share/keyrings/cortex-archive-keyring.gpg; \
     echo 'cortex ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/cortex; \
     chmod 440 /target/etc/sudoers.d/cortex; \
     in-target systemctl enable ssh; \
-    echo '#!/bin/bash' > /target/etc/cortex/first-boot.sh; \
-    echo '# Cortex Linux First Boot Provisioning' >> /target/etc/cortex/first-boot.sh; \
-    echo 'touch /etc/cortex/.first-boot-complete' >> /target/etc/cortex/first-boot.sh; \
-    chmod +x /target/etc/cortex/first-boot.sh
+    in-target mkdir -p /usr/lib/cortex; \
+    cp /cdrom/preseed/firstboot.sh /target/usr/lib/cortex/firstboot.sh 2>/dev/null || true; \
+    chmod +x /target/usr/lib/cortex/firstboot.sh; \
+    in-target systemctl enable cortex-firstboot.service 2>/dev/null || true
 
 # =============================================================================
 # FINISH

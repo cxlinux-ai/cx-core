@@ -336,7 +336,67 @@ provision_webconsole() {
 # MAIN
 # =============================================================================
 
+show_welcome() {
+    cat << 'EOF'
+
+   ____          _             _     _                  
+  / ___|___  _ _| |_ _____  __| |   (_)_ __  _   ___  __
+ | |   / _ \| '__| __/ _ \ \/ /| |   | | '_ \| | | \ \/ /
+ | |__| (_) | |  | ||  __/>  < | |___| | | | | |_| |>  < 
+  \____\___/|_|   \__\___/_/\_\|_____|_|_| |_|\__,_/_/\_\
+                                                        
+  AI-Native Linux Distribution
+  https://cortexlinux.com
+
+  Welcome to Cortex Linux!
+  
+  Your system is being configured for first use.
+  This will only take a few moments...
+
+EOF
+}
+
+show_completion() {
+    local hostname=$(hostname)
+    local admin_user="${CORTEX_ADMIN_USER:-cortex}"
+    
+    cat << EOF
+
+   ____          _             _     _                  
+  / ___|___  _ _| |_ _____  __| |   (_)_ __  _   ___  __
+ | |   / _ \| '__| __/ _ \ \/ /| |   | | '_ \| | | \ \/ /
+ | |__| (_) | |  | ||  __/>  < | |___| | | | | |_| |>  < 
+  \____\___/|_|   \__\___/_/\_\|_____|_|_| |_|\__,_/_/\_\
+                                                        
+  AI-Native Linux Distribution
+  https://cortexlinux.com
+
+  ✓ Cortex Linux is ready!
+
+  System Information:
+    Hostname: ${hostname}
+    Admin User: ${admin_user}
+    Provisioning: Complete
+  
+  Next Steps:
+    1. Change default password: passwd ${admin_user}
+    2. Configure system: sudo nano /etc/cortex/provision.yaml
+    3. Install packages: sudo apt-get install cortex-full
+    4. Get help: cortex --help
+  
+  Documentation: https://cortexlinux.com/docs
+  GitHub: https://github.com/cortexlinux/cortex-distro
+  Discord: https://discord.gg/cortexlinux
+
+  System is ready. You can connect via SSH or web console (port 8006).
+
+EOF
+}
+
 main() {
+    # Show welcome message
+    show_welcome
+    
     log_section "Cortex Linux First Boot Provisioning v${PROVISION_VERSION}"
     log "Started: $(date)"
     
@@ -344,14 +404,31 @@ main() {
     mkdir -p "$(dirname "$PROVISION_LOG")"
     
     # Run provisioning steps in order
+    log "Step 1/9: Configuring hostname..."
     provision_hostname
+    
+    log "Step 2/9: Configuring network..."
     provision_network
+    
+    log "Step 3/9: Configuring timezone..."
     provision_timezone
+    
+    log "Step 4/9: Configuring SSH..."
     provision_ssh
+    
+    log "Step 5/9: Configuring admin user..."
     provision_admin_user
+    
+    log "Step 6/9: Configuring APT repositories..."
     provision_apt_repos
+    
+    log "Step 7/9: Installing Cortex..."
     provision_cortex
+    
+    log "Step 8/9: Applying security baseline..."
     provision_security
+    
+    log "Step 9/9: Configuring web console..."
     provision_webconsole
     
     # Mark provisioning complete
@@ -360,9 +437,12 @@ main() {
     
     log_section "Provisioning Complete"
     log "Finished: $(date)"
-    log ""
-    log "System is ready. Connect via SSH or web console (port 8006)"
-    log ""
+    
+    # Show completion message
+    show_completion
+    
+    # Log to systemd journal
+    systemd-cat -t cortex-firstboot -p info echo "Cortex Linux first boot provisioning completed successfully"
 }
 
 # Run main function

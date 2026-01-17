@@ -182,6 +182,82 @@ test_checksum
 test_uefi_boot
 test_bios_boot
 
+# Test 8: Verify ISO metadata
+test_iso_metadata() {
+    if command -v xorriso &>/dev/null && [ "$(id -u)" -eq 0 ]; then
+        local mount_point
+        mount_point=$(mktemp -d)
+        
+        if mount -o loop,ro "$ISO_FILE" "$mount_point" 2>/dev/null; then
+            # Check for Cortex branding
+            local has_cortex=false
+            if grep -qi "cortex" "$mount_point/.disk/info" 2>/dev/null || \
+               grep -qi "cortex" "$mount_point/isolinux/isolinux.cfg" 2>/dev/null || \
+               [ -f "$mount_point/preseed/cortex.preseed" ]; then
+                has_cortex=true
+            fi
+            
+            umount "$mount_point"
+            rmdir "$mount_point"
+            
+            if [ "$has_cortex" = true ]; then
+                pass "ISO metadata contains Cortex branding"
+            else
+                warn "ISO metadata missing Cortex branding"
+            fi
+        else
+            skip "Could not mount ISO for metadata check"
+        fi
+    else
+        skip "ISO metadata check requires root and xorriso"
+    fi
+}
+
+# Test 9: Verify preseed file exists
+test_preseed_file() {
+    if command -v xorriso &>/dev/null && [ "$(id -u)" -eq 0 ]; then
+        local mount_point
+        mount_point=$(mktemp -d)
+        
+        if mount -o loop,ro "$ISO_FILE" "$mount_point" 2>/dev/null; then
+            if [ -f "$mount_point/preseed/cortex.preseed" ]; then
+                pass "Preseed file found in ISO"
+                
+                # Check preseed syntax (basic)
+                if grep -q "^d-i " "$mount_point/preseed/cortex.preseed"; then
+                    pass "Preseed file contains valid directives"
+                else
+                    warn "Preseed file may have syntax issues"
+                fi
+            else
+                fail "Preseed file not found in ISO"
+            fi
+            
+            umount "$mount_point"
+            rmdir "$mount_point"
+        else
+            skip "Could not mount ISO for preseed check"
+        fi
+    else
+        skip "Preseed check requires root and xorriso"
+    fi
+}
+
+# Run all tests
+info ""
+info "Running verification tests..."
+info ""
+
+test_file_readable
+test_file_size
+test_iso_format
+test_iso_contents
+test_checksum
+test_uefi_boot
+test_bios_boot
+test_iso_metadata
+test_preseed_file
+
 # Summary
 info ""
 info "================================================"
