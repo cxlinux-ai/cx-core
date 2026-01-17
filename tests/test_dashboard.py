@@ -461,6 +461,7 @@ class TestInstallFlows(unittest.TestCase):
         class FakeCLI:
             def install(self, *_, **__):
                 import sys
+
                 sys.stdout.write(json.dumps({"success": True, "commands": ["echo hi"]}) + "\n")
                 return 0
 

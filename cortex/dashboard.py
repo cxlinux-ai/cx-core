@@ -1701,7 +1701,9 @@ class UIRenderer:
                     outputs = []
                     for cmd in commands:
                         exec_result = sandbox.execute(cmd)
-                        output_text = getattr(exec_result, 'stdout', getattr(exec_result, 'output', ''))
+                        output_text = getattr(
+                            exec_result, "stdout", getattr(exec_result, "output", "")
+                        )
                         outputs.append(output_text or "")
                         if not exec_result.success:
                             all_success = False
