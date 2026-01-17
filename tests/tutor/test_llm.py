@@ -69,7 +69,7 @@ class TestParseStructuredResponse:
         )
         result = _parse_structured_response(content, LessonResponse)
         assert result.summary == "Test summary"
-        assert result.confidence == 0.9
+        assert result.confidence == pytest.approx(0.9)
 
     def test_parse_invalid_response_raises(self):
         """Test that invalid response raises ValidationError."""
