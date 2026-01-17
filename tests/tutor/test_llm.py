@@ -4,49 +4,80 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 
-class TestParseJsonResponse:
-    """Tests for _parse_json_response function."""
+class TestExtractJsonContent:
+    """Tests for _extract_json_content function."""
 
-    def test_parse_plain_json(self):
-        """Test parsing plain JSON."""
-        from cortex.tutor.llm import _parse_json_response
+    def test_extract_plain_json(self):
+        """Test extracting plain JSON."""
+        from cortex.tutor.llm import _extract_json_content
 
         content = '{"key": "value"}'
-        result = _parse_json_response(content)
-        assert result == {"key": "value"}
+        result = _extract_json_content(content)
+        assert result == '{"key": "value"}'
 
-    def test_parse_json_with_markdown_fence(self):
-        """Test parsing JSON wrapped in markdown fences."""
-        from cortex.tutor.llm import _parse_json_response
+    def test_extract_json_with_markdown_fence(self):
+        """Test extracting JSON wrapped in markdown fences."""
+        from cortex.tutor.llm import _extract_json_content
 
         content = '```json\n{"key": "value"}\n```'
-        result = _parse_json_response(content)
-        assert result == {"key": "value"}
+        result = _extract_json_content(content)
+        assert result == '{"key": "value"}'
 
-    def test_parse_json_with_plain_fence(self):
-        """Test parsing JSON wrapped in plain markdown fences."""
-        from cortex.tutor.llm import _parse_json_response
+    def test_extract_json_with_plain_fence(self):
+        """Test extracting JSON wrapped in plain markdown fences."""
+        from cortex.tutor.llm import _extract_json_content
 
         content = '```\n{"key": "value"}\n```'
-        result = _parse_json_response(content)
-        assert result == {"key": "value"}
+        result = _extract_json_content(content)
+        assert result == '{"key": "value"}'
 
-    def test_parse_json_with_whitespace(self):
-        """Test parsing JSON with extra whitespace."""
-        from cortex.tutor.llm import _parse_json_response
+    def test_extract_json_with_python_fence(self):
+        """Test extracting JSON wrapped in python markdown fences."""
+        from cortex.tutor.llm import _extract_json_content
+
+        content = '```python\n{"key": "value"}\n```'
+        result = _extract_json_content(content)
+        assert result == '{"key": "value"}'
+
+    def test_extract_json_with_whitespace(self):
+        """Test extracting JSON with extra whitespace."""
+        from cortex.tutor.llm import _extract_json_content
 
         content = '  \n  {"key": "value"}  \n  '
-        result = _parse_json_response(content)
-        assert result == {"key": "value"}
+        result = _extract_json_content(content)
+        assert result == '{"key": "value"}'
 
-    def test_parse_invalid_json_raises(self):
-        """Test that invalid JSON raises JSONDecodeError."""
-        from cortex.tutor.llm import _parse_json_response
 
-        with pytest.raises(json.JSONDecodeError):
-            _parse_json_response("not valid json")
+class TestParseStructuredResponse:
+    """Tests for _parse_structured_response function."""
+
+    def test_parse_valid_lesson_response(self):
+        """Test parsing valid lesson response."""
+        from cortex.tutor.contracts import LessonResponse
+        from cortex.tutor.llm import _parse_structured_response
+
+        content = json.dumps(
+            {
+                "summary": "Test summary",
+                "explanation": "Test explanation",
+                "installation_command": "apt install test",
+                "confidence": 0.9,
+            }
+        )
+        result = _parse_structured_response(content, LessonResponse)
+        assert result.summary == "Test summary"
+        assert result.confidence == 0.9
+
+    def test_parse_invalid_response_raises(self):
+        """Test that invalid response raises ValidationError."""
+        from cortex.tutor.contracts import LessonResponse
+        from cortex.tutor.llm import _parse_structured_response
+
+        with pytest.raises(ValidationError):
+            _parse_structured_response('{"invalid": "data"}', LessonResponse)
 
 
 class TestGetRouter:
@@ -92,6 +123,7 @@ class TestGenerateLesson:
                 "tutorial_steps": [],
                 "installation_command": "apt install test",
                 "related_packages": [],
+                "confidence": 0.9,
             }
         )
         mock_response.cost_usd = 0.01
@@ -112,7 +144,14 @@ class TestGenerateLesson:
         from cortex.tutor import llm
 
         mock_response = MagicMock()
-        mock_response.content = '{"summary": "Advanced lesson"}'
+        mock_response.content = json.dumps(
+            {
+                "summary": "Advanced lesson",
+                "explanation": "Advanced explanation",
+                "installation_command": "apt install nginx",
+                "confidence": 0.85,
+            }
+        )
         mock_response.cost_usd = 0.02
 
         with patch.object(llm, "get_router") as mock_get_router:
@@ -201,7 +240,13 @@ class TestAnswerQuestion:
         from cortex.tutor import llm
 
         mock_response = MagicMock()
-        mock_response.content = '{"answer": "test", "confidence": 0.9}'
+        mock_response.content = json.dumps(
+            {
+                "answer": "test",
+                "confidence": 0.9,
+                "related_topics": [],
+            }
+        )
         mock_response.cost_usd = 0.01
 
         with patch.object(llm, "get_router") as mock_get_router:

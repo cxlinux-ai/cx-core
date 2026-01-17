@@ -4,10 +4,13 @@ LLM functions for the Intelligent Tutor.
 Uses cortex.llm_router for LLM calls with layered prompt methodology.
 """
 
-import json
 import logging
+import re
+
+from pydantic import BaseModel, ValidationError
 
 from cortex.llm_router import LLMRouter, TaskType
+from cortex.tutor.contracts import LessonResponse, QAResponse
 
 # Suppress verbose logging from llm_router
 logging.getLogger("cortex.llm_router").setLevel(logging.WARNING)
@@ -24,15 +27,22 @@ def get_router() -> LLMRouter:
     return _router
 
 
-def _parse_json_response(content: str) -> dict:
-    """Parse JSON from LLM response, handling markdown fences."""
+def _extract_json_content(content: str) -> str:
+    """Extract JSON content from LLM response, handling markdown fences."""
     content = content.strip()
+    # Handle markdown code fences with any language specifier
     if content.startswith("```"):
-        content = content.split("```")[1]
-        if content.startswith("json"):
-            content = content[4:]
-        content = content.strip()
-    return json.loads(content)
+        # Use regex to extract content between fences
+        match = re.search(r"```(?:\w+)?\s*\n?(.*?)```", content, re.DOTALL)
+        if match:
+            content = match.group(1).strip()
+    return content
+
+
+def _parse_structured_response(content: str, model: type[BaseModel]) -> BaseModel:
+    """Parse LLM response into a Pydantic model for validation."""
+    json_content = _extract_json_content(content)
+    return model.model_validate_json(json_content)
 
 
 # ==============================================================================
@@ -179,11 +189,11 @@ def generate_lesson(
             temperature=0.3,
             max_tokens=4096,
         )
-        lesson = _parse_json_response(response.content)
-        return {"success": True, "lesson": lesson, "cost_usd": response.cost_usd}
+        lesson = _parse_structured_response(response.content, LessonResponse)
+        return {"success": True, "lesson": lesson.model_dump(), "cost_usd": response.cost_usd}
 
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse lesson JSON: %s", e)
+    except ValidationError as e:
+        logger.error("Failed to validate lesson response: %s", e)
         return {"success": False, "error": str(e), "lesson": None}
     except Exception as e:
         logger.error("Failed to generate lesson: %s", e)
@@ -312,11 +322,11 @@ def answer_question(
             temperature=0.5,
             max_tokens=2048,
         )
-        answer = _parse_json_response(response.content)
-        return {"success": True, "answer": answer, "cost_usd": response.cost_usd}
+        answer = _parse_structured_response(response.content, QAResponse)
+        return {"success": True, "answer": answer.model_dump(), "cost_usd": response.cost_usd}
 
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse answer JSON: %s", e)
+    except ValidationError as e:
+        logger.error("Failed to validate answer response: %s", e)
         return {"success": False, "error": str(e), "answer": None}
     except Exception as e:
         logger.error("Failed to answer question: %s", e)

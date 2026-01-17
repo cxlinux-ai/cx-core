@@ -25,7 +25,7 @@ from cortex.tutor.branding import (
 )
 from cortex.tutor.config import DEFAULT_TUTOR_TOPICS, Config
 from cortex.tutor.sqlite_store import SQLiteStore
-from cortex.tutor.validators import validate_package_name
+from cortex.tutor.validators import validate_package_name, validate_question
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -154,6 +154,11 @@ def cmd_question(package: str, question: str, verbose: bool = False) -> int:
     is_valid, error = validate_package_name(package)
     if not is_valid:
         print_error_panel(f"Invalid package name: {error}")
+        return 1
+
+    is_valid, error = validate_question(question)
+    if not is_valid:
+        print_error_panel(f"Invalid question: {error}")
         return 1
 
     try:

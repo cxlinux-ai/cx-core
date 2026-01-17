@@ -361,3 +361,38 @@ class QuizContext(BaseModel):
             passed=score >= 70,
             feedback=feedback or f"You scored {score:.0f}%",
         )
+
+
+# ==============================================================================
+# LLM Response Models (for structured output parsing)
+# ==============================================================================
+
+
+class LessonResponse(BaseModel):
+    """Raw LLM response for lesson generation."""
+
+    summary: str = Field(..., description="1-2 sentence overview")
+    explanation: str = Field(..., description="Detailed explanation")
+    use_cases: list[str] = Field(default_factory=list, description="Use cases")
+    best_practices: list[str] = Field(default_factory=list, description="Best practices")
+    code_examples: list[CodeExample] = Field(default_factory=list, description="Code examples")
+    tutorial_steps: list[TutorialStep] = Field(default_factory=list, description="Tutorial steps")
+    installation_command: str = Field(..., description="Installation command")
+    related_packages: list[str] = Field(default_factory=list, description="Related packages")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
+
+
+class QACodeExample(BaseModel):
+    """Code example in Q&A response."""
+
+    code: str = Field(..., description="The code snippet")
+    language: str = Field(default="bash", description="Programming language")
+
+
+class QAResponse(BaseModel):
+    """Raw LLM response for Q&A."""
+
+    answer: str = Field(..., description="The answer to the question")
+    code_example: QACodeExample | None = Field(default=None, description="Optional code example")
+    related_topics: list[str] = Field(default_factory=list, description="Related topics")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
