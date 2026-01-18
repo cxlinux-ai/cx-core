@@ -97,8 +97,7 @@ class ContextMemory:
             cursor = conn.cursor()
 
             # Memory entries table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS memory_entries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT NOT NULL,
@@ -112,12 +111,10 @@ class ContextMemory:
                     metadata TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
 
             # Patterns table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS patterns (
                     pattern_id TEXT PRIMARY KEY,
                     pattern_type TEXT NOT NULL,
@@ -129,12 +126,10 @@ class ContextMemory:
                     context TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
 
             # Suggestions table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS suggestions (
                     suggestion_id TEXT PRIMARY KEY,
                     suggestion_type TEXT NOT NULL,
@@ -145,20 +140,17 @@ class ContextMemory:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     dismissed BOOLEAN DEFAULT 0
                 )
-            """
-            )
+            """)
 
             # User preferences table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS preferences (
                     key TEXT PRIMARY KEY,
                     value TEXT,
                     category TEXT,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
 
             # Create indexes for performance
             cursor.execute(
@@ -408,14 +400,12 @@ class ContextMemory:
         with self._pool.get_connection() as conn:
             cursor = conn.cursor()
 
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT * FROM memory_entries
                 WHERE timestamp > datetime('now', '-7 days')
                 ORDER BY timestamp DESC
                 LIMIT 50
-            """
-            )
+            """)
 
             recent_entries = [self._row_to_memory_entry(row) for row in cursor.fetchall()]
 
@@ -632,23 +622,19 @@ class ContextMemory:
             stats["total_entries"] = cursor.fetchone()[0]
 
             # Entries by category
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT category, COUNT(*)
                 FROM memory_entries
                 GROUP BY category
-            """
-            )
+            """)
             stats["by_category"] = dict(cursor.fetchall())
 
             # Success rate
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate
                 FROM memory_entries
-            """
-            )
+            """)
             stats["success_rate"] = (
                 round(cursor.fetchone()[0], 2) if stats["total_entries"] > 0 else 0
             )
@@ -662,12 +648,10 @@ class ContextMemory:
             stats["active_suggestions"] = cursor.fetchone()[0]
 
             # Recent activity
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT COUNT(*) FROM memory_entries
                 WHERE timestamp > datetime('now', '-7 days')
-            """
-            )
+            """)
             stats["recent_activity"] = cursor.fetchone()[0]
 
         return stats

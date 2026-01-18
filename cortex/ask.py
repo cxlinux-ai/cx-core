@@ -285,11 +285,12 @@ Rules:
             return f"You have Python {platform.python_version()} installed."
         return "I cannot answer that question in test mode."
 
-    def ask(self, question: str) -> str:
+    def ask(self, question: str, system_prompt: str | None = None) -> str:
         """Ask a natural language question about the system.
 
         Args:
             question: Natural language question
+            system_prompt: Optional override for the system prompt
 
         Returns:
             Human-readable answer string
@@ -302,8 +303,11 @@ Rules:
             raise ValueError("Question cannot be empty")
 
         question = question.strip()
-        context = self.info_gatherer.gather_context()
-        system_prompt = self._get_system_prompt(context)
+
+        # Use provided system prompt or generate default
+        if system_prompt is None:
+            context = self.info_gatherer.gather_context()
+            system_prompt = self._get_system_prompt(context)
 
         # Cache lookup uses both question and system context (via system_prompt) for system-specific answers
         cache_key = f"ask:{question}"

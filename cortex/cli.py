@@ -3011,6 +3011,20 @@ class CortexCLI:
                 console.print(f"Error: {result.error_message}", style="red")
             return 1
 
+    def doctor(self) -> int:
+        """Run system health checks."""
+        from cortex.doctor import SystemDoctor
+
+        doc = SystemDoctor()
+        return doc.run_checks()
+
+    def troubleshoot(self, no_execute: bool = False) -> int:
+        """Run interactive troubleshooter."""
+        from cortex.troubleshoot import Troubleshooter
+
+        troubleshooter = Troubleshooter(no_execute=no_execute)
+        return troubleshooter.start()
+
     # --------------------------
 
 
@@ -3195,6 +3209,8 @@ def show_rich_help():
     table.add_row("docker permissions", "Fix Docker bind-mount permissions")
     table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
     table.add_row("update", "Check for and install updates")
+    table.add_row("doctor", "System health check")
+    table.add_row("troubleshoot", "Interactive system troubleshooter")
 
     console.print(table)
     console.print()
@@ -3778,6 +3794,18 @@ def main():
     )
     # --------------------------
 
+    # Doctor command
+    doctor_parser = subparsers.add_parser("doctor", help="System health check")
+
+    # Troubleshoot command
+    troubleshoot_parser = subparsers.add_parser(
+        "troubleshoot", help="Interactive system troubleshooter"
+    )
+    troubleshoot_parser.add_argument(
+        "--no-execute",
+        action="store_true",
+        help="Disable automatic command execution (read-only mode)",
+    )
     # License and upgrade commands
     subparsers.add_parser("upgrade", help="Upgrade to Cortex Pro")
     subparsers.add_parser("license", help="Show license status")
@@ -3991,6 +4019,12 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
+        elif args.command == "doctor":
+            return cli.doctor()
+        elif args.command == "troubleshoot":
+            return cli.troubleshoot(
+                no_execute=getattr(args, "no_execute", False),
+            )
         elif args.command == "config":
             return cli.config(args)
         elif args.command == "upgrade":

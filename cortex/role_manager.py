@@ -308,12 +308,10 @@ class RoleManager:
             try:
                 # Use self.history_db defined in __init__ for consistency.
                 with sqlite3.connect(self.history_db) as conn:
-                    conn.execute(
-                        """
+                    conn.execute("""
                         CREATE TABLE IF NOT EXISTS role_changes
                         (timestamp TEXT, key TEXT, old_value TEXT, new_value TEXT)
-                    """
-                    )
+                    """)
                     conn.execute(
                         "INSERT INTO role_changes VALUES (?, ?, ?, ?)",
                         (

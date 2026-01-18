@@ -73,15 +73,13 @@ def test_get_system_context_fact_gathering(temp_cortex_dir):
     db_path = temp_cortex_dir / "history.db"
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE installations (
                 packages TEXT,
                 status TEXT,
                 timestamp DATETIME
             )
-        """
-        )
+        """)
         # Insert a JSON array of packages as a successful installation.
         cursor.execute(
             "INSERT INTO installations (packages, status, timestamp) VALUES (?, ?, ?)",

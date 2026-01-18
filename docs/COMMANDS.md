@@ -11,6 +11,8 @@ This document provides a comprehensive reference for all commands available in t
 | `cortex demo` | See Cortex in action |
 | `cortex wizard` | Configure API key |
 | `cortex status` | Show comprehensive system status and health checks |
+| `cortex doctor` | Run system health checks |
+| `cortex troubleshoot` | Interactive AI troubleshooting assistant |
 | `cortex history` | View installation history |
 | `cortex rollback <id>` | Undo an installation |
 | `cortex stack <name>` | Install a pre-built package stack |
@@ -132,6 +134,85 @@ cortex status
 - `0`: All checks passed, system is healthy
 - `1`: Warnings found, system can operate but has recommendations
 - `2`: Critical failures found, system may not work properly
+
+---
+
+### `cortex troubleshoot`
+
+Interactive AI-powered troubleshooting assistant that can diagnose system issues and execute commands.
+
+**Usage:**
+```bash
+cortex troubleshoot
+```
+
+**Features:**
+- Conversational AI that understands your system issues
+- Suggests shell commands to diagnose and fix problems
+- Executes commands with your explicit confirmation
+- Analyzes command output and suggests next steps
+- Dangerous command protection (blocks `rm -rf`, `mkfs`, etc.)
+
+**Flow:**
+```text
+┌─────────────────────────────────────────┐
+│  User describes issue                   │
+└─────────────────┬───────────────────────┘
+                  ▼
+┌─────────────────────────────────────────┐
+│  AI suggests diagnostic command         │
+└─────────────────┬───────────────────────┘
+                  ▼
+┌─────────────────────────────────────────┐
+│  User confirms execution [y/n]          │
+└─────────────────┬───────────────────────┘
+                  ▼
+┌─────────────────────────────────────────┐
+│  Command runs, output displayed         │
+└─────────────────┬───────────────────────┘
+                  ▼
+┌─────────────────────────────────────────┐
+│  AI analyzes output, suggests next step │
+└─────────────────────────────────────────┘
+```
+
+**Example Session:**
+```text
+$ cortex troubleshoot
+🤖 Cortex Troubleshooter
+Describe your issue, or type 'doctor' to run health checks.
+
+You: docker won't start
+
+AI: Let's check the Docker service status:
+
+$ systemctl status docker
+
+Suggested Command:
+systemctl status docker
+Execute this command? [y/n]: y
+
+[Command Output displayed]
+
+AI: The Docker daemon failed to start. Let's check the logs...
+```
+
+**Safety:**
+- All commands require explicit user confirmation
+- Dangerous commands are automatically blocked:
+  - `rm -rf`, `rm -fr`
+  - `mkfs` (filesystem format)
+  - `dd` to devices
+  - `shutdown`, `reboot`, `poweroff`
+  - `chmod 777 /`
+  - Fork bombs
+
+**Special Commands:**
+| Command | Action |
+|---------|--------|
+| `doctor` | Run health checks mid-session |
+| `help` | Generate support log for escalation |
+| `exit`, `quit`, `q` | Exit troubleshooter |
 
 ---
 

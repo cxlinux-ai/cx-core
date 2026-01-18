@@ -41,13 +41,11 @@ class TestContextMemory(unittest.TestCase):
         conn = sqlite3.connect(self.temp_db.name)
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT name FROM sqlite_master
             WHERE type='table'
             ORDER BY name
-        """
-        )
+        """)
         tables = [row[0] for row in cursor.fetchall()]
 
         self.assertIn("memory_entries", tables)
