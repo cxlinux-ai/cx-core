@@ -102,6 +102,7 @@ class LessonLoaderTool:
                 self.store.cache_lesson(package_name, {}, ttl_hours=0)
                 return 1
             except Exception:
+                logger.exception("Failed to clear cache for package '%s'", package_name)
                 return 0
         else:
             return self.store.clear_expired_cache()
@@ -419,7 +420,7 @@ class ProgressTrackerTool:
     ) -> dict[str, Any]:
         """Update student profile."""
         profile = self.store.get_student_profile()
-        if learning_style:
+        if learning_style is not None:
             profile.learning_style = learning_style
         self.store.update_student_profile(profile)
         return {"success": True, "message": "Profile updated"}
