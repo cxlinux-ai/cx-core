@@ -50,14 +50,12 @@ class CacheDatabase:
         CORTEX_DB.parent.mkdir(parents=True, exist_ok=True)
         self._pool = get_connection_pool(str(CORTEX_DB), pool_size=5)
         with self._pool.get_connection() as conn:
-            conn.executescript(
-                """
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS pools (name TEXT PRIMARY KEY, config TEXT, shm_name TEXT);
                 CREATE TABLE IF NOT EXISTS entries (seq_id INTEGER, pool TEXT, created REAL, accessed REAL,
                     count INTEGER, tokens INTEGER, size INTEGER, offset INTEGER, PRIMARY KEY(seq_id, pool));
                 CREATE TABLE IF NOT EXISTS stats (pool TEXT PRIMARY KEY, hits INTEGER DEFAULT 0, misses INTEGER DEFAULT 0);
-            """
-            )
+            """)
 
     def save_pool(self, cfg: CacheConfig, shm: str):
         with self._pool.get_connection() as conn:

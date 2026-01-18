@@ -81,8 +81,7 @@ class ResponseCache:
         """Initialize the cache database."""
         self._pool = get_connection_pool(str(self.db_path), pool_size=5)
         with self._pool.get_connection() as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS response_cache (
                     query_hash TEXT PRIMARY KEY,
                     query TEXT NOT NULL,
@@ -91,14 +90,11 @@ class ResponseCache:
                     hit_count INTEGER DEFAULT 0,
                     last_used TIMESTAMP
                 )
-            """
-            )
-            conn.execute(
-                """
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_last_used
                 ON response_cache(last_used)
-            """
-            )
+            """)
             conn.commit()
 
     def _hash_query(self, query: str) -> str:

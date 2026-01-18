@@ -237,8 +237,7 @@ class FirstRunWizard:
         self._clear_screen()
         self._print_banner()
 
-        print(
-            """
+        print("""
 Welcome to Cortex Linux! 🚀
 
 Cortex is an AI-powered package manager that understands natural language.
@@ -249,8 +248,7 @@ Instead of memorizing apt commands, just tell Cortex what you want:
   $ cortex remove unused packages
 
 This wizard will help you set up Cortex in just a few minutes.
-"""
-        )
+""")
 
         if self.interactive:
             response = self._prompt("Press Enter to continue (or 'q' to quit): ")
@@ -264,16 +262,14 @@ This wizard will help you set up Cortex in just a few minutes.
         self._clear_screen()
         self._print_header("Step 1: API Configuration")
 
-        print(
-            """
+        print("""
 Cortex uses AI to understand your commands. You can use:
 
   1. Claude API (Anthropic) - Recommended
   2. OpenAI API
   3. Local LLM (Ollama) - Free, runs on your machine
   4. Skip for now (limited functionality)
-"""
-        )
+""")
 
         # Check for existing API keys
         existing_claude = os.environ.get("ANTHROPIC_API_KEY")
@@ -708,8 +704,7 @@ complete -c cortex -n "__fish_use_subcommand" -a "history" -d "Show history"
         # Save all config
         self.save_config()
 
-        print(
-            """
+        print("""
 Cortex is ready to use! Here are some things to try:
 
   📦 Install packages:
@@ -729,8 +724,7 @@ Cortex is ready to use! Here are some things to try:
   📖 Get help:
      cortex help
 
-"""
-        )
+""")
 
         # Show configuration summary
         print("Configuration Summary:")

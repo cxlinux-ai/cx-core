@@ -738,7 +738,8 @@ class ImpactAnalyzer:
         # Check if essential (only for installed packages)
         if is_installed and pkg_info and pkg_info.is_essential:
             result.warnings.append(
-                f"⚠️  '{package_name}' is marked as ESSENTIAL. " "Removing it may break your system!"
+                f"⚠️  '{package_name}' is marked as ESSENTIAL. "
+                "Removing it may break your system!"
             )
             result.severity = ImpactSeverity.CRITICAL
             result.safe_to_remove = False

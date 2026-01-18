@@ -46,15 +46,13 @@ class ModelDatabase:
 
     def _init_db(self):
         with sqlite3.connect(CORTEX_DB_PATH) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS models (
                     name TEXT PRIMARY KEY,
                     config TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
 
     def save_model(self, config: ModelConfig):
         with sqlite3.connect(CORTEX_DB_PATH) as conn:

@@ -153,8 +153,7 @@ class TransactionHistory:
     def _init_db(self):
         """Initialize the database schema."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS transactions (
                     id TEXT PRIMARY KEY,
                     transaction_type TEXT NOT NULL,
@@ -171,22 +170,17 @@ class TransactionHistory:
                     is_rollback_safe INTEGER,
                     rollback_warning TEXT
                 )
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_timestamp
                 ON transactions(timestamp DESC)
-            """
-            )
+            """)
 
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_status
                 ON transactions(status)
-            """
-            )
+            """)
 
             conn.commit()
 

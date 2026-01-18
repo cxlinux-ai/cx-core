@@ -94,8 +94,7 @@ class SemanticCache:
 
         with self._pool.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS llm_cache_entries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     provider TEXT NOT NULL,
@@ -109,29 +108,22 @@ class SemanticCache:
                     last_accessed TEXT NOT NULL,
                     hit_count INTEGER NOT NULL DEFAULT 0
                 )
-                """
-            )
-            cur.execute(
-                """
+                """)
+            cur.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_cache_unique
                 ON llm_cache_entries(provider, model, system_hash, prompt_hash)
-                """
-            )
-            cur.execute(
-                """
+                """)
+            cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_llm_cache_lru
                 ON llm_cache_entries(last_accessed)
-                """
-            )
-            cur.execute(
-                """
+                """)
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS llm_cache_stats (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     hits INTEGER NOT NULL DEFAULT 0,
                     misses INTEGER NOT NULL DEFAULT 0
                 )
-                """
-            )
+                """)
             cur.execute("INSERT OR IGNORE INTO llm_cache_stats(id, hits, misses) VALUES (1, 0, 0)")
             conn.commit()
 
