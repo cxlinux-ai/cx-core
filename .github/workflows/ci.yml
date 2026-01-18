@@ -23,10 +23,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install linting tools
+      - name: Install dependencies
         run: |
           python -m pip install -U pip
-          pip install ruff black mypy
+          pip install -e ".[dev]"
 
       - name: Lint with ruff
         run: ruff check . --output-format=github
@@ -104,18 +104,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install security tools
+      - name: Install dependencies
         run: |
           python -m pip install -U pip
-          pip install bandit safety
+          pip install -e ".[security]"
 
       - name: Run bandit security scan
         run: bandit -r cortex -ll -ii --format json --output bandit-report.json || true
 
       - name: Check for known vulnerabilities
-        run: |
-          pip install -e .
-          safety check --json --output safety-report.json || true
+        run: safety check --json --output safety-report.json || true
         continue-on-error: true
 
       - name: Upload security reports
@@ -140,10 +138,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build tools
+      - name: Install dependencies
         run: |
           python -m pip install -U pip
-          pip install build twine
+          pip install -e ".[dev]" twine
 
       - name: Build package
         run: python -m build
