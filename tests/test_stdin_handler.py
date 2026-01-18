@@ -411,7 +411,8 @@ class TestRunStdinHandler:
         except json.JSONDecodeError:
             # Try to extract JSON from output if extra text is present
             import re
-            match = re.search(r'({.*})', captured.out, re.DOTALL)
+
+            match = re.search(r"({.*})", captured.out, re.DOTALL)
             assert match, f"No JSON found in output: {captured.out}"
             data = json.loads(match.group(1))
         assert "line_count" in data

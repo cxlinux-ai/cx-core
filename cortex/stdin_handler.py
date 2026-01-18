@@ -421,6 +421,7 @@ def run_stdin_handler(
         # Machine-readable stats (no console output)
         analysis = analyze_stdin(data)
         import json
+
         sys.stdout.write(json.dumps(analysis, indent=2) + "\n")
         return 0
 
