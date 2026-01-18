@@ -30,6 +30,36 @@ class TarballHelper:
     def __init__(self):
         self.tracked_packages = self._load_tracked_packages()
 
+    def suggest_apt_packages(self, deps: list[str]) -> dict[str, str]:
+        """Map dependency names to apt packages (simple heuristic)."""
+        mapping = {}
+        for dep in deps:
+            dep_lower = dep.lower()
+            if dep_lower.startswith("lib"):
+                pkg = f"{dep_lower}-dev"
+            else:
+                pkg = f"lib{dep_lower}-dev"
+            mapping[dep] = pkg
+        return mapping
+
+    def install_deps(self, pkgs: list[str]) -> None:
+        """Install missing -dev packages via apt. Only track successful installs."""
+        import subprocess
+        for pkg in pkgs:
+            console.print(f"[cyan]Installing:[/cyan] {pkg}")
+            result = subprocess.run(["sudo", "apt-get", "install", "-y", pkg], check=False)
+            if result.returncode == 0:
+                self.track(pkg)
+            else:
+                console.print(f"[red]Failed to install:[/red] {pkg} (exit code {result.returncode}). Package will not be tracked for cleanup.")
+
+    def track(self, pkg: str) -> None:
+        """Track a package for later cleanup."""
+        if pkg not in self.tracked_packages:
+            self.tracked_packages.append(pkg)
+            self._save_tracked_packages()
+            console.print(f"[green]Tracked:[/green] {pkg}")
+
     def _load_tracked_packages(self) -> list[str]:
         """Load tracked packages from file, handling corrupt JSON."""
         if MANUAL_TRACK_FILE.exists():
@@ -70,120 +100,76 @@ class TarballHelper:
                             content = f.read()
                     except Exception:
                         continue
-                    deps.update(self._parse_dependencies(fname, content))
+                    if fname == "setup.py":
+                        deps.update(self._parse_setup_py_dependencies(content))
+                    else:
+                        deps.update(self._parse_dependencies(fname, content))
         return list(deps)
-
     def _parse_dependencies(self, fname: str, content: str) -> list[str]:
-        """Extract dependencies from build files using regex or AST for setup.py."""
+        """Extract dependencies from build files using regex or delegate to setup.py parser."""
+        if fname == "setup.py":
+            return self._parse_setup_py_dependencies(content)
         patterns = {
             "CMakeLists.txt": r"find_package\(([-\w]+)",
             "meson.build": r"dependency\(['\"]([\w-]+)",
             "configure.ac": r"AC_CHECK_LIB\(\[?([\w-]+)",
             "Makefile": r"-l([\w-]+)",
-            "setup.py": r"install_requires=\[(.*?)\]",
         }
         deps = set()
-        if fname == "setup.py":
-            # Use AST for robust parsing
-            import ast
-
-            try:
-                tree = ast.parse(content)
-                for node in ast.walk(tree):
-                    if (
-                        isinstance(node, ast.Assign)
-                        and getattr(node.targets[0], "id", None) == "install_requires"
-                    ):
-                        if isinstance(node.value, (ast.List, ast.Tuple)):
-                            for elt in node.value.elts:
-                                if isinstance(elt, ast.Str):
-                                    deps.add(elt.s)
-            except Exception:
-                # Fallback to regex if AST fails
-                matches = re.findall(patterns["setup.py"], content, re.DOTALL)
-                for m in matches:
-                    deps.update(re.findall(r"['\"]([\w\-]+)['\"]", m))
-        elif fname in patterns:
+        if fname in patterns:
             matches = re.findall(patterns[fname], content, re.DOTALL)
             deps.update(matches)
         return list(deps)
 
-    def suggest_apt_packages(self, deps: list[str]) -> dict[str, str]:
-        """Map dependency names to apt packages (simple heuristic)."""
-        mapping = {}
-        for dep in deps:
-            dep_lower = dep.lower()
-            if dep_lower.startswith("lib"):
-                pkg = f"{dep_lower}-dev"
-            else:
-                pkg = f"lib{dep_lower}-dev"
-            mapping[dep] = pkg
-        return mapping
-
-    def install_deps(self, pkgs: list[str]) -> None:
-        """Install missing -dev packages via apt. Only track successful installs."""
-        import subprocess
-
-        for pkg in pkgs:
-            console.print(f"[cyan]Installing:[/cyan] {pkg}")
-            result = subprocess.run(["sudo", "apt-get", "install", "-y", pkg], check=False)
-            if result.returncode == 0:
-                self.track(pkg)
-            else:
-                console.print(
-                    f"[red]Failed to install:[/red] {pkg} (exit code {result.returncode}). Package will not be tracked for cleanup."
-                )
-
-    def track(self, pkg: str) -> None:
-        """Track a package for later cleanup."""
-        if pkg not in self.tracked_packages:
-            self.tracked_packages.append(pkg)
-            self._save_tracked_packages()
-            console.print(f"[green]Tracked:[/green] {pkg}")
-
+    def _parse_setup_py_dependencies(self, content: str) -> list[str]:
+        """Robustly parse install_requires from setup.py using ast and regex fallback."""
+        import ast
+        deps = set()
+        try:
+            tree = ast.parse(content)
+            # Look for install_requires in assignments and in setup() call
+            for node in ast.walk(tree):
+                # Top-level assignment
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id == "install_requires":
+                            if isinstance(node.value, (ast.List, ast.Tuple)):
+                                for elt in node.value.elts:
+                                    if isinstance(elt, ast.Str):
+                                        deps.add(elt.s)
+                                    elif hasattr(ast, "Constant") and isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                        deps.add(elt.value)
+                # install_requires in setup() call
+                if isinstance(node, ast.Call) and hasattr(node.func, "id") and node.func.id == "setup":
+                    for kw in node.keywords:
+                        if kw.arg == "install_requires" and isinstance(kw.value, (ast.List, ast.Tuple)):
+                            for elt in kw.value.elts:
+                                if isinstance(elt, ast.Str):
+                                    deps.add(elt.s)
+                                elif hasattr(ast, "Constant") and isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                    deps.add(elt.value)
+            if deps:
+                return list(deps)
+        except Exception:
+            pass
+        # fallback: try regex for install_requires in assignment or setup()
+        # Robust regex: match install_requires in assignment or setup(), with arbitrary whitespace/newlines
+        # Match install_requires assignments with any whitespace/newlines
+        pattern = r"install_requires\s*=\s*\[(.*?)\]"
+        matches = re.findall(pattern, content, re.DOTALL)
+        for m in matches:
+            # Extract all quoted package names from the captured group
+            deps.update(re.findall(r"['\"]([^'\"]+)['\"]", m, re.DOTALL))
+        return list(deps)
     def cleanup(self) -> None:
-        """Remove all tracked packages using apt-get purge."""
+        """Remove tracked packages using apt-get purge."""
         import subprocess
-
+        if not self.tracked_packages:
+            console.print("[yellow]No tracked packages to remove.[/yellow]")
+            return
         for pkg in self.tracked_packages:
             console.print(f"[yellow]Purging:[/yellow] {pkg}")
             subprocess.run(["sudo", "apt-get", "purge", "-y", pkg], check=False)
         self.tracked_packages = []
         self._save_tracked_packages()
         console.print("[green]Cleanup complete.[/green]")
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Tarball/Manual Build Helper")
-    subparsers = parser.add_subparsers(dest="command")
-
-    analyze_p = subparsers.add_parser("analyze", help="Analyze build files for dependencies")
-    analyze_p.add_argument("path", help="Path to source directory")
-
-    install_p = subparsers.add_parser("install-deps", help="Install missing -dev packages")
-    install_p.add_argument("path", help="Path to source directory")
-
-    cleanup_p = subparsers.add_parser("cleanup", help="Remove tracked packages")
-
-    args = parser.parse_args()
-    helper = TarballHelper()
-
-    if args.command == "analyze":
-        deps = helper.analyze(args.path)
-        mapping = helper.suggest_apt_packages(deps)
-        table = Table(title="Suggested apt packages")
-        table.add_column("Dependency")
-        table.add_column("Apt Package")
-        for dep, pkg in mapping.items():
-            table.add_row(dep, pkg)
-        console.print(table)
-    elif args.command == "install-deps":
-        deps = helper.analyze(args.path)
-        mapping = helper.suggest_apt_packages(deps)
-        helper.install_deps(list(mapping.values()))
-    elif args.command == "cleanup":
-        helper.cleanup()
-    else:
-        parser.print_help()

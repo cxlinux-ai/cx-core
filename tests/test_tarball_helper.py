@@ -1,3 +1,6 @@
+import json
+from cortex.tarball_helper import TarballHelper
+
 def test_parse_dependencies_cmake():
     helper = TarballHelper()
     content = "find_package(OpenSSL)\nfind_package(ZLIB)"
@@ -29,6 +32,18 @@ def test_parse_dependencies_setup_py():
     deps3 = helper._parse_dependencies("setup.py", content3)
     assert deps3 == []
 
+def test_parse_dependencies_setup_py_multiline():
+    helper = TarballHelper()
+    content = """
+install_requires = [
+    'requests',
+    'numpy', # comment
+    'pandas',
+]
+"""
+    deps = helper._parse_dependencies("setup.py", content)
+    assert set(deps) == {"requests", "numpy", "pandas"}
+
 
 def test_suggest_apt_packages_lib_prefix():
     helper = TarballHelper()
@@ -40,11 +55,23 @@ def test_suggest_apt_packages_lib_prefix():
 
 def test_load_tracked_packages_corrupt(tmp_path, monkeypatch):
     test_file = tmp_path / "manual_builds.json"
-    test_file.write_text("not json")
+    test_file.write_text("{not: valid json}")
     monkeypatch.setattr("cortex.tarball_helper.MANUAL_TRACK_FILE", test_file)
     helper = TarballHelper()
     pkgs = helper._load_tracked_packages()
     assert pkgs == []
+def test_install_deps_error_handling(monkeypatch):
+    helper = TarballHelper()
+    called = []
+    def fake_run(args, check):
+        called.append(args)
+        class Result:
+            returncode = 1
+        return Result()
+    monkeypatch.setattr("subprocess.run", fake_run)
+    helper.tracked_packages = []
+    helper.install_deps(["libfail-dev"])
+    assert "libfail-dev" not in helper.tracked_packages
 
 
 def test_load_tracked_packages_valid(tmp_path, monkeypatch):

@@ -3265,16 +3265,25 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Register tarball-helper as a subparser command (before parse_args)
-    tarball_parser = subparsers.add_parser(
-        "tarball-helper", help="Tarball/manual build helper (analyze, install-deps, cleanup)"
-    )
-    tarball_parser.add_argument(
-        "action", choices=["analyze", "install-deps", "cleanup"], help="Action to perform"
-    )
-    tarball_parser.add_argument(
-        "path", nargs="?", help="Path to source directory (for analyze/install-deps)"
-    )
+    # Register tarball-helper subparser only if not already present
+    def add_tarball_helper_subparser(subparsers: argparse._SubParsersAction) -> None:
+        """Add tarball-helper subparser if not already present."""
+        if "tarball-helper" in subparsers.choices:
+            return
+        tarball_parser = subparsers.add_parser(
+            "tarball-helper", help="Tarball/manual build helper (analyze, install-deps, cleanup)"
+        )
+        tarball_parser.add_argument(
+            "action", choices=["analyze", "install-deps", "cleanup"], help="Action to perform"
+        )
+        tarball_parser.add_argument(
+            "path", nargs="?", help="Path to source directory (for analyze/install-deps)"
+        )
+        tarball_parser.add_argument(
+            "--execute", action="store_true", help="Actually install dependencies (default: dry-run)"
+        )
+
+    add_tarball_helper_subparser(subparsers)
 
     # Define the docker command and its associated sub-actions
     docker_parser = subparsers.add_parser("docker", help="Docker and container utilities")
@@ -3958,9 +3967,7 @@ def main():
         if args.command == "tarball-helper":
             from rich.console import Console
             from rich.table import Table
-
             from cortex.tarball_helper import TarballHelper
-
             helper = TarballHelper()
             if args.action == "analyze":
                 deps = helper.analyze(args.path or ".")
@@ -3974,22 +3981,23 @@ def main():
             elif args.action == "install-deps":
                 deps = helper.analyze(args.path or ".")
                 mapping = helper.suggest_apt_packages(deps)
-                if not args.execute:
-                    Console().print(
-                        "[yellow]Dry-run:[/yellow] The following packages would be installed:"
-                    )
-                    for pkg in mapping.values():
-                        Console().print(f"  [cyan]{pkg}[/cyan]")
-                    Console().print("Run with --execute to actually install.")
-                else:
+                table = Table(title="Installable apt packages (dry-run)")
+                table.add_column("Dependency")
+                table.add_column("Apt Package")
+                for dep, pkg in mapping.items():
+                    table.add_row(dep, pkg)
+                Console().print(table)
+                if args.execute:
                     helper.install_deps(list(mapping.values()))
+                else:
+                    Console().print("[yellow]Dry-run: No packages installed. Use --execute to install.[/yellow]")
             elif args.action == "cleanup":
-                # Prompt before cleanup
-                confirm = input("Are you sure you want to remove all tracked packages? (y/N): ")
-                if confirm.lower() in ("y", "yes"):
+                pkgs_str = ", ".join(helper.tracked_packages)
+                confirm = input(f"Are you sure you want to purge the following packages? {pkgs_str} [y/N]: ")
+                if confirm.lower() == "y":
                     helper.cleanup()
                 else:
-                    print("Cleanup cancelled.")
+                    Console().print("[yellow]Cleanup cancelled.[/yellow]")
             return 0
         # Route the command to the appropriate method inside the cli object
         if args.command == "docker":
