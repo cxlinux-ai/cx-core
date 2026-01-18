@@ -3928,16 +3928,21 @@ def main():
         show_rich_help()
         return 0
 
-    # Register tarball-helper as a subparser command
-    tarball_parser = subparsers.add_parser(
-        "tarball-helper", help="Tarball/manual build helper (analyze, install-deps, cleanup)"
-    )
-    tarball_parser.add_argument(
-        "action", choices=["analyze", "install-deps", "cleanup"], help="Action to perform"
-    )
-    tarball_parser.add_argument(
-        "path", nargs="?", help="Path to source directory (for analyze/install-deps)"
-    )
+    def add_tarball_helper_subparser(subparsers):
+        # Avoid duplicate subparser registration
+        if "tarball-helper" in subparsers.choices:
+            return
+        tarball_parser = subparsers.add_parser(
+            "tarball-helper", help="Tarball/manual build helper (analyze, install-deps, cleanup)"
+        )
+        tarball_parser.add_argument(
+            "action", choices=["analyze", "install-deps", "cleanup"], help="Action to perform"
+        )
+        tarball_parser.add_argument(
+            "path", nargs="?", help="Path to source directory (for analyze/install-deps)"
+        )
+
+    add_tarball_helper_subparser(subparsers)
 
     # Handle tarball-helper command
     if args.command == "tarball-helper":
