@@ -57,12 +57,13 @@ dependencies = [
     "rich>=13.0.0",
     # Type hints for older Python versions
     "typing-extensions>=4.0.0",
-    # Documentation export
-    "markdown>=3.0.0",
-    "pdfkit>=1.0.0",
 ]
 
 [project.optional-dependencies]
+export = [
+    "markdown>=3.0.0",
+    "pdfkit>=1.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

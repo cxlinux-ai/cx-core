@@ -14,6 +14,17 @@ from cortex.config_manager import ConfigManager
 from cortex.hardware_detection import detect_hardware
 from cortex.installation_history import InstallationHistory, InstallationStatus
 
+# Optional dependencies for documentation export
+try:
+    import markdown
+except ImportError:
+    markdown = None
+
+try:
+    import pdfkit
+except ImportError:
+    pdfkit = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +39,16 @@ class DocsGenerator:
         self.docs_dir.mkdir(parents=True, exist_ok=True)
         self.template_base_dir = Path(__file__).parent / "templates" / "docs"
 
+    def _validate_software_name(self, software_name: str) -> None:
+        """Sanitize and validate software name to prevent path traversal."""
+        if (
+            not software_name
+            or ".." in software_name
+            or "/" in software_name
+            or "\\" in software_name
+        ):
+            raise ValueError(f"Invalid characters in software name: {software_name}")
+
     def _get_system_data(self) -> dict[str, Any]:
         """Gather comprehensive system data."""
         hw_info = detect_hardware()
@@ -41,6 +62,7 @@ class DocsGenerator:
 
     def _get_software_data(self, software_name: str) -> dict[str, Any]:
         """Gather documentation data for a specific software/package."""
+        self._validate_software_name(software_name)
         # Find package in installed packages
         all_packages = self.config_manager.detect_installed_packages()
         pkg_info = next((p for p in all_packages if p["name"] == software_name), None)
@@ -106,13 +128,14 @@ class DocsGenerator:
                         ".ini",
                     ):
                         found.append(str(item))
-            except Exception:
-                pass
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Error scanning {etc_dir} for config files: {e}")
 
         return sorted(set(found))
 
     def generate_software_docs(self, software_name: str) -> dict[str, str]:
         """Generate multiple MD documents for a software."""
+        self._validate_software_name(software_name)
         data = self._get_software_data(software_name)
 
         docs = {
@@ -213,6 +236,7 @@ class DocsGenerator:
 
     def view_guide(self, software_name: str, guide_type: str):
         """View a documentation guide in the terminal."""
+        self._validate_software_name(software_name)
         guide_map = {
             "installation": "Installation_Guide.md",
             "config": "Configuration_Reference.md",
@@ -239,6 +263,7 @@ class DocsGenerator:
 
     def export_docs(self, software_name: str, format: str = "md") -> str:
         """Export documentation in various formats."""
+        self._validate_software_name(software_name)
         software_dir = self.docs_dir / software_name
         if not software_dir.exists():
             self.generate_software_docs(software_name)
@@ -258,7 +283,8 @@ class DocsGenerator:
 
         elif format == "html":
             # Simple MD to HTML conversion
-            import markdown
+            if not markdown:
+                return "Error: 'markdown' package is not installed. Use 'pip install cortex-linux[export]'."
 
             combined = ""
             for filename in sorted(os.listdir(software_dir)):
@@ -272,21 +298,19 @@ class DocsGenerator:
                 f.write(wrap)
 
         elif format == "pdf":
-            # PDF generation requires extra dependencies usually,
-            # for now let's just create an HTML file and suggest printing to PDF
-            # or try to use a simple lib if available.
-            # Since I can't install new sys deps easily, I'll stick to a placeholder/info message
-            # if a proper PDF lib isn't there.
-            try:
-                import pdfkit
+            if not pdfkit:
+                html_path = self.export_docs(software_name, "html")
+                return f"PDF export failed (missing pdfkit). Exported to HTML instead: {html_path}"
 
+            try:
                 html_path = self.export_docs(software_name, "html")
                 pdfkit.from_file(html_path, str(export_path))
                 os.remove(html_path)
-            except Exception:
-                # Fallback or error
-                export_path = Path.cwd() / f"{software_name}_docs.html"
-                self.export_docs(software_name, "html")
-                return f"PDF export failed (missing pdfkit/wkhtmltopdf). Exported to HTML instead: {export_path}"
+            except Exception as e:
+                # Fallback for runtime error during PDF conversion
+                html_path = str(Path.cwd() / f"{software_name}_docs.html")
+                if not Path(html_path).exists():
+                    self.export_docs(software_name, "html")
+                return f"PDF export failed ({e}). HTML file was created at: {html_path}"
 
         return str(export_path)

@@ -144,7 +144,7 @@ def test_export_docs_html_logic(docs_gen, tmp_path):
 
     with (
         patch("os.getcwd", return_value=str(tmp_path)),
-        patch.dict("sys.modules", {"markdown": mock_markdown}),
+        patch("cortex.docs_generator.markdown", mock_markdown),
     ):
         path = docs_gen.export_docs("pkg", format="html")
         assert Path(path).exists()
@@ -163,7 +163,8 @@ def test_export_pdf_full(docs_gen, tmp_path):
 
     with (
         patch("os.getcwd", return_value=str(tmp_path)),
-        patch.dict("sys.modules", {"pdfkit": mock_pdfkit, "markdown": mock_markdown}),
+        patch("cortex.docs_generator.pdfkit", mock_pdfkit),
+        patch("cortex.docs_generator.markdown", mock_markdown),
         patch("os.remove"),
     ):
 
