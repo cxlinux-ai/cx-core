@@ -62,6 +62,7 @@ class LessonLoaderTool:
             }
 
         except Exception as e:
+            logger.exception("Lesson loader failed for package '%s'", package_name)
             return {
                 "success": False,
                 "cache_hit": False,
@@ -83,6 +84,7 @@ class LessonLoaderTool:
             self.store.cache_lesson(package_name, lesson, ttl_hours)
             return True
         except Exception:
+            logger.exception("Failed to cache lesson for package '%s'", package_name)
             return False
 
     def clear_cache(self, package_name: str | None = None) -> int:
