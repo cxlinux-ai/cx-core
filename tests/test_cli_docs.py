@@ -13,7 +13,9 @@ def mock_docs_gen():
 
 
 def test_cli_docs_generate(mock_docs_gen):
-    mock_docs_gen.generate_software_docs.return_value = {"Test.md": "/tmp/test.md"}
+    mock_docs_gen.generate_software_docs.return_value = {
+        "Test.md": "/home/user/.cortex/docs/nginx/Test.md"
+    }
 
     with patch("sys.argv", ["cortex", "docs", "generate", "nginx"]):
         assert main() == 0
@@ -21,7 +23,7 @@ def test_cli_docs_generate(mock_docs_gen):
 
 
 def test_cli_docs_export(mock_docs_gen):
-    mock_docs_gen.export_docs.return_value = "/tmp/nginx_docs.md"
+    mock_docs_gen.export_docs.return_value = "/home/user/nginx_docs.md"
 
     with patch("sys.argv", ["cortex", "docs", "export", "nginx", "--format", "pdf"]):
         assert main() == 0

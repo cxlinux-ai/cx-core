@@ -4054,26 +4054,37 @@ def main():
                 verbose=getattr(args, "verbose", False),
             )
         elif args.command == "docs":
-            docs_gen = DocsGenerator()
-            if args.docs_action == "generate":
-                cx_print(f"📄 Generating documentation for {args.software}...", "info")
-                paths = docs_gen.generate_software_docs(args.software)
-                console.print("\nCreated:")
-                for name, path in paths.items():
-                    console.print(f"   - {name}")
-                return 0
-            elif args.docs_action == "export":
-                path = docs_gen.export_docs(args.software, format=args.format)
-                if "failed" in path.lower():
-                    cx_print(path, "warning")
+            try:
+                docs_gen = DocsGenerator()
+                if args.docs_action == "generate":
+                    cx_print(f"📄 Generating documentation for {args.software}...", "info")
+                    paths = docs_gen.generate_software_docs(args.software)
+                    console.print("\nCreated:")
+                    for name, path in paths.items():
+                        console.print(f"   - {name}")
+                    return 0
+                elif args.docs_action == "export":
+                    path = docs_gen.export_docs(args.software, format=args.format)
+                    if "failed" in path.lower():
+                        cx_print(path, "warning")
+                    else:
+                        cx_print(f"✓ Exported to {path}", "success")
+                    return 0
+                elif args.docs_action == "view":
+                    docs_gen.view_guide(args.software, args.guide)
+                    return 0
                 else:
-                    cx_print(f"✓ Exported to {path}", "success")
-                return 0
-            elif args.docs_action == "view":
-                docs_gen.view_guide(args.software, args.guide)
-                return 0
-            else:
-                docs_parser.print_help()
+                    docs_parser.print_help()
+                    return 1
+            except (ValueError, OSError, ImportError) as e:
+                cx_print(f"Documentation error: {e}", "error")
+                return 1
+            except Exception as e:
+                cx_print(f"Unexpected documentation error: {e}", "error")
+                if args.verbose:
+                    import traceback
+
+                    traceback.print_exc()
                 return 1
         elif args.command == "health":
             from cortex.health_score import run_health_check
