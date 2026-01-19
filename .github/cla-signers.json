@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-13",
+  "last_updated": "2026-01-19",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -258,6 +258,15 @@
         "choudharypratyush809@gmail.com"
       ],
       "signed_date": "2026-01-18",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Bima Kharisma Wicaksana",
+      "github_username": "bimakw",
+      "emails": [
+        "51526537+bimakw@users.noreply.github.com"
+      ],
+      "signed_date": "2026-01-19",
       "cla_version": "1.0"
     }
   ],
