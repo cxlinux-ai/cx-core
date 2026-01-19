@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 import sys
@@ -824,11 +825,20 @@ class CortexCLI:
         execute: bool = False,
         dry_run: bool = False,
         parallel: bool = False,
+        json_output: bool = False,
     ):
+        # Initialize installation history
+        history = InstallationHistory()
+        install_id = None
+        start_time = datetime.now()
+
         # Validate input first
         is_valid, error = validate_install_request(software)
         if not is_valid:
-            self._print_error(error)
+            if json_output:
+                print(json.dumps({"success": False, "error": error, "error_type": "ValueError"}))
+            else:
+                self._print_error(error)
             return 1
 
         # Special-case the ml-cpu stack:
@@ -846,27 +856,43 @@ class CortexCLI:
 
         api_key = self._get_api_key()
         if not api_key:
+            error_msg = "No API key found. Please configure an API provider."
+            # Record installation attempt before failing if we have packages
+            try:
+                packages = [software.split()[0]]  # Basic package extraction
+                install_id = history.record_installation(
+                    InstallationType.INSTALL, packages, [], start_time
+                )
+            except Exception:
+                pass  # If recording fails, continue with error reporting
+
+            if install_id:
+                history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+
+            if json_output:
+                print(
+                    json.dumps({"success": False, "error": error_msg, "error_type": "RuntimeError"})
+                )
+            else:
+                self._print_error(error_msg)
             return 1
 
         provider = self._get_provider()
         self._debug(f"Using provider: {provider}")
         self._debug(f"API key: {api_key[:10]}...{api_key[-4:]}")
 
-        # Initialize installation history
-        history = InstallationHistory()
-        install_id = None
-        start_time = datetime.now()
-
         try:
-            self._print_status("🧠", t("install.analyzing"))
+            if not json_output:
+                self._print_status("🧠", "Understanding request...")
 
             interpreter = CommandInterpreter(api_key=api_key, provider=provider)
 
-            self._print_status("📦", t("install.planning"))
+            if not json_output:
+                self._print_status("📦", "Planning installation...")
 
-            for _ in range(10):
-                self._animate_spinner(t("progress.analyzing_requirements"))
-            self._clear_line()
+                for _ in range(10):
+                    self._animate_spinner("Analyzing system requirements...")
+                self._clear_line()
 
             commands = interpreter.parse(f"install {software}")
 
@@ -883,8 +909,20 @@ class CortexCLI:
                     InstallationType.INSTALL, packages, commands, start_time
                 )
 
-            self._print_status("⚙️", t("install.executing"))
-            print(f"\n{t('install.commands_would_run')}:")
+            # If JSON output requested, return structured data and exit early
+            if json_output:
+
+                output = {
+                    "success": True,
+                    "commands": commands,
+                    "packages": packages,
+                    "install_id": install_id,
+                }
+                print(json.dumps(output, indent=2))
+                return 0
+
+            self._print_status("⚙️", f"Installing {software}...")
+            print("\nGenerated commands:")
             for i, cmd in enumerate(commands, 1):
                 print(f"  {i}. {cmd}")
 
@@ -1044,17 +1082,29 @@ class CortexCLI:
         except ValueError as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
-            self._print_error(str(e))
+            if json_output:
+
+                print(json.dumps({"success": False, "error": str(e), "error_type": "ValueError"}))
+            else:
+                self._print_error(str(e))
             return 1
         except RuntimeError as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
-            self._print_error(f"API call failed: {str(e)}")
+            if json_output:
+
+                print(json.dumps({"success": False, "error": str(e), "error_type": "RuntimeError"}))
+            else:
+                self._print_error(f"API call failed: {str(e)}")
             return 1
         except OSError as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
-            self._print_error(f"System error: {str(e)}")
+            if json_output:
+
+                print(json.dumps({"success": False, "error": str(e), "error_type": "OSError"}))
+            else:
+                self._print_error(f"System error: {str(e)}")
             return 1
         except Exception as e:
             if install_id:
@@ -3842,6 +3892,25 @@ def _handle_set_language(language_input: str) -> int:
         cx_print(t("language.set_failed", error=str(e)), "error")
         return 1
 
+    def dashboard(self) -> int:
+        """Launch the real-time system monitoring dashboard"""
+        try:
+            from cortex.dashboard import DashboardApp
+
+            app = DashboardApp()
+            rc = app.run()
+            return rc if isinstance(rc, int) else 0
+        except ImportError as e:
+            self._print_error(f"Dashboard dependencies not available: {e}")
+            cx_print("Install required packages with:", "info")
+            cx_print("  pip install psutil>=5.9.0 nvidia-ml-py>=12.0.0", "info")
+            return 1
+        except KeyboardInterrupt:
+            return 0
+        except Exception as e:
+            self._print_error(f"Dashboard error: {e}")
+            return 1
+
 
 def show_rich_help():
     """Display a beautifully formatted help table using the Rich library.
@@ -3876,6 +3945,7 @@ def show_rich_help():
     table.add_row("rollback <id>", "Undo installation")
     table.add_row("role", "AI-driven system role detection")
     table.add_row("stack <name>", "Install the stack")
+    table.add_row("dashboard", "Real-time system monitoring dashboard")
     table.add_row("notify", "Manage desktop notifications")
     table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
@@ -3989,6 +4059,11 @@ def main():
 
     # Demo command
     demo_parser = subparsers.add_parser("demo", help="See Cortex in action")
+
+    # Dashboard command
+    dashboard_parser = subparsers.add_parser(
+        "dashboard", help="Real-time system monitoring dashboard"
+    )
 
     # Wizard command
     wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
@@ -4692,6 +4767,8 @@ def main():
 
         if args.command == "demo":
             return cli.demo()
+        elif args.command == "dashboard":
+            return cli.dashboard()
         elif args.command == "wizard":
             return cli.wizard()
         elif args.command == "status":

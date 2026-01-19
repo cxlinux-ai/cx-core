@@ -7,6 +7,8 @@ Calculates overall system health score with actionable recommendations.
 """
 
 import json
+import logging
+import sqlite3
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -18,6 +20,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -169,8 +172,8 @@ class HealthChecker:
                     if part.endswith("%"):
                         try:
                             usage_percent = int(part.rstrip("%"))
-                        except ValueError:
-                            pass
+                        except ValueError as e:
+                            logger.debug(f"Failed to parse disk usage percentage: {e}")
                         break
 
         # Score: 100 at 0% used, 0 at 100% used
@@ -212,8 +215,8 @@ class HealthChecker:
                             used = int(parts[2])
                             if total > 0:
                                 usage_percent = int((used / total) * 100)
-                        except ValueError:
-                            pass
+                        except ValueError as e:
+                            logger.debug(f"Failed to parse memory usage: {e}")
                     break
 
         score = max(0, 100 - usage_percent)
@@ -299,8 +302,8 @@ class HealthChecker:
                 if "PasswordAuthentication yes" in content:
                     issues.append("Password SSH enabled")
                     score -= 10
-            except PermissionError:
-                pass
+            except PermissionError as e:
+                logger.debug(f"Cannot read SSH config (permission denied): {e}")
 
         # Check for unattended upgrades
         code, _, _ = self._run_command(["dpkg", "-l", "unattended-upgrades"])
@@ -392,8 +395,8 @@ class HealthChecker:
                     elif load_1m > cpu_count:
                         issues.append("Elevated load")
                         score -= 15
-                except (ValueError, IndexError):
-                    pass
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Failed to parse load average: {e}")
 
         # Check swap usage
         code, output, _ = self._run_command(["swapon", "--show"])
@@ -411,8 +414,8 @@ class HealthChecker:
                                 if total > 0 and (used / total) > 0.5:
                                     issues.append("High swap usage")
                                     score -= 15
-                            except ValueError:
-                                pass
+                            except ValueError as e:
+                                logger.debug(f"Failed to parse swap usage: {e}")
 
         score = max(0, score)
 
@@ -488,7 +491,40 @@ class HealthChecker:
             with open(self.history_path, "w") as f:
                 json.dump(history, f, indent=2)
         except OSError:
-            pass
+            logger.warning("Failed to write health history", exc_info=True)
+
+        # Also write to audit database
+        try:
+            audit_db_path = Path.home() / ".cortex" / "history.db"
+            audit_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with sqlite3.connect(str(audit_db_path)) as conn:
+                cursor = conn.cursor()
+
+                # Create health_checks table if it doesn't exist
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS health_checks (
+                        timestamp TEXT NOT NULL,
+                        overall_score INTEGER NOT NULL,
+                        factors TEXT NOT NULL
+                    )
+                """)
+
+                # Insert health check record
+                cursor.execute(
+                    """
+                    INSERT INTO health_checks VALUES (?, ?, ?)
+                """,
+                    (
+                        entry["timestamp"],
+                        entry["overall_score"],
+                        json.dumps(entry["factors"]),
+                    ),
+                )
+
+                conn.commit()
+        except (OSError, sqlite3.Error) as e:
+            logger.warning(f"Failed to write health audit history: {e}", exc_info=True)
 
     def load_history(self) -> list[dict]:
         """Load health history."""

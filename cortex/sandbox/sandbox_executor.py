@@ -293,7 +293,31 @@ class SandboxExecutor:
                     if len(parts) < 2:
                         return False, "Sudo command without arguments"
 
-                    sudo_command = " ".join(parts[1:3]) if len(parts) >= 3 else parts[1]
+                    # Skip sudo flags (-S, -p, etc.) to find actual command
+                    cmd_parts = []
+                    i = 1
+                    while i < len(parts):
+                        if parts[i].startswith("-"):
+                            # Skip flag
+                            i += 1
+                            # If this flag requires a value (not another flag), skip it too
+                            if (
+                                i < len(parts)
+                                and not parts[i].startswith("-")
+                                and parts[i - 1] not in {"-S", "-s"}
+                            ):
+                                i += 1
+                        else:
+                            # Found the actual command
+                            cmd_parts.append(parts[i])
+                            if i + 1 < len(parts):
+                                cmd_parts.append(parts[i + 1])
+                            break
+
+                    if not cmd_parts:
+                        return False, "Sudo command without actual command"
+
+                    sudo_command = " ".join(cmd_parts)
 
                     # Check if sudo command is allowed
                     if not any(
@@ -499,7 +523,11 @@ class SandboxExecutor:
         return True
 
     def execute(
-        self, command: str, dry_run: bool = False, enable_rollback: bool | None = None
+        self,
+        command: str,
+        dry_run: bool = False,
+        enable_rollback: bool | None = None,
+        stdin: str | None = None,
     ) -> ExecutionResult:
         """
         Execute command in sandbox.
@@ -508,6 +536,7 @@ class SandboxExecutor:
             command: Command to execute
             dry_run: If True, only show what would execute
             enable_rollback: Override default rollback setting
+            stdin: Optional string to pass to command's stdin
 
         Returns:
             ExecutionResult object
@@ -583,12 +612,15 @@ class SandboxExecutor:
                 "stderr": subprocess.PIPE,
                 "text": True,
             }
+            # Add stdin pipe if stdin data is provided
+            if stdin is not None:
+                popen_kwargs["stdin"] = subprocess.PIPE
             # preexec_fn is unsupported on Windows; only pass it when set.
             if preexec_fn is not None:
                 popen_kwargs["preexec_fn"] = preexec_fn
 
             process = subprocess.Popen(firejail_cmd, **popen_kwargs)
-            stdout, stderr = process.communicate(timeout=self.timeout_seconds)
+            stdout, stderr = process.communicate(input=stdin, timeout=self.timeout_seconds)
             exit_code = process.returncode
             execution_time = time.time() - start_time
 

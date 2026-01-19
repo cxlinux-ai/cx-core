@@ -6,6 +6,7 @@ Part of Cortex Linux - AI-native OS that needs to export/import system configura
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
@@ -74,8 +77,9 @@ class ConfigManager:
         Raises:
             PermissionError: If ownership or permissions cannot be secured
         """
-        # Cortex targets Linux. On non-POSIX systems (e.g., Windows), uid/gid ownership
-        # APIs like os.getuid/os.chown are unavailable, so skip strict enforcement.
+        # Cortex targets Linux. Ownership APIs are only available on POSIX.
+        # On Windows (and some restricted runtimes), os.getuid/os.getgid/os.chown aren't present,
+        # so we skip strict enforcement.
         if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
             return
 
@@ -270,7 +274,8 @@ class ConfigManager:
                 return f"{name}-{version}"
 
             return "unknown"
-        except Exception:
+        except Exception as e:
+            logger.debug(f"OS version detection failed: {e}", exc_info=True)
             return "unknown"
 
     def _load_preferences(self) -> dict[str, Any]:
@@ -285,8 +290,8 @@ class ConfigManager:
                 with self._file_lock:
                     with open(self.preferences_file) as f:
                         return yaml.safe_load(f) or {}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load preferences: {e}", exc_info=True)
 
         return {}
 
@@ -328,7 +333,7 @@ class ConfigManager:
             package_sources = self.DEFAULT_SOURCES
 
         # Build configuration dictionary
-        config = {
+        config: dict[str, Any] = {
             "cortex_version": self.CORTEX_VERSION,
             "exported_at": datetime.now().isoformat(),
             "os": self._detect_os_version(),
@@ -412,9 +417,9 @@ class ConfigManager:
                     False,
                     f"Configuration requires newer Cortex version: {config_version} > {current_version}",
                 )
-        except Exception:
+        except Exception as e:
             # If version parsing fails, be lenient
-            pass
+            logger.debug(f"Version parsing failed: {e}", exc_info=True)
 
         # Check OS compatibility (warn but allow)
         config_os = config.get("os", "unknown")
@@ -460,6 +465,10 @@ class ConfigManager:
         if current_version == version:
             return "already_installed", pkg
 
+        # If the config doesn't specify a version, treat it as an upgrade/install request.
+        if not isinstance(version, str) or not version:
+            return "upgrade", {**pkg, "current_version": current_version}
+
         # Compare versions
         try:
             pkg_with_version = {**pkg, "current_version": current_version}
@@ -467,8 +476,9 @@ class ConfigManager:
                 return "upgrade", pkg_with_version
             else:
                 return "downgrade", pkg_with_version
-        except Exception:
+        except Exception as e:
             # If comparison fails, treat as upgrade
+            logger.debug(f"Version comparison failed: {e}", exc_info=True)
             return "upgrade", {**pkg, "current_version": current_version}
 
     def diff_configuration(self, config: dict[str, Any]) -> dict[str, Any]:
@@ -547,8 +557,9 @@ class ConfigManager:
             elif v1 > v2:
                 return 1
             return 0
-        except Exception:
+        except Exception as e:
             # Fallback to simple numeric comparison
+            logger.debug(f"Version parsing failed, using simple comparison: {e}", exc_info=True)
             return self._simple_version_compare(version1, version2)
 
     def _simple_version_compare(self, version1: str, version2: str) -> int:
@@ -807,6 +818,30 @@ class ConfigManager:
             True if successful, False otherwise
         """
         try:
+            if self.sandbox_executor is None:
+                # Sandboxed installs are the default. Only allow direct installs
+                # if user has explicitly opted in (check CORTEX_ALLOW_DIRECT_INSTALL env var)
+                allow_direct = os.environ.get("CORTEX_ALLOW_DIRECT_INSTALL", "").lower() == "true"
+
+                # Log audit entry for this attempt
+                self._log_install_audit(
+                    package_name=name,
+                    version=version,
+                    source=source,
+                    is_dry_run=False,
+                    is_sandboxed=False,
+                    is_direct=allow_direct,
+                    escalation_consent=allow_direct,
+                    error="Sandbox executor unavailable",
+                )
+
+                if not allow_direct:
+                    # Refuse direct install unless explicitly opted in
+                    return False
+
+                # User opted in, proceed with direct install
+                return self._install_direct(name=name, version=version, source=source)
+
             if source == self.SOURCE_APT:
                 command = (
                     f"sudo apt-get install -y {name}={version}"
@@ -824,8 +859,82 @@ class ConfigManager:
 
             result = self.sandbox_executor.execute(command)
             return result.success
-        except Exception:
+        except Exception as e:
+            logger.error(f"Sandboxed install failed for {name}: {e}", exc_info=True)
             return False
+
+    def _log_install_audit(
+        self,
+        package_name: str,
+        version: str | None,
+        source: str,
+        is_dry_run: bool,
+        is_sandboxed: bool,
+        is_direct: bool,
+        escalation_consent: bool,
+        error: str | None = None,
+    ) -> None:
+        """
+        Log install attempt to audit database.
+
+        Args:
+            package_name: Package name
+            version: Package version
+            source: Package source
+            is_dry_run: Whether this was a dry-run
+            is_sandboxed: Whether sandboxed install was used
+            is_direct: Whether direct install was used
+            escalation_consent: Whether user consented to privilege escalation
+            error: Error message if any
+        """
+        try:
+            import sqlite3
+            from datetime import datetime
+
+            # Use ~/.cortex/history.db for audit logging
+            audit_db_path = Path.home() / ".cortex" / "history.db"
+            audit_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with sqlite3.connect(str(audit_db_path)) as conn:
+                cursor = conn.cursor()
+
+                # Create audit table if it doesn't exist
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS install_audit (
+                        timestamp TEXT NOT NULL,
+                        package_name TEXT NOT NULL,
+                        version TEXT,
+                        source TEXT NOT NULL,
+                        is_dry_run INTEGER NOT NULL,
+                        is_sandboxed INTEGER NOT NULL,
+                        is_direct INTEGER NOT NULL,
+                        escalation_consent INTEGER NOT NULL,
+                        error TEXT
+                    )
+                """)
+
+                # Insert audit record
+                cursor.execute(
+                    """
+                    INSERT INTO install_audit VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        datetime.now().isoformat(),
+                        package_name,
+                        version,
+                        source,
+                        1 if is_dry_run else 0,
+                        1 if is_sandboxed else 0,
+                        1 if is_direct else 0,
+                        1 if escalation_consent else 0,
+                        error,
+                    ),
+                )
+
+                conn.commit()
+        except Exception:
+            # Don't fail the install if audit logging fails
+            logger.warning("Install audit logging failed", exc_info=True)
 
     def _install_direct(self, name: str, version: str | None, source: str) -> bool:
         """
@@ -840,6 +949,16 @@ class ConfigManager:
             True if successful, False otherwise
         """
         try:
+            # Log audit entry for direct install
+            self._log_install_audit(
+                package_name=name,
+                version=version,
+                source=source,
+                is_dry_run=False,
+                is_sandboxed=False,
+                is_direct=True,
+                escalation_consent=True,
+            )
             if source == self.SOURCE_APT:
                 cmd = ["sudo", "apt-get", "install", "-y", f"{name}={version}" if version else name]
             elif source == self.SOURCE_PIP:
@@ -859,7 +978,8 @@ class ConfigManager:
 
             result = subprocess.run(cmd, capture_output=True, timeout=self.INSTALLATION_TIMEOUT)
             return result.returncode == 0
-        except Exception:
+        except Exception as e:
+            logger.error(f"Direct install failed for {name}: {e}", exc_info=True)
             return False
 
     def _install_package(self, pkg: dict[str, Any]) -> bool:

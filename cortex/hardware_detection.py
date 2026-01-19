@@ -319,12 +319,13 @@ class HardwareDetector:
         # Hostname
         try:
             info.hostname = self._uname().nodename
-        except:
+        except Exception:
             info.hostname = "unknown"
 
         # Kernel
-        with contextlib.suppress(builtins.BaseException):
+        with contextlib.suppress(Exception):
             info.kernel_version = self._uname().release
+
         # Distro
         try:
             if Path("/etc/os-release").exists():
@@ -334,14 +335,14 @@ class HardwareDetector:
                             info.distro = line.split("=")[1].strip().strip('"')
                         elif line.startswith("VERSION_ID="):
                             info.distro_version = line.split("=")[1].strip().strip('"')
-        except:
+        except Exception:
             pass
 
         # Uptime
         try:
             with open("/proc/uptime") as f:
                 info.uptime_seconds = int(float(f.read().split()[0]))
-        except:
+        except Exception:
             pass
 
     def _detect_cpu(self, info: SystemInfo):
@@ -382,6 +383,7 @@ class HardwareDetector:
 
             # Architecture
             info.cpu.architecture = uname.machine
+
             # Features
             match = re.search(r"flags\s*:\s*(.+)", content)
             if match:
@@ -400,28 +402,9 @@ class HardwareDetector:
             result = subprocess.run(["lspci", "-nn"], capture_output=True, text=True, timeout=5)
 
             for line in result.stdout.split("\n"):
-                if "VGA" in line or "3D" in line or "Display" in line:
-                    gpu = GPUInfo()
-
-                    # Extract PCI ID
-                    pci_match = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
-                    if pci_match:
-                        gpu.pci_id = pci_match.group(1)
-
-                    # Determine vendor and model
-                    if "NVIDIA" in line.upper():
-                        gpu.vendor = GPUVendor.NVIDIA
-                        info.has_nvidia_gpu = True
-                        gpu.model = self._extract_gpu_model(line, "NVIDIA")
-                    elif "AMD" in line.upper() or "ATI" in line.upper():
-                        gpu.vendor = GPUVendor.AMD
-                        info.has_amd_gpu = True
-                        gpu.model = self._extract_gpu_model(line, "AMD")
-                    elif "Intel" in line:
-                        gpu.vendor = GPUVendor.INTEL
-                        gpu.model = self._extract_gpu_model(line, "Intel")
-
-                    info.gpu.append(gpu)
+                parsed = self._parse_lspci_gpu_line(line, info)
+                if parsed is not None:
+                    info.gpu.append(parsed)
 
         except Exception as e:
             logger.debug(f"lspci GPU detection failed: {e}")
@@ -434,18 +417,43 @@ class HardwareDetector:
         if info.has_amd_gpu:
             self._detect_amd_details(info)
 
+    def _parse_lspci_gpu_line(self, line: str, info: SystemInfo) -> "GPUInfo | None":
+        """Parse a single `lspci -nn` line into a GPUInfo if it looks like a GPU entry."""
+        if "VGA" not in line and "3D" not in line and "Display" not in line:
+            return None
+
+        gpu = GPUInfo()
+
+        pci_match = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
+        if pci_match:
+            gpu.pci_id = pci_match.group(1)
+
+        upper = line.upper()
+        if "NVIDIA" in upper:
+            gpu.vendor = GPUVendor.NVIDIA
+            info.has_nvidia_gpu = True
+            gpu.model = self._extract_gpu_model(line, "NVIDIA")
+        elif "AMD" in upper or "ATI" in upper:
+            gpu.vendor = GPUVendor.AMD
+            info.has_amd_gpu = True
+            gpu.model = self._extract_gpu_model(line, "AMD")
+        elif "INTEL" in upper:
+            gpu.vendor = GPUVendor.INTEL
+            gpu.model = self._extract_gpu_model(line, "INTEL")
+
+        return gpu
+
     def _extract_gpu_model(self, line: str, vendor: str) -> str:
         """Extract GPU model name from lspci line."""
-        # Try to get the part after the vendor name
+        # Try to get the part after the vendor name (case-insensitive)
         try:
-            if vendor in line:
-                parts = line.split(vendor)
-                if len(parts) > 1:
-                    model = parts[1].split("[")[0].strip()
-                    model = model.replace("Corporation", "").strip()
-                    return f"{vendor} {model}"
-        except:
-            pass
+            match = re.search(re.escape(vendor), line, flags=re.IGNORECASE)
+            if match:
+                model = line[match.end() :].split("[")[0].strip()
+                model = model.replace("Corporation", "").strip()
+                return f"{vendor} {model}"
+        except Exception as e:
+            logger.debug(f"GPU model extraction failed for {vendor}: {e}")
         return f"{vendor} GPU"
 
     def _detect_nvidia_details(self, info: SystemInfo):
@@ -569,14 +577,14 @@ class HardwareDetector:
                     match = re.search(r"inet\s+([\d.]+)", result.stdout)
                     if match:
                         net.ip_address = match.group(1)
-                except:
+                except Exception:
                     pass
 
                 # Get speed
                 try:
                     speed = (iface_dir / "speed").read_text().strip()
                     net.speed_mbps = int(speed)
-                except:
+                except Exception:
                     pass
 
                 if net.ip_address:  # Only add if has IP
@@ -594,7 +602,7 @@ class HardwareDetector:
             virt = result.stdout.strip()
             if virt and virt != "none":
                 info.virtualization = virt
-        except:
+        except Exception:
             pass
 
         # Docker detection
@@ -614,7 +622,7 @@ class HardwareDetector:
                     if line.startswith("MemTotal:"):
                         kb = int(line.split()[1])
                         return round(kb / 1024 / 1024, 1)
-        except:
+        except Exception:
             pass
         return 0.0
 
@@ -623,7 +631,7 @@ class HardwareDetector:
         try:
             result = subprocess.run(["lspci"], capture_output=True, text=True, timeout=2)
             return "NVIDIA" in result.stdout.upper()
-        except:
+        except Exception:
             return False
 
     def _get_disk_free_gb(self) -> float:
@@ -637,7 +645,7 @@ class HardwareDetector:
             root_path = os.path.abspath(os.sep)
             _total, _used, free = shutil.disk_usage(root_path)
             return round(free / (1024**3), 1)
-        except:
+        except Exception:
             return 0.0
 
 

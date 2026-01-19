@@ -270,19 +270,27 @@ class HybridGPUManager:
         state.devices = self.detect_gpus()
         state.mode = self.detect_mode()
 
-        # Find active GPU
+        # Find active GPU - prefer vendor match for current mode first
+        # Map modes to preferred vendors
+        mode_vendor_map = {
+            GPUMode.NVIDIA: {GPUVendor.NVIDIA},
+            GPUMode.INTEGRATED: {GPUVendor.INTEL, GPUVendor.AMD},
+        }
+
+        preferred_vendors = mode_vendor_map.get(state.mode, set())
+
+        # First pass: find vendor-matching device
         for device in state.devices:
-            if device.is_active or (
-                state.mode == GPUMode.NVIDIA and device.vendor == GPUVendor.NVIDIA
-            ):
+            if device.vendor in preferred_vendors:
                 state.active_gpu = device
                 break
-            elif state.mode == GPUMode.INTEGRATED and device.vendor in [
-                GPUVendor.INTEL,
-                GPUVendor.AMD,
-            ]:
-                state.active_gpu = device
-                break
+
+        # Second pass: if no vendor match, fall back to any active device
+        if state.active_gpu is None:
+            for device in state.devices:
+                if device.is_active:
+                    state.active_gpu = device
+                    break
 
         # Check for render offload availability
         returncode, _, _ = self._run_command(["which", "__NV_PRIME_RENDER_OFFLOAD"])
