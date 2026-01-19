@@ -20,7 +20,6 @@ import yaml
 class ConfigManager:
     """
     Manages configuration export/import for Cortex Linux.
-
     Features:
     - Export current system state to YAML (packages, configs, preferences)
     - Import configuration from YAML file
@@ -836,7 +835,7 @@ class ConfigManager:
         Import and update service states from configuration.
         """
         diff = self.diff_configuration(config)
-        services_to_process = diff["services_to_update"]
+        services_to_process = diff.get("services_to_update", [])
         # Note: services_missing are ignored as we don't have unit files to create them
 
         for srv in services_to_process:

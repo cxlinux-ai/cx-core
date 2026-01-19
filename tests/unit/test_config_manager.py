@@ -118,11 +118,13 @@ class TestConfigManager(unittest.TestCase):
     @patch.object(ConfigManager, "detect_apt_packages")
     @patch.object(ConfigManager, "detect_pip_packages")
     @patch.object(ConfigManager, "detect_npm_packages")
-    def test_detect_all_packages(self, mock_npm, mock_pip, mock_apt):
+    @patch.object(ConfigManager, "detect_services")
+    def test_detect_all_packages(self, mock_services, mock_npm, mock_pip, mock_apt):
         """Test detection of all packages from all sources."""
         mock_apt.return_value = [{"name": "curl", "version": "7.0.0", "source": "apt"}]
         mock_pip.return_value = [{"name": "numpy", "version": "1.24.0", "source": "pip"}]
         mock_npm.return_value = [{"name": "typescript", "version": "5.0.0", "source": "npm"}]
+        mock_services.return_value = []
 
         packages = self.config_manager.detect_installed_packages()
 
