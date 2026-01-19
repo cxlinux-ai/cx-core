@@ -8,20 +8,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install build tools
         run: pip install build
-      
+
       - name: Build package
         run: python -m build
-      
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -40,6 +42,6 @@ jobs:
         with:
           name: dist
           path: dist/
-      
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
