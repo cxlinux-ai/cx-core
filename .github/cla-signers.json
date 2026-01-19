@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-01-13",
+  "last_updated": "2026-01-19",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -118,7 +118,8 @@
       "name": "Shree Milind Jejurikar",
       "github_username": "ShreeJejurikar",
       "emails": [
-        "shreemj8@gmail.com"
+        "shreemj8@gmail.com",
+        "shreemj0407@example.com"
       ],
       "signed_date": "2026-01-02",
       "cla_version": "1.0"
@@ -190,7 +191,8 @@
       "name": "Jay Surse",
       "github_username": "jaysurse",
       "emails": [
-        "jaysurse07@gmail.com"
+        "jaysurse07@gmail.com",
+        "jay@cortex.local"
       ],
       "signed_date": "2026-01-09",
       "cla_version": "1.0"
@@ -256,6 +258,15 @@
         "choudharypratyush809@gmail.com"
       ],
       "signed_date": "2026-01-18",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Bima Kharisma Wicaksana",
+      "github_username": "bimakw",
+      "emails": [
+        "51526537+bimakw@users.noreply.github.com"
+      ],
+      "signed_date": "2026-01-19",
       "cla_version": "1.0"
     }
   ],
