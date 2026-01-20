@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cortex.cli import CortexCLI, main
-from tests.test_cli import CLITestBase
+from tests.cli_test_base import CLITestBase
 
 
 class TestCortexCLIExtended(CLITestBase):

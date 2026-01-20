@@ -40,7 +40,7 @@ cortex simulate "install oracle 23 ai"
 # Shows: disk space, dependencies, estimated time
 ```
 
-### Predictive Prevention
+### Predictive Error Prevention
 
 Cortex automatically analyzes installation requests for potential risks (kernel mismatch, low RAM, disk space) before execution. If a risk is detected, you will see a warning panel and be asked for confirmation.
 

@@ -58,7 +58,7 @@ language:
   # {error} - error message
   set_failed: "Failed to set language: {error}"
   supported_languages_header: "Supported languages:"
-
+  
 # =============================================================================
 # CLI commands
 # =============================================================================
@@ -68,7 +68,7 @@ cli:
   help_text: "AI-powered package manager for Linux"
   tagline: "Just tell Cortex what you want to install."
   learn_more: "Learn more"
-
+  
   # Command descriptions
   commands:
     ask: "Ask a question about your system"
@@ -87,7 +87,7 @@ cli:
     sandbox: "Test packages in Docker sandbox"
     doctor: "System health check"
     config: "Configure Cortex settings"
-
+  
   # Argument help
   args:
     software: "Software to install"
@@ -114,7 +114,7 @@ config:
   use_command_hint: "Use: cortex config language <code> to change"
   list_hint: "Use: cortex config language --list for details"
   code_label: "Code"
-
+  
 # =============================================================================
 # Cache statistics
 # =============================================================================
@@ -130,7 +130,7 @@ cache:
   saved_calls: "Saved calls (approx)"
   read_error: "Unable to read cache stats: {error}"
   unexpected_error: "Unexpected error reading cache stats: {error}"
-
+  
 # =============================================================================
 # UI Labels (common labels used throughout the interface)
 # =============================================================================
@@ -160,7 +160,7 @@ ui:
   example_import: "Example: cortex import {file_path} --execute"
   example_import_all: "Example: cortex import --all --execute"
   installation_cancelled: "Installation cancelled"
-
+    
 # =============================================================================
 # Installation
 # =============================================================================
@@ -170,7 +170,7 @@ install:
   planning: "Planning installation..."
   executing: "Executing installation..."
   verifying: "Verifying installation..."
-
+  
   # Results
   success: "Installation complete!"
   failed: "Installation failed"
@@ -180,12 +180,12 @@ install:
   package_installed_version: "{package} ({version}) installed successfully"
   # {count} - number of packages
   packages_installed: "{count} packages installed"
-
+  
   # Dry run
   dry_run_header: "Dry-run results"
   dry_run_message: "Dry-run completed. Use --execute to apply changes."
   commands_would_run: "Commands that would run"
-
+  
   # Progress
   # {current}, {total} - step numbers
   step_progress: "Step {current}/{total}"
@@ -193,7 +193,7 @@ install:
   step_executing: "Executing step {step}: {description}"
   step_completed: "Step completed"
   step_failed: "Step failed"
-
+  
   # Errors
   no_commands: "No commands generated"
   invalid_request: "Invalid installation request"
@@ -201,12 +201,12 @@ install:
   api_error: "API error: {error}"
   # {package} - package name
   package_not_found: "Package not found: {package}"
-
+  
   # Confirmation
   confirm_install: "Proceed with installation?"
   # {count} - package count
   confirm_install_count: "Install {count} packages?"
-
+  
 # =============================================================================
 # Stack management
 # =============================================================================
@@ -231,7 +231,7 @@ stack:
   use_command: "Use: cortex stack <name> to install a stack"
   # {original}, {suggested} - stack names
   gpu_fallback: "No GPU detected, using '{suggested}' instead of '{original}'"
-
+  
 # =============================================================================
 # Sandbox
 # =============================================================================
@@ -241,7 +241,7 @@ sandbox:
   commands_header: "Commands"
   example_workflow: "Example workflow"
   environments_header: "Sandbox Environments"
-
+  
   # Command descriptions (for help text)
   cmd_create: "Create a sandbox environment"
   cmd_install: "Install package in sandbox"
@@ -250,7 +250,7 @@ sandbox:
   cmd_cleanup: "Remove sandbox environment"
   cmd_list: "List all sandboxes"
   cmd_exec: "Execute command in sandbox"
-
+  
   # Actions
   # {name} - sandbox name
   creating: "Creating sandbox '{name}'..."
@@ -264,14 +264,14 @@ sandbox:
   # {name} - sandbox name
   cleaning: "Removing sandbox '{name}'..."
   cleaned: "Sandbox '{name}' removed"
-
+  
   # Results
   test_passed: "Test passed"
   test_failed: "Test failed"
   all_tests_passed: "All tests passed"
   # {passed}, {total} - test counts
   tests_summary: "{passed}/{total} tests passed"
-
+  
   # Errors
   docker_required: "Docker is required for sandbox commands"
   docker_only_for_sandbox: "Docker is required only for sandbox commands."
@@ -280,12 +280,12 @@ sandbox:
   no_sandboxes: "No sandbox environments found"
   create_hint: "Create one with: cortex sandbox create <name>"
   list_hint: "Use 'cortex sandbox list' to see available sandboxes."
-
+  
   # Promotion
   promote_package: "Installing '{package}' on main system..."
   promotion_cancelled: "Promotion cancelled"
   would_run: "Would run: {command}"
-
+  
 # =============================================================================
 # History
 # =============================================================================
@@ -298,15 +298,15 @@ history:
   action: "Action"
   packages: "Packages"
   status: "Status"
-
+  
   # Status values
   status_success: "Success"
   status_failed: "Failed"
   status_rolled_back: "Rolled back"
-
+  
   # {id} - installation ID
   details_for: "Details for installation #{id}"
-
+  
 # =============================================================================
 # Rollback
 # =============================================================================
@@ -320,7 +320,7 @@ rollback:
   # {id} - installation ID
   already_rolled_back: "Installation #{id} was already rolled back"
   confirm: "Are you sure you want to roll back this installation?"
-
+  
 # =============================================================================
 # Doctor / Health check
 # =============================================================================
@@ -331,19 +331,19 @@ doctor:
   all_passed: "All checks passed!"
   # {count} - issue count
   issues_found: "{count} issues found"
-
+  
   # Check names
   check_api_key: "API Key Configuration"
   check_network: "Network Connectivity"
   check_disk_space: "Disk Space"
   check_permissions: "File Permissions"
   check_dependencies: "System Dependencies"
-
+  
   # Results
   passed: "Passed"
   warning: "Warning"
   failed: "Failed"
-
+  
 # =============================================================================
 # Wizard
 # =============================================================================
@@ -351,19 +351,19 @@ wizard:
   welcome: "Welcome to Cortex Setup Wizard!"
   # {step}, {total} - step numbers
   step: "Step {step} of {total}"
-
+  
   # API key setup
   api_key_prompt: "Enter your API key"
   api_key_saved: "API key saved successfully"
   api_key_invalid: "Invalid API key format"
   export_api_key_hint: "Please export your API key in your shell profile."
-
+  
   # Provider selection
   select_provider: "Select your LLM provider"
   provider_anthropic: "Anthropic (Claude)"
   provider_openai: "OpenAI (GPT)"
   provider_ollama: "Ollama (Local)"
-
+  
   # Completion
   setup_complete: "Setup complete!"
   ready_message: "Cortex is ready to use"
@@ -409,16 +409,16 @@ env:
   apply_template_failed: "Failed to apply template '{name}'"
   persist_failed: "Failed to persist: {error}"
   persist_removal_failed: "Failed to persist removal: {error}"
-
+  
   # PATH operations
   path_added: "Added '{path}' to PATH"
   path_removed: "Removed '{path}' from PATH"
   path_already_exists: "'{path}' is already in PATH"
   path_not_found: "'{path}' not found in PATH"
-
+  
   # {path} - config file path
   persist_note: "To use in current shell: source {path}"
-
+  
 # =============================================================================
 # Notifications
 # =============================================================================
@@ -429,18 +429,18 @@ notify:
   disabled: "Disabled"
   dnd_window: "Do Not Disturb Window"
   history_file: "History File"
-
+  
   # Actions
   notifications_enabled: "Notifications enabled"
   notifications_disabled: "Notifications disabled (Critical alerts will still show)"
   # {start}, {end} - time values
   dnd_updated: "DND window updated: {start} - {end}"
-
+  
   # Errors
   missing_subcommand: "Please specify a subcommand (config/enable/disable/dnd/send)"
   invalid_time_format: "Invalid time format. Use HH:MM (e.g., 22:00)"
   message_required: "Message required"
-
+  
 # =============================================================================
 # API Key messages
 # =============================================================================
@@ -451,7 +451,7 @@ api_key:
   # {provider} - provider name
   using_provider: "Using {provider} API key"
   using_ollama: "Using Ollama (no API key required)"
-
+  
 # =============================================================================
 # Error messages
 # =============================================================================
@@ -467,7 +467,7 @@ errors:
   failed_to: "Failed to {action}: {error}"
   history_retrieve_failed: "Failed to retrieve history: {error}"
   sdk_required: "Install required SDK or use CORTEX_PROVIDER=ollama"
-
+  
 # =============================================================================
 # Progress indicators
 # =============================================================================
@@ -481,7 +481,7 @@ progress:
   # {seconds} - duration
   completed_in: "Completed in {seconds} seconds"
 # =============================================================================
-# Predictive Prevention
+# Predictive Error Prevention
 # =============================================================================
 predictive:
   analyzing: "AI is predicting potential installation failures..."
