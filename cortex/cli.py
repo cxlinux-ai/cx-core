@@ -78,14 +78,6 @@ class CortexCLI:
         RiskLevel.CRITICAL: "red",
     }
 
-    RISK_COLORS = {
-        RiskLevel.NONE: "green",
-        RiskLevel.LOW: "green",
-        RiskLevel.MEDIUM: "yellow",
-        RiskLevel.HIGH: "orange1",
-        RiskLevel.CRITICAL: "red",
-    }
-
     def __init__(self, verbose: bool = False):
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
