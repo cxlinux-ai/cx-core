@@ -60,6 +60,7 @@ class InstallationCoordinator:
         enable_rollback: bool = False,
         log_file: str | None = None,
         progress_callback: Callable[[int, int, InstallationStep], None] | None = None,
+        max_retries: int = 5,
     ):
         """Initialize an installation run with optional logging and rollback."""
         self.timeout = timeout
@@ -67,6 +68,7 @@ class InstallationCoordinator:
         self.enable_rollback = enable_rollback
         self.log_file = log_file
         self.progress_callback = progress_callback
+        self.max_retries = max_retries
 
         if descriptions and len(descriptions) != len(commands):
             raise ValueError("Number of descriptions must match number of commands")
@@ -90,6 +92,7 @@ class InstallationCoordinator:
         enable_rollback: bool | None = None,
         log_file: str | None = None,
         progress_callback: Callable[[int, int, InstallationStep], None] | None = None,
+        max_retries: int = 5,
     ) -> "InstallationCoordinator":
         """Create a coordinator from a structured plan produced by an LLM.
 
@@ -124,6 +127,7 @@ class InstallationCoordinator:
             ),
             log_file=log_file,
             progress_callback=progress_callback,
+            max_retries=max_retries,
         )
 
         for rollback_cmd in rollback_commands:
@@ -174,13 +178,28 @@ class InstallationCoordinator:
             self._log(f"Command blocked: {step.command} - {error}")
             return False
 
-        try:
+        from cortex.utils.retry import SmartRetry
+
+        def run_cmd():
             # Use shell=True carefully - commands are validated first
             # For complex shell commands (pipes, redirects), shell=True is needed
             # Simple commands could use shlex.split() with shell=False
-            result = subprocess.run(
+            return subprocess.run(
                 step.command, shell=True, capture_output=True, text=True, timeout=self.timeout
             )
+
+        def status_callback(msg: str):
+            self._log(msg)
+            # Optionally update UI here if needed, but for now logging is sufficient
+            # The CLI progress callback handles the main step status updates
+
+        retry_handler = SmartRetry(
+            max_retries=self.max_retries,
+            status_callback=status_callback,
+        )
+
+        try:
+            result = retry_handler.run(run_cmd)
 
             step.return_code = result.returncode
             step.output = result.stdout

@@ -1000,6 +1000,7 @@ class CortexCLI:
                     timeout=300,
                     stop_on_error=True,
                     progress_callback=progress_callback,
+                    max_retries=5,
                 )
 
                 result = coordinator.execute()
