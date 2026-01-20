@@ -75,9 +75,7 @@ class TestPredictiveErrorManager(unittest.TestCase):
         prediction = self.manager.analyze_installation("cuda-12-4", ["apt install cuda"])
 
         self.assertEqual(prediction.risk_level, RiskLevel.LOW)
-        self.assertTrue(
-            any("requires exact matching headers" in r.lower() for r in prediction.reasons)
-        )
+        self.assertTrue(any("driver-kernel mismatch" in r.lower() for r in prediction.reasons))
         self.assertTrue(any("perfectly synchronized" in r.lower() for r in prediction.reasons))
 
     def test_history_pattern_failure(self, mock_llm, mock_history, mock_detect):

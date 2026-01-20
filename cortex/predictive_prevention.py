@@ -131,10 +131,10 @@ class PredictiveErrorManager:
                         )
                         prediction.recommendations.append("Update kernel to 5.15+ first")
                         prediction.risk_level = max(prediction.risk_level, RiskLevel.HIGH)
-                    else:
-                        # Clearly articulate the risk for newer kernels as requested in review
+                    else:  # Modern kernel (5.4+) found, check for driver synchronization risk
+                        # Add a risk-focused warning for newer kernels regarding driver/header complexity
                         prediction.reasons.append(
-                            f"CUDA on {system.kernel_version} requires exact matching headers. Risk of installation failure if kernel headers and NVIDIA drivers are not perfectly synchronized."
+                            f"Risk of driver-kernel mismatch on {system.kernel_version}. Modern CUDA requires perfectly synchronized kernel headers and drivers to avoid installation failure."
                         )
                         prediction.recommendations.append(
                             "Verify that official NVIDIA drivers and matching kernel headers are installed before proceeding"
