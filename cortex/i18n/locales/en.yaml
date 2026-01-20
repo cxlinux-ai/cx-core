@@ -480,8 +480,9 @@ progress:
   cleaning_up: "Cleaning up..."
   # {seconds} - duration
   completed_in: "Completed in {seconds} seconds"
+
 # =============================================================================
-# Predictive Error Prevention
+# Predictive Prevention
 # =============================================================================
 predictive:
   analyzing: "AI is predicting potential installation failures..."
