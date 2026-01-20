@@ -698,6 +698,47 @@ class TestLearningTracker(unittest.TestCase):
         history = self.tracker.get_history()
         self.assertEqual(history["total_queries"], 2)
 
+    def test_record_topic_handles_malformed_total_queries(self):
+        """Test that record_topic handles non-integer total_queries."""
+        self.temp_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Test with string value
+        malformed_history = {
+            "topics": {},
+            "total_queries": "not_a_number"
+        }
+        with open(self.temp_file, "w") as f:
+            json.dump(malformed_history, f)
+        
+        # Should not crash and should reset to 0, then increment to 1
+        self.tracker.record_topic("explain docker")
+        history = self.tracker.get_history()
+        self.assertEqual(history["total_queries"], 1)
+        
+        # Test with list value
+        malformed_history = {
+            "topics": {},
+            "total_queries": [1, 2, 3]
+        }
+        with open(self.temp_file, "w") as f:
+            json.dump(malformed_history, f)
+        
+        self.tracker.record_topic("what is kubernetes")
+        history = self.tracker.get_history()
+        self.assertEqual(history["total_queries"], 1)
+        
+        # Test with string that can be converted to int
+        malformed_history = {
+            "topics": {},
+            "total_queries": "5"
+        }
+        with open(self.temp_file, "w") as f:
+            json.dump(malformed_history, f)
+        
+        self.tracker.record_topic("teach me python")
+        history = self.tracker.get_history()
+        self.assertEqual(history["total_queries"], 6)  # 5 + 1
+
     def test_load_history_with_malformed_json(self):
         """Test that _load_history gracefully handles malformed JSON."""
         # Write invalid JSON to the file

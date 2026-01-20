@@ -263,6 +263,13 @@ class LearningTracker:
         history.setdefault("total_queries", 0)
         if not isinstance(history.get("topics"), dict):
             history["topics"] = {}
+        
+        # Ensure total_queries is an integer
+        if not isinstance(history.get("total_queries"), int):
+            try:
+                history["total_queries"] = int(history["total_queries"])
+            except (ValueError, TypeError):
+                history["total_queries"] = 0
 
         # Use UTC timestamps for consistency and accurate sorting
         utc_now = datetime.now(timezone.utc).isoformat()
