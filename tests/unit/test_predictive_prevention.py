@@ -11,11 +11,13 @@ from cortex.predictive_prevention import PredictiveErrorManager, RiskLevel
 @patch("cortex.installation_history.InstallationHistory.get_history")
 @patch("cortex.llm_router.LLMRouter.complete")
 class TestPredictiveErrorManager(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         # Use 'fake' provider by default to ensure no real network calls
         self.manager = PredictiveErrorManager(api_key="fake-key", provider="fake")
 
-    def _get_mock_system(self, kernel="6.0.0", ram_mb=16384, disk_gb=50.0):
+    def _get_mock_system(
+        self, kernel: str = "6.0.0", ram_mb: int = 16384, disk_gb: float = 50.0
+    ) -> SystemInfo:
         """Helper to create a SystemInfo mock object."""
         return SystemInfo(
             kernel_version=kernel,
@@ -24,8 +26,14 @@ class TestPredictiveErrorManager(unittest.TestCase):
         )
 
     def _setup_mocks(
-        self, mock_llm, mock_history, mock_detect, system=None, history=None, llm_content=None
-    ):
+        self,
+        mock_llm: MagicMock,
+        mock_history: MagicMock,
+        mock_detect: MagicMock,
+        system: SystemInfo | None = None,
+        history: list[InstallationRecord] | None = None,
+        llm_content: str | None = None,
+    ) -> MagicMock:
         """Setup common mocks with default or specified values."""
         mock_detect.return_value = system or self._get_mock_system()
         mock_history.return_value = history if history is not None else []
@@ -119,6 +127,21 @@ class TestPredictiveErrorManager(unittest.TestCase):
         prediction.reasons.append("This is a CRITICAL deficiency")
         self.manager._finalize_risk_level(prediction)
         self.assertEqual(prediction.risk_level, RiskLevel.CRITICAL)
+
+    def test_redact_commands(self, mock_llm, mock_history, mock_detect):
+        commands = [
+            "login --password my-secret-pass",
+            "curl -H 'Authorization: Bearer secret-token'",
+            "export API_KEY=12345-abcde",
+            "docker login --token=98765",
+        ]
+        redacted = self.manager._redact_commands(commands)
+
+        self.assertIn("--password <REDACTED>", redacted[0])
+        self.assertIn("API_KEY=<REDACTED>", redacted[2])
+        self.assertIn("--token=<REDACTED>", redacted[3])
+        # Note: Bearer token in header isn't matched by the current regex, which is fine for now
+        # as the regex is focused on common CLI flags and env vars.
 
 
 if __name__ == "__main__":

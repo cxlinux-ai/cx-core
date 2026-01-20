@@ -58,6 +58,14 @@ if TYPE_CHECKING:
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 
+# More aggressive suppression for JSON output
+if "--json" in sys.argv:
+    logging.getLogger("cortex").setLevel(logging.ERROR)
+    # Also suppress common SDK loggers
+    logging.getLogger("anthropic").setLevel(logging.ERROR)
+    logging.getLogger("openai").setLevel(logging.ERROR)
+    logging.getLogger("httpcore").setLevel(logging.ERROR)
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
@@ -85,7 +93,7 @@ class CortexCLI:
         self.predict_manager = None
 
     @property
-    def risk_labels(self):
+    def risk_labels(self) -> dict[RiskLevel, str]:
         return {
             RiskLevel.NONE: t("predictive.no_risk"),
             RiskLevel.LOW: t("predictive.low_risk"),
@@ -967,19 +975,22 @@ class CortexCLI:
                 return 1
 
             # Predictive Analysis
-            self._print_status("🔮", t("predictive.analyzing"))
+            if not json_output:
+                self._print_status("🔮", t("predictive.analyzing"))
             if not self.predict_manager:
                 self.predict_manager = PredictiveErrorManager(api_key=api_key, provider=provider)
             prediction = self.predict_manager.analyze_installation(software, commands)
-            self._clear_line()
+            if not json_output:
+                self._clear_line()
 
-            if prediction.risk_level != RiskLevel.NONE:
-                self._display_prediction_warning(prediction)
-                if execute and not self._confirm_risky_operation(prediction):
-                    cx_print(f"\n{t('ui.operation_cancelled')}", "warning")
-                    return 0
-            else:
-                cx_print(t("predictive.no_issues_detected"), "success")
+            if not json_output:
+                if prediction.risk_level != RiskLevel.NONE:
+                    self._display_prediction_warning(prediction)
+                    if execute and not self._confirm_risky_operation(prediction):
+                        cx_print(f"\n{t('ui.operation_cancelled')}", "warning")
+                        return 0
+                else:
+                    cx_print(t("predictive.no_issues_detected"), "success")
 
             # Extract packages from commands for tracking
             packages = history._extract_packages_from_commands(commands)
@@ -992,12 +1003,17 @@ class CortexCLI:
 
             # If JSON output requested, return structured data and exit early
             if json_output:
-
                 output = {
                     "success": True,
                     "commands": commands,
                     "packages": packages,
                     "install_id": install_id,
+                    "prediction": {
+                        "risk_level": prediction.risk_level.name,
+                        "reasons": prediction.reasons,
+                        "recommendations": prediction.recommendations,
+                        "predicted_errors": prediction.predicted_errors,
+                    },
                 }
                 print(json.dumps(output, indent=2))
                 return 0
@@ -4100,7 +4116,7 @@ def main():
     # Check for updates on startup (cached, non-blocking)
     # Only show notification for commands that aren't 'update' itself
     try:
-        if temp_args.command not in ["update", None]:
+        if temp_args.command not in ["update", None] and "--json" not in sys.argv:
             update_release = should_notify_update()
             if update_release:
                 console.print(
@@ -4215,6 +4231,11 @@ def main():
         "--parallel",
         action="store_true",
         help="Enable parallel execution for multi-step installs",
+    )
+    install_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
     )
 
     # Remove command - uninstall with impact analysis
@@ -4889,6 +4910,7 @@ def main():
                 execute=args.execute,
                 dry_run=args.dry_run,
                 parallel=args.parallel,
+                json_output=args.json,
             )
         elif args.command == "remove":
             # Handle --execute flag to override default dry-run

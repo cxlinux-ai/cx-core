@@ -104,12 +104,36 @@ class PredictiveErrorManager:
 
         # 4. LLM-backed advanced prediction (if AI available and not in fake mode)
         if (self.api_key or self.provider == "ollama") and self.provider != "fake":
-            self._get_llm_prediction(software, commands, system_info, prediction)
+            # Redact sensitive data from commands before sending to LLM
+            redacted_commands = self._redact_commands(commands)
+            self._get_llm_prediction(software, redacted_commands, system_info, prediction)
 
         # 5. Final risk level adjustment based on findings
         self._finalize_risk_level(prediction)
 
         return prediction
+
+    def _redact_commands(self, commands: list[str]) -> list[str]:
+        """Mask potential tokens, passwords, and API keys in commands."""
+        # Common patterns for sensitive data in CLI commands:
+        # 1. --password PASSWORD or --api-key=TOKEN
+        # 2. env vars like AUTH_TOKEN=xxx
+        redacted = []
+        for cmd in commands:
+            # Mask common credential flags (handles both spaces and equals)
+            tmp = re.sub(
+                r"(?i)(--?(?:token|api[-_]?key|password|secret|pwd|auth|key)(?:\s+|=))(\S+)",
+                r"\1<REDACTED>",
+                cmd,
+            )
+            # Mask env var assignments
+            tmp = re.sub(
+                r"(?i)\b([A-Z0-9_-]*(?:TOKEN|PASSWORD|SECRET|KEY|AUTH)=)(\S+)",
+                r"\1<REDACTED>",
+                tmp,
+            )
+            redacted.append(tmp)
+        return redacted
 
     def _check_static_compatibility(
         self, software: str, system: SystemInfo, prediction: FailurePrediction

@@ -19,7 +19,7 @@ class CLITestBase(unittest.TestCase):
     def tearDown(self) -> None:
         self._temp_dir.cleanup()
 
-    def _setup_predictive_mock(self, mock_predictive_class):
+    def _setup_predictive_mock(self, mock_predictive_class: Mock) -> Mock:
         """Helper to configure PredictiveErrorManager mock with default safe response."""
         mock_predictive = Mock()
         mock_prediction = Mock()
@@ -28,7 +28,9 @@ class CLITestBase(unittest.TestCase):
         mock_predictive_class.return_value = mock_predictive
         return mock_predictive
 
-    def _setup_interpreter_mock(self, mock_interpreter_class, commands=None):
+    def _setup_interpreter_mock(
+        self, mock_interpreter_class: Mock, commands: list[str] | None = None
+    ) -> Mock:
         """Helper to setup CommandInterpreter mock."""
         if commands is None:
             commands = ["apt update", "apt install docker"]
@@ -37,7 +39,9 @@ class CLITestBase(unittest.TestCase):
         mock_interpreter_class.return_value = mock_interpreter
         return mock_interpreter
 
-    def _setup_coordinator_mock(self, mock_coordinator_class, success=True, error_message=None):
+    def _setup_coordinator_mock(
+        self, mock_coordinator_class: Mock, success: bool = True, error_message: str | None = None
+    ) -> Mock:
         """Helper to setup InstallationCoordinator mock."""
         mock_coordinator = Mock()
         mock_result = Mock()
