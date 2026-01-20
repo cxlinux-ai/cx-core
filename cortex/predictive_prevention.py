@@ -58,12 +58,15 @@ class PredictiveErrorManager:
         self.detector = HardwareDetector()
         self.history = InstallationHistory()
         self.api_key = api_key
-        self.provider = provider
+        # Normalize provider casing to avoid missed API-key wiring
+        normalized_provider = provider.lower() if provider else None
+        self.provider = normalized_provider
+
         # Handle 'fake' provider used in testing
         llm_provider = LLMProvider.OLLAMA
-        if provider:
+        if normalized_provider:
             try:
-                llm_provider = LLMProvider(provider.lower())
+                llm_provider = LLMProvider(normalized_provider)
             except ValueError:
                 # Fallback to OLLAMA if 'fake' or other unknown provider is passed
                 logger.debug(
@@ -72,8 +75,8 @@ class PredictiveErrorManager:
                 llm_provider = LLMProvider.OLLAMA
 
         self.router = LLMRouter(
-            claude_api_key=api_key if provider == "claude" else None,
-            kimi_api_key=api_key if provider == "kimi_k2" else None,
+            claude_api_key=api_key if normalized_provider == "claude" else None,
+            kimi_api_key=api_key if normalized_provider == "kimi_k2" else None,
             default_provider=llm_provider,
         )
 
