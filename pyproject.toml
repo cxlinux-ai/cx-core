@@ -61,6 +61,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dashboard = [
+    "psutil>=5.9.0",
+    "nvidia-ml-py>=12.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -84,7 +88,7 @@ docs = [
     "mkdocstrings[python]>=0.24.0",
 ]
 all = [
-    "cortex-linux[dev,security,docs]",
+    "cortex-linux[dev,security,docs,dashboard]",
 ]
 
 [project.scripts]
@@ -119,6 +123,7 @@ exclude = '''
     | \.tox
     | \.venv
     | venv
+    | myenv
     | _build
     | buck-out
     | build
@@ -149,6 +154,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "myenv",
 ]
 
 [tool.ruff.lint]
