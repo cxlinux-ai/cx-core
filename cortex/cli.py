@@ -4584,7 +4584,26 @@ def main():
         elif args.command == "ask":
             # Handle --mic flag for voice input
             if getattr(args, "mic", False):
-                return cli.voice(continuous=False)
+                try:
+                    from cortex.voice import VoiceInputError, VoiceInputHandler
+
+                    handler = VoiceInputHandler()
+                    cx_print("Press F9 to speak your question...", "info")
+                    transcript = handler.record_single()
+                    
+                    if not transcript:
+                        cli._print_error("No speech detected")
+                        return 1
+                    
+                    cx_print(f"Question: {transcript}", "info")
+                    return cli.ask(transcript)
+                except ImportError:
+                    cli._print_error("Voice dependencies not installed.")
+                    cx_print("Install with: pip install cortex-linux[voice]", "info")
+                    return 1
+                except VoiceInputError as e:
+                    cli._print_error(f"Voice input error: {e}")
+                    return 1
             if not args.question:
                 cli._print_error("Please provide a question or use --mic for voice input")
                 return 1
