@@ -308,9 +308,14 @@ class LearningTracker:
         history = self._load_history()
         topics = history.get("topics", {})
 
-        # Sort by last_accessed
+        # Filter out malformed entries and sort by last_accessed
+        valid_topics = [
+            (name, data) 
+            for name, data in topics.items() 
+            if isinstance(data, dict) and "last_accessed" in data
+        ]
         sorted_topics = sorted(
-            topics.items(),
+            valid_topics,
             key=lambda x: x[1].get("last_accessed", ""),
             reverse=True,
         )

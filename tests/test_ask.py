@@ -651,6 +651,46 @@ class TestLearningTracker(unittest.TestCase):
         recent = self.tracker.get_recent_topics()
         self.assertEqual(recent, [])
 
+    def test_get_recent_topics_with_malformed_entries(self):
+        """Test that get_recent_topics skips malformed topic entries."""
+        self.temp_file.parent.mkdir(parents=True, exist_ok=True)
+        malformed_history = {
+            "topics": {
+                "docker": {
+                    "count": 1,
+                    "first_accessed": "2025-01-01T00:00:00+00:00",
+                    "last_accessed": "2025-01-01T12:00:00+00:00",
+                },
+                "kubernetes": "invalid_string_data",  # Malformed: not a dict
+                "nginx": {
+                    "count": 1,
+                    "first_accessed": "2025-01-02T00:00:00+00:00",
+                    "last_accessed": "2025-01-02T12:00:00+00:00",
+                },
+                "python": {
+                    "count": 1,
+                    "first_accessed": "2025-01-03T00:00:00+00:00",
+                    # Missing "last_accessed" key
+                },
+                "redis": ["list", "data"],  # Malformed: not a dict
+            },
+            "total_queries": 3
+        }
+        with open(self.temp_file, "w") as f:
+            json.dump(malformed_history, f)
+
+        # Should only return valid topics (docker and nginx), sorted by last_accessed
+        recent = self.tracker.get_recent_topics(limit=5)
+        self.assertEqual(len(recent), 2)
+        self.assertIn("docker", recent)
+        self.assertIn("nginx", recent)
+        self.assertNotIn("kubernetes", recent)  # Skipped: not a dict
+        self.assertNotIn("python", recent)  # Skipped: missing last_accessed
+        self.assertNotIn("redis", recent)  # Skipped: not a dict
+        # nginx should be first (most recent)
+        self.assertEqual(recent[0], "nginx")
+        self.assertEqual(recent[1], "docker")
+
     def test_total_queries_tracked(self):
         """Test that total educational queries are tracked."""
         self.tracker.record_topic("explain docker")
