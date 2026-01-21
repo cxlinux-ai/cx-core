@@ -2584,8 +2584,7 @@ class CortexCLI:
             usage = cpu.get("usage_percent", 0)
             color = "red" if usage >= 95 else "yellow" if usage >= 80 else "green"
             health_table.add_row(
-                "CPU Usage",
-                f"[{color}]{usage:.1f}%[/{color}] ({cpu.get('cores', 0)} cores)"
+                "CPU Usage", f"[{color}]{usage:.1f}%[/{color}] ({cpu.get('cores', 0)} cores)"
             )
 
         # Memory
@@ -2597,7 +2596,7 @@ class CortexCLI:
             mem_total_gb = mem.get("total_bytes", 0) / (1024**3)
             health_table.add_row(
                 "Memory Usage",
-                f"[{color}]{usage:.1f}%[/{color}] ({mem_gb:.2f}GB / {mem_total_gb:.2f}GB)"
+                f"[{color}]{usage:.1f}%[/{color}] ({mem_gb:.2f}GB / {mem_total_gb:.2f}GB)",
             )
 
         # Disk
@@ -2610,7 +2609,7 @@ class CortexCLI:
             mount_point = disk.get("mount_point", "/")
             health_table.add_row(
                 f"Disk Usage ({mount_point})",
-                f"[{color}]{usage:.1f}%[/{color}] ({disk_gb:.2f}GB / {disk_total_gb:.2f}GB)"
+                f"[{color}]{usage:.1f}%[/{color}] ({disk_gb:.2f}GB / {disk_total_gb:.2f}GB)",
             )
 
         # System info
@@ -2618,7 +2617,7 @@ class CortexCLI:
             sys_info = result["system"]
             uptime_hours = sys_info.get("uptime_seconds", 0) / 3600
             health_table.add_row("System Uptime", f"{uptime_hours:.1f} hours")
-            
+
             failed = sys_info.get("failed_services_count", 0)
             if failed > 0:
                 health_table.add_row("Failed Services", f"[red]{failed}[/red]")
@@ -2627,12 +2626,20 @@ class CortexCLI:
 
         # Display health panel
         console.print()
-        console.print(Panel(health_table, title="[bold cyan]System Health Metrics[/bold cyan]", border_style="cyan"))
+        console.print(
+            Panel(
+                health_table,
+                title="[bold cyan]System Health Metrics[/bold cyan]",
+                border_style="cyan",
+            )
+        )
 
         # Display thresholds in a separate panel
         if "thresholds" in result:
             thresholds = result["thresholds"]
-            threshold_table = Table(show_header=True, header_style="bold yellow", box=None, padding=(0, 2))
+            threshold_table = Table(
+                show_header=True, header_style="bold yellow", box=None, padding=(0, 2)
+            )
             threshold_table.add_column("Resource", style="bold")
             threshold_table.add_column("Warning", style="yellow")
             threshold_table.add_column("Critical", style="red")
@@ -2640,27 +2647,27 @@ class CortexCLI:
             if "cpu" in thresholds:
                 cpu_th = thresholds["cpu"]
                 threshold_table.add_row(
-                    "CPU",
-                    f"{cpu_th.get('warning', 80)}%",
-                    f"{cpu_th.get('critical', 95)}%"
+                    "CPU", f"{cpu_th.get('warning', 80)}%", f"{cpu_th.get('critical', 95)}%"
                 )
             if "memory" in thresholds:
                 mem_th = thresholds["memory"]
                 threshold_table.add_row(
-                    "Memory",
-                    f"{mem_th.get('warning', 80)}%",
-                    f"{mem_th.get('critical', 95)}%"
+                    "Memory", f"{mem_th.get('warning', 80)}%", f"{mem_th.get('critical', 95)}%"
                 )
             if "disk" in thresholds:
                 disk_th = thresholds["disk"]
                 threshold_table.add_row(
-                    "Disk",
-                    f"{disk_th.get('warning', 80)}%",
-                    f"{disk_th.get('critical', 95)}%"
+                    "Disk", f"{disk_th.get('warning', 80)}%", f"{disk_th.get('critical', 95)}%"
                 )
 
             console.print()
-            console.print(Panel(threshold_table, title="[bold yellow]Monitoring Thresholds[/bold yellow]", border_style="yellow"))
+            console.print(
+                Panel(
+                    threshold_table,
+                    title="[bold yellow]Monitoring Thresholds[/bold yellow]",
+                    border_style="yellow",
+                )
+            )
 
         return 0
 
@@ -4563,9 +4570,7 @@ def main():
     daemon_subs.add_parser("health", help="Check system health")
 
     # daemon alerts - uses alerts IPC handlers
-    daemon_alerts_parser = daemon_subs.add_parser(
-        "alerts", help="Manage alerts"
-    )
+    daemon_alerts_parser = daemon_subs.add_parser("alerts", help="Manage alerts")
     daemon_alerts_parser.add_argument(
         "--severity",
         choices=["info", "warning", "error", "critical"],

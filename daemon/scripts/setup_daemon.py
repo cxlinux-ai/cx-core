@@ -402,22 +402,20 @@ def ensure_config_file() -> bool:
         bool: True if config file exists or was created successfully, False otherwise.
     """
     config_path = Path(CONFIG_FILE)
-    
+
     # If config already exists, we're done
     if config_path.exists():
         return True
-    
+
     # Check if template exists
     if not CONFIG_EXAMPLE.exists():
-        console.print(
-            f"[yellow]Warning: Config template not found at {CONFIG_EXAMPLE}[/yellow]"
-        )
+        console.print(f"[yellow]Warning: Config template not found at {CONFIG_EXAMPLE}[/yellow]")
         return False
-    
+
     try:
         # Create /etc/cortex directory if needed
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Copy template to config file (requires sudo)
         result = subprocess.run(
             ["sudo", "cp", str(CONFIG_EXAMPLE), CONFIG_FILE],
@@ -425,7 +423,7 @@ def ensure_config_file() -> bool:
             capture_output=True,
             text=True,
         )
-        
+
         if result.returncode == 0:
             # Set proper permissions
             subprocess.run(
@@ -433,14 +431,12 @@ def ensure_config_file() -> bool:
                 check=False,
             )
             console.print(f"[green]Created config file: {CONFIG_FILE}[/green]")
-            log_audit_event("create_config", f"Created config from template")
+            log_audit_event("create_config", "Created config from template")
             return True
         else:
-            console.print(
-                f"[red]Failed to create config file: {result.stderr}[/red]"
-            )
+            console.print(f"[red]Failed to create config file: {result.stderr}[/red]")
             return False
-            
+
     except Exception as e:
         console.print(f"[red]Error creating config file: {e}[/red]")
         return False
@@ -460,7 +456,7 @@ def install_daemon() -> bool:
     """
     # Ensure config file exists before installation
     ensure_config_file()
-    
+
     console.print("[cyan]Installing the daemon...[/cyan]")
     result = subprocess.run(["sudo", str(INSTALL_SCRIPT)], check=False)
     success = result.returncode == 0
