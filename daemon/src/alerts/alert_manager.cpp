@@ -557,12 +557,21 @@ std::optional<Alert> AlertManager::get_alert(const std::string& uuid) {
         alert.description = desc_txt ? reinterpret_cast<const char*>(desc_txt) : std::string();
         
         // Parse timestamp
-        std::string timestamp_str = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-        std::tm tm = {};
-        std::istringstream ss(timestamp_str);
-        ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-        if (!ss.fail()) {
-            alert.timestamp = std::chrono::system_clock::from_time_t(utc_timegm(&tm));
+        const unsigned char* raw = sqlite3_column_text(stmt, 6);
+        if (raw != nullptr) {
+            std::string timestamp_str = reinterpret_cast<const char*>(raw);
+            if (!timestamp_str.empty()) {
+                std::tm tm = {};
+                std::istringstream ss(timestamp_str);
+                ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+                if (!ss.fail()) {
+                    alert.timestamp = std::chrono::system_clock::from_time_t(utc_timegm(&tm));
+                } else {
+                    alert.timestamp = std::chrono::system_clock::now();
+                }
+            } else {
+                alert.timestamp = std::chrono::system_clock::now();
+            }
         } else {
             alert.timestamp = std::chrono::system_clock::now();
         }
@@ -651,12 +660,21 @@ std::vector<Alert> AlertManager::get_alerts(const AlertFilter& filter) {
         alert.description = desc_txt ? reinterpret_cast<const char*>(desc_txt) : std::string();
         
         // Parse timestamp
-        std::string timestamp_str = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-        std::tm tm = {};
-        std::istringstream ss(timestamp_str);
-        ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-        if (!ss.fail()) {
-            alert.timestamp = std::chrono::system_clock::from_time_t(utc_timegm(&tm));
+        const unsigned char* raw = sqlite3_column_text(stmt, 6);
+        if (raw != nullptr) {
+            std::string timestamp_str = reinterpret_cast<const char*>(raw);
+            if (!timestamp_str.empty()) {
+                std::tm tm = {};
+                std::istringstream ss(timestamp_str);
+                ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+                if (!ss.fail()) {
+                    alert.timestamp = std::chrono::system_clock::from_time_t(utc_timegm(&tm));
+                } else {
+                    alert.timestamp = std::chrono::system_clock::now();
+                }
+            } else {
+                alert.timestamp = std::chrono::system_clock::now();
+            }
         } else {
             alert.timestamp = std::chrono::system_clock::now();
         }
