@@ -48,6 +48,7 @@ class LLMProvider(Enum):
     CLAUDE = "claude"
     KIMI_K2 = "kimi_k2"
     OLLAMA = "ollama"
+    OPENAI = "openai"
 
 
 @dataclass
@@ -100,6 +101,10 @@ class LLMRouter:
             "input": 0.0,  # Free - local inference
             "output": 0.0,  # Free - local inference
         },
+        LLMProvider.OPENAI: {
+            "input": 0.150,  # gpt-4o-mini input
+            "output": 0.600,  # gpt-4o-mini output
+        },
     }
 
     # Routing rules: TaskType → Preferred LLM
@@ -118,6 +123,7 @@ class LLMRouter:
         self,
         claude_api_key: str | None = None,
         kimi_api_key: str | None = None,
+        openai_api_key: str | None = None,
         ollama_base_url: str | None = None,
         ollama_model: str | None = None,
         default_provider: LLMProvider = LLMProvider.CLAUDE,
@@ -138,6 +144,7 @@ class LLMRouter:
         """
         self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY")
         self.kimi_api_key = kimi_api_key or os.getenv("MOONSHOT_API_KEY")
+        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         self.default_provider = default_provider
         self.enable_fallback = enable_fallback
         self.track_costs = track_costs
@@ -145,10 +152,12 @@ class LLMRouter:
         # Initialize clients (sync)
         self.claude_client = None
         self.kimi_client = None
+        self.openai_client = None
 
         # Initialize async clients
         self.claude_client_async = None
         self.kimi_client_async = None
+        self.openai_client_async = None
 
         if self.claude_api_key:
             self.claude_client = Anthropic(api_key=self.claude_api_key)
@@ -167,6 +176,13 @@ class LLMRouter:
             logger.info("✅ Kimi K2 API client initialized")
         else:
             logger.warning("⚠️  No Kimi K2 API key provided")
+
+        if self.openai_api_key:
+            self.openai_client = OpenAI(api_key=self.openai_api_key)
+            self.openai_client_async = AsyncOpenAI(api_key=self.openai_api_key)
+            logger.info("✅ OpenAI API client initialized")
+        else:
+            logger.warning("⚠️  No OpenAI API key provided")
 
         # Initialize Ollama client (local inference)
         self.ollama_base_url = ollama_base_url or os.getenv(
@@ -201,6 +217,7 @@ class LLMRouter:
             LLMProvider.CLAUDE: {"requests": 0, "tokens": 0, "cost": 0.0},
             LLMProvider.KIMI_K2: {"requests": 0, "tokens": 0, "cost": 0.0},
             LLMProvider.OLLAMA: {"requests": 0, "tokens": 0, "cost": 0.0},
+            LLMProvider.OPENAI: {"requests": 0, "tokens": 0, "cost": 0.0},
         }
 
     def route_task(
@@ -224,26 +241,63 @@ class LLMRouter:
                 confidence=1.0,
             )
 
+        # If user explicitly requested OpenAI (as default_provider), respect it if available
+        if self.default_provider == LLMProvider.OPENAI and self.openai_client:
+            return RoutingDecision(
+                provider=LLMProvider.OPENAI,
+                task_type=task_type,
+                reasoning="User preferred provider",
+                confidence=1.0,
+            )
+
         # Use routing rules
         provider = self.ROUTING_RULES.get(task_type, self.default_provider)
 
         # Check if preferred provider is available
         if provider == LLMProvider.CLAUDE and not self.claude_client:
-            if self.kimi_client and self.enable_fallback:
+            if self.openai_client and self.enable_fallback:
+                logger.info("Claude unavailable, falling back to OpenAI")
+                provider = LLMProvider.OPENAI
+            elif self.kimi_client and self.enable_fallback:
                 logger.warning("Claude unavailable, falling back to Kimi K2")
                 provider = LLMProvider.KIMI_K2
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("Claude unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
             else:
                 raise RuntimeError("Claude API not configured and no fallback available")
 
         if provider == LLMProvider.KIMI_K2 and not self.kimi_client:
-            if self.claude_client and self.enable_fallback:
+            if self.openai_client and self.enable_fallback:
+                logger.info("Kimi unavailable, falling back to OpenAI")
+                provider = LLMProvider.OPENAI
+            elif self.claude_client and self.enable_fallback:
                 logger.warning("Kimi K2 unavailable, falling back to Claude")
                 provider = LLMProvider.CLAUDE
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("Kimi K2 unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
             else:
                 raise RuntimeError("Kimi K2 API not configured and no fallback available")
 
-        if provider == LLMProvider.OLLAMA and not self.ollama_client:
+        if provider == LLMProvider.OPENAI and not self.openai_client:
             if self.claude_client and self.enable_fallback:
+                logger.info("OpenAI unavailable, falling back to Claude")
+                provider = LLMProvider.CLAUDE
+            elif self.kimi_client and self.enable_fallback:
+                logger.warning("OpenAI unavailable, falling back to Kimi K2")
+                provider = LLMProvider.KIMI_K2
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("OpenAI unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
+            else:
+                raise RuntimeError("OpenAI API not configured and no fallback available")
+
+        if provider == LLMProvider.OLLAMA and not self.ollama_client:
+            if self.openai_client and self.enable_fallback:
+                logger.info("Ollama unavailable, falling back to OpenAI")
+                provider = LLMProvider.OPENAI
+            elif self.claude_client and self.enable_fallback:
                 logger.warning("Ollama unavailable, falling back to Claude")
                 provider = LLMProvider.CLAUDE
             elif self.kimi_client and self.enable_fallback:
@@ -292,6 +346,8 @@ class LLMRouter:
                 response = self._complete_claude(messages, temperature, max_tokens, tools)
             elif routing.provider == LLMProvider.KIMI_K2:
                 response = self._complete_kimi(messages, temperature, max_tokens, tools)
+            elif routing.provider == LLMProvider.OPENAI:
+                response = self._complete_openai(messages, temperature, max_tokens, tools)
             else:  # OLLAMA
                 response = self._complete_ollama(messages, temperature, max_tokens, tools)
 
@@ -308,21 +364,33 @@ class LLMRouter:
 
             # Try fallback if enabled
             if self.enable_fallback:
-                fallback_provider = (
-                    LLMProvider.KIMI_K2
-                    if routing.provider == LLMProvider.CLAUDE
-                    else LLMProvider.CLAUDE
-                )
-                logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                fallback_provider = None
 
-                return self.complete(
-                    messages=messages,
-                    task_type=task_type,
-                    force_provider=fallback_provider,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                )
+                # Prioritize fallbacks: Kimi -> OpenAI -> Claude -> Ollama
+                # Ensure we don't fallback to the current provider or an uninitialized one
+                if routing.provider != LLMProvider.KIMI_K2 and self.kimi_client:
+                    fallback_provider = LLMProvider.KIMI_K2
+                elif routing.provider != LLMProvider.OPENAI and self.openai_client:
+                    fallback_provider = LLMProvider.OPENAI
+                elif routing.provider != LLMProvider.CLAUDE and self.claude_client:
+                    fallback_provider = LLMProvider.CLAUDE
+                elif routing.provider != LLMProvider.OLLAMA and self.ollama_client:
+                    fallback_provider = LLMProvider.OLLAMA
+
+                if fallback_provider:
+                    logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+
+                    return self.complete(
+                        messages=messages,
+                        task_type=task_type,
+                        force_provider=fallback_provider,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                    )
+                else:
+                    logger.warning(f"No viable fallback from {routing.provider.value}")
+                    raise
             else:
                 raise
 
@@ -474,6 +542,95 @@ class LLMRouter:
                 f"Ollama request failed. Is Ollama running? (ollama serve) Error: {e}"
             )
 
+    def _complete_openai(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> LLMResponse:
+        """Generate completion using OpenAI API."""
+        kwargs = {
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = self.openai_client.chat.completions.create(**kwargs)
+
+            # Extract content
+            content = response.choices[0].message.content or ""
+
+            # Calculate cost
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = self._calculate_cost(LLMProvider.OPENAI, input_tokens, output_tokens)
+
+            return LLMResponse(
+                content=content,
+                provider=LLMProvider.OPENAI,
+                model=kwargs["model"],
+                tokens_used=input_tokens + output_tokens,
+                cost_usd=cost,
+                latency_seconds=0.0,  # Set by caller
+                raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+            )
+        except Exception as e:
+            logger.error(f"OpenAI error: {e}")
+            raise RuntimeError(f"OpenAI request failed: {e}")
+
+    async def _acomplete_openai(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> LLMResponse:
+        """Async: Generate completion using OpenAI API."""
+        if not self.openai_client_async:
+            raise RuntimeError("OpenAI async client not initialized")
+
+        kwargs = {
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = await self.openai_client_async.chat.completions.create(**kwargs)
+
+            # Extract content
+            content = response.choices[0].message.content or ""
+
+            # Calculate cost
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = self._calculate_cost(LLMProvider.OPENAI, input_tokens, output_tokens)
+
+            return LLMResponse(
+                content=content,
+                provider=LLMProvider.OPENAI,
+                model=kwargs["model"],
+                tokens_used=input_tokens + output_tokens,
+                cost_usd=cost,
+                latency_seconds=0.0,  # Set by caller
+                raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+            )
+        except Exception as e:
+            logger.error(f"OpenAI async error: {e}")
+            raise RuntimeError(f"OpenAI async request failed: {e}")
+
     def _calculate_cost(
         self, provider: LLMProvider, input_tokens: int, output_tokens: int
     ) -> float:
@@ -574,6 +731,8 @@ class LLMRouter:
                 response = await self._acomplete_claude(messages, temperature, max_tokens, tools)
             elif routing.provider == LLMProvider.KIMI_K2:
                 response = await self._acomplete_kimi(messages, temperature, max_tokens, tools)
+            elif routing.provider == LLMProvider.OPENAI:
+                response = await self._acomplete_openai(messages, temperature, max_tokens, tools)
             else:  # OLLAMA
                 response = await self._acomplete_ollama(messages, temperature, max_tokens, tools)
 
@@ -590,21 +749,31 @@ class LLMRouter:
 
             # Try fallback if enabled
             if self.enable_fallback:
-                fallback_provider = (
-                    LLMProvider.KIMI_K2
-                    if routing.provider == LLMProvider.CLAUDE
-                    else LLMProvider.CLAUDE
-                )
-                logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                fallback_provider = None
 
-                return await self.acomplete(
-                    messages=messages,
-                    task_type=task_type,
-                    force_provider=fallback_provider,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                )
+                # Prioritize fallbacks: Kimi -> Claude -> Ollama
+                # Ensure we don't fallback to the current provider or an uninitialized one
+                if routing.provider != LLMProvider.KIMI_K2 and self.kimi_client:
+                    fallback_provider = LLMProvider.KIMI_K2
+                elif routing.provider != LLMProvider.CLAUDE and self.claude_client:
+                    fallback_provider = LLMProvider.CLAUDE
+                elif routing.provider != LLMProvider.OLLAMA and self.ollama_client:
+                    fallback_provider = LLMProvider.OLLAMA
+
+                if fallback_provider:
+                    logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+
+                    return await self.acomplete(
+                        messages=messages,
+                        task_type=task_type,
+                        force_provider=fallback_provider,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                    )
+                else:
+                    logger.warning(f"No viable fallback from {routing.provider.value}")
+                    raise
             else:
                 raise
 
@@ -982,24 +1151,7 @@ async def check_hardware_configs_parallel(
     hardware_info: dict[str, Any] | None = None,
     max_concurrent: int = 10,
 ) -> dict[str, LLMResponse]:
-    """
-    Check hardware configuration requirements for multiple components in parallel.
-
-    Args:
-        router: LLMRouter instance
-        hardware_components: List of hardware components to check (e.g., ["nvidia_gpu", "intel_cpu"])
-        hardware_info: Optional hardware information dict
-        max_concurrent: Maximum concurrent checks
-
-    Returns:
-        Dictionary mapping component names to LLMResponse objects
-
-    Example:
-        router = LLMRouter()
-        components = ["nvidia_gpu", "intel_cpu", "amd_gpu"]
-        hw_info = {"nvidia_gpu": {"model": "RTX 4090", "driver": "535.0"}}
-        configs = await check_hardware_configs_parallel(router, components, hw_info)
-    """
+    """Check hardware configuration requirements for multiple components in parallel."""
     system_prompt = (
         "You are a hardware configuration expert. "
         "Analyze hardware components and provide optimal configuration recommendations."

@@ -77,7 +77,7 @@ class CortexCLI:
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.verbose = verbose
-        self.predict_manager = None
+        self.predict_manager: PredictiveErrorManager | None = None
 
     @property
     def risk_labels(self) -> dict[RiskLevel, str]:
@@ -1722,7 +1722,6 @@ class CortexCLI:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             if json_output:
-
                 print(json.dumps({"success": False, "error": str(e), "error_type": "ValueError"}))
             else:
                 self._print_error(str(e))
@@ -1731,7 +1730,6 @@ class CortexCLI:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             if json_output:
-
                 print(json.dumps({"success": False, "error": str(e), "error_type": "RuntimeError"}))
             else:
                 self._print_error(f"API call failed: {str(e)}")
@@ -1740,7 +1738,6 @@ class CortexCLI:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             if json_output:
-
                 print(json.dumps({"success": False, "error": str(e), "error_type": "OSError"}))
             else:
                 self._print_error(f"System error: {str(e)}")
