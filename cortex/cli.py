@@ -2594,7 +2594,9 @@ class CortexCLI:
         if "cpu" in result:
             cpu = result["cpu"]
             usage = cpu.get("usage_percent", 0)
-            color = "red" if usage >= cpu_critical else "yellow" if usage >= cpu_warning else "green"
+            color = (
+                "red" if usage >= cpu_critical else "yellow" if usage >= cpu_warning else "green"
+            )
             health_table.add_row(
                 "CPU Usage", f"[{color}]{usage:.1f}%[/{color}] ({cpu.get('cores', 0)} cores)"
             )
@@ -2603,7 +2605,9 @@ class CortexCLI:
         if "memory" in result:
             mem = result["memory"]
             usage = mem.get("usage_percent", 0)
-            color = "red" if usage >= mem_critical else "yellow" if usage >= mem_warning else "green"
+            color = (
+                "red" if usage >= mem_critical else "yellow" if usage >= mem_warning else "green"
+            )
             mem_gb = mem.get("used_bytes", 0) / (1024**3)
             mem_total_gb = mem.get("total_bytes", 0) / (1024**3)
             health_table.add_row(
@@ -2615,7 +2619,9 @@ class CortexCLI:
         if "disk" in result:
             disk = result["disk"]
             usage = disk.get("usage_percent", 0)
-            color = "red" if usage >= disk_critical else "yellow" if usage >= disk_warning else "green"
+            color = (
+                "red" if usage >= disk_critical else "yellow" if usage >= disk_warning else "green"
+            )
             disk_gb = disk.get("used_bytes", 0) / (1024**3)
             disk_total_gb = disk.get("total_bytes", 0) / (1024**3)
             mount_point = disk.get("mount_point", "/")

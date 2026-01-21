@@ -402,6 +402,7 @@ def ensure_config_file() -> bool:
         bool: True if config file exists or was created successfully, False otherwise.
     """
     import os
+
     config_path = Path(CONFIG_FILE)
 
     # If config already exists, we're done
@@ -428,11 +429,9 @@ def ensure_config_file() -> bool:
                     text=True,
                 )
                 if result.returncode != 0:
-                    console.print(
-                        f"[red]Failed to create config directory: {result.stderr}[/red]"
-                    )
+                    console.print(f"[red]Failed to create config directory: {result.stderr}[/red]")
                     return False
-        
+
         # Copy template to config file (requires sudo)
         result = subprocess.run(
             ["sudo", "cp", str(CONFIG_EXAMPLE), CONFIG_FILE],
@@ -483,7 +482,7 @@ def install_daemon() -> bool:
         console.print("[yellow]Warning: Config template missing or failed to create[/yellow]")
         console.print("[red]Error: Cannot proceed with installation without config file[/red]")
         sys.exit(1)
-    
+
     console.print("[cyan]Installing the daemon...[/cyan]")
     result = subprocess.run(["sudo", str(INSTALL_SCRIPT)], check=False)
     success = result.returncode == 0
