@@ -87,7 +87,7 @@ To verify the system manually:
    This tests the full pipeline including LLM-based risk assessment.
    ```bash
    # 1. Ensure your API key is set
-   export ANTHROPIC_API_KEY=sk-...
+   export ANTHROPIC_API_KEY=sk-ant-...
 
    # 2. Run an installation that might trigger warnings (e.g., CUDA on non-NVIDIA system)
    cortex install "cuda-toolkit" --dry-run
