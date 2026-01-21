@@ -58,7 +58,7 @@ deb:
 	./scripts/build-deb.sh --no-sign
 
 deb-install: deb
-	sudo dpkg -i dist/cortex-linux_*.deb || sudo apt-get install -f -y
+	sudo dpkg -i dist/*.deb || sudo apt-get install -f -y
 	@echo "Package installed"
 
 deb-clean:

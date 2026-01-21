@@ -32,30 +32,20 @@ jobs:
           path: dist/
 
   build-deb:
-    name: Build .deb for ${{ matrix.codename }}
-    runs-on: ubuntu-latest
+    name: Build .deb (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       matrix:
         include:
-          - distro: ubuntu
-            version: "22.04"
-            codename: jammy
-          - distro: ubuntu
-            version: "24.04"
-            codename: noble
-          - distro: debian
-            version: "12"
-            codename: bookworm
-    container:
-      image: ${{ matrix.distro }}:${{ matrix.version }}
+          # Build on Ubuntu 22.04 for max compatibility
+          # Works on Ubuntu 22.04+, Debian 12+
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
     steps:
-      - name: Install git
-        run: |
-          apt-get update
-          apt-get install -y git ca-certificates
-
       - uses: actions/checkout@v4
 
       - name: Install build dependencies
@@ -74,25 +64,17 @@ jobs:
           # Update changelog version
           sed -i "s/cortex-linux ([^)]*)/cortex-linux ($VERSION)/" debian/changelog
 
-          # Update distribution to match target
-          sed -i "s/) unstable;/) ${{ matrix.codename }};/" debian/changelog
+          # Set distribution to jammy (built on 22.04 for compatibility)
+          sed -i "s/) unstable;/) jammy;/" debian/changelog
 
       - name: Build .deb package
         run: ./scripts/build-deb.sh --no-sign
 
-      - name: Prepare artifacts
-        run: |
-          mkdir -p output
-          ARCH=$(dpkg --print-architecture)
-          VERSION=$(head -1 debian/changelog | sed 's/cortex-linux (\([^)]*\)).*/\1/')
-          # Rename with codename for distro-specific packages
-          mv dist/*.deb output/cortex-linux_${VERSION}_${{ matrix.codename }}_${ARCH}.deb
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: deb-${{ matrix.codename }}
-          path: output/*.deb
+          name: deb-${{ matrix.arch }}
+          path: dist/*.deb
 
   publish-pypi:
     needs: build-python
@@ -124,7 +106,7 @@ jobs:
           path: artifacts/
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/python-dist/*

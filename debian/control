@@ -15,7 +15,7 @@ Vcs-Browser: https://github.com/cortexlinux/cortex
 Vcs-Git: https://github.com/cortexlinux/cortex.git
 
 Package: cortex-linux
-Architecture: all
+Architecture: any
 Depends: ${misc:Depends}, python3
 Description: AI-powered package manager for Debian/Ubuntu
  Cortex is an AI-powered package manager that understands natural language

@@ -2,7 +2,7 @@
 # Build .deb package for cortex-linux
 # Usage: ./scripts/build-deb.sh [--no-sign] [--install-deps] [--clean]
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -111,7 +111,11 @@ rm -f debian/files
 rm -f debian/*.substvars
 
 # Get version from pyproject.toml
-VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/' || true)
+if [[ -z "${VERSION:-}" ]]; then
+    echo "Error: Could not extract version from pyproject.toml" >&2
+    exit 1
+fi
 echo "Building cortex-linux version $VERSION"
 
 # Update changelog version if needed

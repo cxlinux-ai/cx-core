@@ -1,5 +1,4 @@
 include README.md
 include LICENSE
-recursive-include LLM *.py
 recursive-include cortex *.py
-include LLM/requirements.txt
+recursive-include cortex/i18n/locales *.yaml
