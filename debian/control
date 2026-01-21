@@ -1,0 +1,29 @@
+Source: cortex-linux
+Section: admin
+Priority: optional
+Maintainer: Cortex Linux <mike@cortexlinux.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-virtualenv (>= 1.2),
+               python3,
+               python3-dev,
+               python3-venv,
+               python3-pip,
+               python3-setuptools
+Standards-Version: 4.6.0
+Homepage: https://github.com/cortexlinux/cortex
+Vcs-Browser: https://github.com/cortexlinux/cortex
+Vcs-Git: https://github.com/cortexlinux/cortex.git
+
+Package: cortex-linux
+Architecture: all
+Depends: ${misc:Depends}, python3
+Description: AI-powered package manager for Debian/Ubuntu
+ Cortex is an AI-powered package manager that understands natural language
+ commands for installing, updating, and managing packages on Debian and
+ Ubuntu systems.
+ .
+ Features:
+  - Natural language package management
+  - AI-assisted dependency resolution
+  - Hardware profiling for optimal package selection
+  - Integration with apt, snap, and flatpak

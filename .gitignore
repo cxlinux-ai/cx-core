@@ -59,3 +59,14 @@ htmlcov/
 *.log
 logs/
 coverage.xml
+
+# Debian packaging
+debian/cortex-linux/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.debhelper
+*.deb
+*.buildinfo
+*.changes

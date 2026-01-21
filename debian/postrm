@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "purge" ]; then
+    rm -rf /opt/venvs/cortex-linux
+fi
+
+#DEBHELPER#

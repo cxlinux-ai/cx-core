@@ -1,19 +1,25 @@
 # Cortex Linux - Developer Makefile
 # Usage: make [target]
 
-.PHONY: dev test lint format check clean help
+.PHONY: dev test lint format check clean help deb deb-deps deb-install deb-clean
 
 PYTHON ?= python3
 
 help:
 	@echo "Cortex Linux - Development Commands"
 	@echo ""
-	@echo "  make dev      Install development dependencies"
-	@echo "  make test     Run test suite"
-	@echo "  make lint     Run linters (ruff, black check)"
-	@echo "  make format   Auto-format code"
-	@echo "  make check    Run all checks (format + lint + test)"
-	@echo "  make clean    Remove build artifacts"
+	@echo "  make dev         Install development dependencies"
+	@echo "  make test        Run test suite"
+	@echo "  make lint        Run linters (ruff, black check)"
+	@echo "  make format      Auto-format code"
+	@echo "  make check       Run all checks (format + lint + test)"
+	@echo "  make clean       Remove build artifacts"
+	@echo ""
+	@echo "Debian Packaging:"
+	@echo "  make deb-deps    Install .deb build dependencies"
+	@echo "  make deb         Build .deb package"
+	@echo "  make deb-install Build and install .deb package"
+	@echo "  make deb-clean   Clean debian build artifacts"
 	@echo ""
 
 dev:
@@ -42,4 +48,18 @@ clean:
 	rm -rf build/ dist/ *.egg-info/
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
-	@echo "✅ Cleaned"
+	@echo "Cleaned"
+
+# Debian packaging targets
+deb-deps:
+	./scripts/build-deb.sh --install-deps
+
+deb:
+	./scripts/build-deb.sh --no-sign
+
+deb-install: deb
+	sudo dpkg -i dist/cortex-linux_*.deb || sudo apt-get install -f -y
+	@echo "Package installed"
+
+deb-clean:
+	./scripts/build-deb.sh --clean

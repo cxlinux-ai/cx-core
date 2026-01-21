@@ -1,0 +1,27 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: cortex-linux
+Upstream-Contact: Cortex Linux <mike@cortexlinux.com>
+Source: https://github.com/cortexlinux/cortex
+
+Files: *
+Copyright: 2024-2025 Cortex Linux
+License: BUSL-1.1
+
+License: BUSL-1.1
+ Business Source License 1.1
+ .
+ Licensor: Cortex Linux
+ .
+ Licensed Work: Cortex
+ .
+ Additional Use Grant: None
+ .
+ Change Date: Four years from the date the Licensed Work is published.
+ .
+ Change License: Apache License, Version 2.0
+ .
+ For information about the Business Source License, please see
+ https://mariadb.com/bsl11/
+ .
+ The full license text is available in the LICENSE file in the source
+ distribution or at https://github.com/cortexlinux/cortex/blob/main/LICENSE

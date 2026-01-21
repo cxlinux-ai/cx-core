@@ -1,0 +1,36 @@
+#!/usr/bin/make -f
+
+# Debian rules file for cortex-linux
+# Uses dh-virtualenv for Python packaging
+
+export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export PYBUILD_NAME = cortex-linux
+
+# Virtualenv installation directory
+VENV_DIR = /opt/venvs/cortex-linux
+
+# Package directory
+DESTDIR = debian/cortex-linux
+
+%:
+	dh $@ --with python-virtualenv
+
+override_dh_virtualenv:
+	dh_virtualenv \
+		--install-suffix cortex-linux \
+		--python /usr/bin/python3 \
+		--upgrade-pip \
+		--preinstall setuptools \
+		--preinstall wheel \
+		--builtin-venv
+
+override_dh_auto_test:
+	# Skip tests during package build
+	# Tests should be run separately in CI
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(VENV_DIR)/lib

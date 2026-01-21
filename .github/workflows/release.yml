@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Release
 
 on:
   release:
@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-python:
+    name: Build Python package
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,12 +28,76 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: python-dist
           path: dist/
 
-  publish:
-    needs: build
+  build-deb:
+    name: Build .deb for ${{ matrix.codename }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - distro: ubuntu
+            version: "22.04"
+            codename: jammy
+          - distro: ubuntu
+            version: "24.04"
+            codename: noble
+          - distro: debian
+            version: "12"
+            codename: bookworm
+    container:
+      image: ${{ matrix.distro }}:${{ matrix.version }}
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: ./scripts/build-deb.sh --install-deps
+
+      - name: Update changelog for release
+        run: |
+          # Get version from tag or pyproject.toml
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+          else
+            VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          fi
+
+          # Update changelog version
+          sed -i "s/cortex-linux ([^)]*)/cortex-linux ($VERSION)/" debian/changelog
+
+          # Update distribution to match target
+          sed -i "s/) unstable;/) ${{ matrix.codename }};/" debian/changelog
+
+      - name: Build .deb package
+        run: ./scripts/build-deb.sh --no-sign
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p output
+          ARCH=$(dpkg --print-architecture)
+          VERSION=$(head -1 debian/changelog | sed 's/cortex-linux (\([^)]*\)).*/\1/')
+          # Rename with codename for distro-specific packages
+          mv dist/*.deb output/cortex-linux_${VERSION}_${{ matrix.codename }}_${ARCH}.deb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.codename }}
+          path: output/*.deb
+
+  publish-pypi:
+    needs: build-python
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
     environment: pypi
     permissions:
       id-token: write
@@ -40,8 +105,81 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: python-dist
           path: dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  upload-release-assets:
+    needs: [build-python, build-deb]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/python-dist/*
+            artifacts/deb-*/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ========================================================================
+  # Trigger APT Repository Update
+  # ========================================================================
+  # This sends a repository_dispatch event to the apt-repo with package URLs
+  # The apt-repo will download, commit (LFS), and deploy to GitHub Pages
+  trigger-apt-repo:
+    needs: upload-release-assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name == 'release'
+    steps:
+      - name: Download deb artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          path: release/
+          merge-multiple: true
+
+      - name: Get package info for APT repo
+        id: packages
+        run: |
+          cd release
+          # Build JSON array of packages with metadata
+          PACKAGES="[]"
+          for deb in *.deb; do
+            if [ -f "$deb" ]; then
+              # Extract package name and version from filename
+              PKG_NAME=$(echo "$deb" | sed 's/_.*//') 
+              URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${deb}"
+              PACKAGES=$(echo "$PACKAGES" | jq --arg name "$PKG_NAME" --arg url "$URL" --arg file "$deb" \
+                '. += [{"name": $name, "url": $url, "file": $file}]')
+            fi
+          done
+          echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          echo "📦 Packages to publish: $PACKAGES"
+
+      - name: Trigger APT Repository Update
+        if: steps.packages.outputs.packages != '[]'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.APT_REPO_PAT }}
+          repository: cortexlinux/apt-repo
+          event-type: add-packages
+          client-payload: |
+            {
+              "packages": ${{ steps.packages.outputs.packages }},
+              "version": "${{ github.ref_name }}",
+              "suite": "cortex",
+              "source_repo": "${{ github.repository }}"
+            }
