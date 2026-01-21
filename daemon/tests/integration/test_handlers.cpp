@@ -474,6 +474,26 @@ TEST_F(HandlersTest, AlertsDismiss) {
     EXPECT_FALSE(found);
 }
 
+TEST_F(HandlersTest, AlertsDismissAll) {
+    start_server_with_monitoring();
+    
+    // Create multiple alerts
+    for (int i = 0; i < 3; ++i) {
+        cortexd::Alert alert;
+        alert.severity = cortexd::AlertSeverity::INFO;
+        alert.category = cortexd::AlertCategory::SYSTEM;
+        alert.source = "test";
+        alert.message = "Test alert " + std::to_string(i);
+        alert.status = cortexd::AlertStatus::ACTIVE;
+        alert_manager_->create_alert(alert);
+    }
+    
+    auto response = send_json_request("alerts.dismiss", {{"all", true}});
+    
+    EXPECT_TRUE(response["success"]);
+    EXPECT_GE(response["result"]["dismissed"], 3);
+}
+
 // ============================================================================
 // Response format tests
 // ============================================================================

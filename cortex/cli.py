@@ -2706,6 +2706,21 @@ class CortexCLI:
             cx_print(f"Failed: {response.error}", "error")
             return 1
 
+        # Handle dismiss-all
+        if getattr(args, "dismiss_all", False):
+            cx_header("Dismissing All Alerts")
+            success, response = self._daemon_ipc_call(
+                "alerts_dismiss_all", lambda c: c.alerts_dismiss_all()
+            )
+            if not success:
+                return 1
+            if response.success:
+                count = response.result.get("dismissed", 0) if response.result else 0
+                cx_print(f"Dismissed {count} alert(s)", "success")
+                return 0
+            cx_print(f"Failed: {response.error}", "error")
+            return 1
+
         # Handle dismiss
         dismiss_uuid = getattr(args, "dismiss", None)
         if dismiss_uuid:
@@ -4603,6 +4618,11 @@ def main():
         "--acknowledge-all",
         action="store_true",
         help="Acknowledge all active alerts",
+    )
+    daemon_alerts_parser.add_argument(
+        "--dismiss-all",
+        action="store_true",
+        help="Dismiss all active and acknowledged alerts",
     )
     daemon_alerts_parser.add_argument(
         "--dismiss",

@@ -228,20 +228,25 @@ Response Handlers::handle_alerts_dismiss(const Request& req, std::shared_ptr<Ale
         return Response::err("Alert manager not available", ErrorCodes::INTERNAL_ERROR);
     }
     
-    std::string uuid;
-    if (req.params.is_object() && req.params.contains("uuid")) {
-        uuid = req.params["uuid"].get<std::string>();
-    } else {
-        return Response::err("UUID required for dismiss", ErrorCodes::INVALID_PARAMS);
-    }
-    
-    if (alerts->dismiss_alert(uuid)) {
+    // Check if dismissing all or specific UUID
+    if (req.params.is_object() && req.params.contains("all") && req.params["all"].get<bool>()) {
+        size_t count = alerts->dismiss_all();
         return Response::ok({
-            {"dismissed", true},
-            {"uuid", uuid}
+            {"dismissed", count},
+            {"message", "Dismissed " + std::to_string(count) + " alert(s)"}
         });
+    } else if (req.params.is_object() && req.params.contains("uuid")) {
+        std::string uuid = req.params["uuid"].get<std::string>();
+        if (alerts->dismiss_alert(uuid)) {
+            return Response::ok({
+                {"dismissed", true},
+                {"uuid", uuid}
+            });
+        } else {
+            return Response::err("Alert not found", ErrorCodes::ALERT_NOT_FOUND);
+        }
     } else {
-        return Response::err("Alert not found", ErrorCodes::ALERT_NOT_FOUND);
+        return Response::err("UUID or 'all' parameter required for dismiss", ErrorCodes::INVALID_PARAMS);
     }
 }
 

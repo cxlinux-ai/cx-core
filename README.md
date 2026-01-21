@@ -209,6 +209,7 @@ cortex role set <slug>
 | `cortex daemon alerts --severity <level>` | Filter alerts by severity (info/warning/error/critical) |
 | `cortex daemon alerts --category <cat>` | Filter alerts by category (cpu/memory/disk/apt/cve/service/system) |
 | `cortex daemon alerts --acknowledge-all` | Acknowledge all active alerts |
+| `cortex daemon alerts --dismiss-all` | Dismiss all active and acknowledged alerts |
 | `cortex daemon alerts --dismiss <uuid>` | Dismiss a specific alert by UUID |
 | `cortex daemon shutdown` | Request daemon shutdown |
 

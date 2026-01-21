@@ -308,6 +308,15 @@ class DaemonClient:
         """
         return self._send_request("alerts.dismiss", {"uuid": uuid})
 
+    def alerts_dismiss_all(self) -> DaemonResponse:
+        """
+        Dismiss all active and acknowledged alerts.
+
+        Returns:
+            DaemonResponse with count of dismissed alerts.
+        """
+        return self._send_request("alerts.dismiss", {"all": True})
+
 
 class DaemonNotInstalledError(Exception):
     """Raised when the daemon is not installed."""

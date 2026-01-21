@@ -133,7 +133,7 @@ AlertManager::AlertManager(const std::string& db_path)
     : db_path_(db_path), db_handle_(nullptr),
       stmt_insert_(nullptr), stmt_select_(nullptr), stmt_select_all_(nullptr),
       stmt_update_ack_(nullptr), stmt_update_ack_all_(nullptr),
-      stmt_update_dismiss_(nullptr), stmt_count_(nullptr) {
+      stmt_update_dismiss_(nullptr), stmt_update_dismiss_all_(nullptr), stmt_count_(nullptr) {
 }
 
 AlertManager::~AlertManager() {
@@ -265,6 +265,7 @@ bool AlertManager::initialize() {
     
     // Prepare and cache all statements
     if (!prepare_statements()) {
+        finalize_statements();
         sqlite3_close(db);
         db_handle_ = nullptr;
         return false;
@@ -294,6 +295,8 @@ bool AlertManager::prepare_statements() {
     const char* update_ack_all_sql = "UPDATE alerts SET status = ?, acknowledged_at = ? WHERE status = ?";
     
     const char* update_dismiss_sql = "UPDATE alerts SET status = ?, dismissed_at = ? WHERE uuid = ? AND status = ?";
+    
+    const char* update_dismiss_all_sql = "UPDATE alerts SET status = ?, dismissed_at = ? WHERE status != ?";
     
     const char* count_sql = "SELECT severity, COUNT(*) FROM alerts WHERE status != ? GROUP BY severity";
     
@@ -335,6 +338,12 @@ bool AlertManager::prepare_statements() {
         return false;
     }
     
+    rc = sqlite3_prepare_v2(db, update_dismiss_all_sql, -1, reinterpret_cast<sqlite3_stmt**>(&stmt_update_dismiss_all_), nullptr);
+    if (rc != SQLITE_OK) {
+        LOG_ERROR("AlertManager", "Failed to prepare update_dismiss_all statement: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
     rc = sqlite3_prepare_v2(db, count_sql, -1, reinterpret_cast<sqlite3_stmt**>(&stmt_count_), nullptr);
     if (rc != SQLITE_OK) {
         LOG_ERROR("AlertManager", "Failed to prepare count statement: " + std::string(sqlite3_errmsg(db)));
@@ -368,6 +377,10 @@ void AlertManager::finalize_statements() {
     if (stmt_update_dismiss_) {
         sqlite3_finalize(static_cast<sqlite3_stmt*>(stmt_update_dismiss_));
         stmt_update_dismiss_ = nullptr;
+    }
+    if (stmt_update_dismiss_all_) {
+        sqlite3_finalize(static_cast<sqlite3_stmt*>(stmt_update_dismiss_all_));
+        stmt_update_dismiss_all_ = nullptr;
     }
     if (stmt_count_) {
         sqlite3_finalize(static_cast<sqlite3_stmt*>(stmt_count_));
@@ -842,6 +855,48 @@ bool AlertManager::dismiss_alert(const std::string& uuid) {
     }
     
     return false;
+}
+
+size_t AlertManager::dismiss_all() {
+    if (!db_handle_ || !stmt_update_dismiss_all_) {
+        return 0;
+    }
+    
+    sqlite3* db = static_cast<sqlite3*>(db_handle_);
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::string timestamp_str = format_utc_time(time_t);
+    
+    int rc;
+    int changes = 0;
+    {
+        // SQLite prepared statements are NOT thread-safe - protect with mutex
+        std::lock_guard<std::mutex> lock(stmt_mutex_);
+        
+        sqlite3_stmt* stmt = static_cast<sqlite3_stmt*>(stmt_update_dismiss_all_);
+        sqlite3_reset(stmt);
+        
+        sqlite3_bind_int(stmt, 1, static_cast<int>(AlertStatus::DISMISSED));
+        sqlite3_bind_text(stmt, 2, timestamp_str.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 3, static_cast<int>(AlertStatus::DISMISSED));
+        
+        rc = sqlite3_step(stmt);
+        changes = (rc == SQLITE_DONE) ? sqlite3_changes(db) : 0;
+        
+        // Update counters while holding lock to prevent race with concurrent inserts
+        // Reset all to 0 since all active/acknowledged alerts are now dismissed
+        // Note: This is approximate - for exact counts we'd need to query by severity
+        // But for dismiss_all, we typically want to clear all counters anyway
+        if (changes > 0) {
+            count_info_.store(0, std::memory_order_relaxed);
+            count_warning_.store(0, std::memory_order_relaxed);
+            count_error_.store(0, std::memory_order_relaxed);
+            count_critical_.store(0, std::memory_order_relaxed);
+            count_total_.store(0, std::memory_order_relaxed);
+        }
+    }  // Lock released
+    
+    return changes;
 }
 
 json AlertManager::get_alert_counts() {

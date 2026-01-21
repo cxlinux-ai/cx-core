@@ -166,6 +166,7 @@ cortex daemon alerts                          # List all active alerts
 cortex daemon alerts --severity warning      # Filter by severity
 cortex daemon alerts --category cpu          # Filter by category
 cortex daemon alerts --acknowledge-all       # Acknowledge all alerts
+cortex daemon alerts --dismiss-all            # Dismiss all active and acknowledged alerts
 cortex daemon alerts --dismiss <uuid>        # Dismiss specific alert
 
 # Install/uninstall daemon
@@ -188,7 +189,7 @@ cortex daemon uninstall
 | `health` | Get system health metrics (CPU, memory, disk, services) |
 | `alerts` / `alerts.get` | Get alerts with optional filtering |
 | `alerts.acknowledge` | Acknowledge alerts (all or by UUID) |
-| `alerts.dismiss` | Dismiss a specific alert by UUID |
+| `alerts.dismiss` | Dismiss alerts (all or by UUID) |
 
 ### Example
 
@@ -238,6 +239,9 @@ echo '{"method":"alerts","params":{"severity":"warning"}}' | socat - UNIX-CONNEC
 
 # Acknowledge all alerts
 echo '{"method":"alerts.acknowledge","params":{"all":true}}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
+
+# Dismiss all alerts
+echo '{"method":"alerts.dismiss","params":{"all":true}}' | socat - UNIX-CONNECT:/run/cortex/cortex.sock
 ```
 
 ## Configuration

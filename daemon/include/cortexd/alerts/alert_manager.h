@@ -137,6 +137,12 @@ public:
     bool dismiss_alert(const std::string& uuid);
     
     /**
+     * @brief Dismiss all active and acknowledged alerts
+     * @return Number of alerts dismissed
+     */
+    size_t dismiss_all();
+    
+    /**
      * @brief Get alert counts by severity
      */
     json get_alert_counts();
@@ -188,6 +194,7 @@ private:
     void* stmt_update_ack_;   // sqlite3_stmt*
     void* stmt_update_ack_all_; // sqlite3_stmt*
     void* stmt_update_dismiss_; // sqlite3_stmt*
+    void* stmt_update_dismiss_all_; // sqlite3_stmt*
     void* stmt_count_;        // sqlite3_stmt*
     
     // Mutex to protect prepared statement usage (SQLite statements are NOT thread-safe)

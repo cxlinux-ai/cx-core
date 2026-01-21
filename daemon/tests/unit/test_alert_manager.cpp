@@ -185,6 +185,35 @@ TEST_F(AlertManagerTest, DismissAlert) {
     ASSERT_TRUE(retrieved->dismissed_at.has_value());
 }
 
+TEST_F(AlertManagerTest, DismissAll) {
+    // Create multiple active and acknowledged alerts
+    for (int i = 0; i < 3; ++i) {
+        Alert alert;
+        alert.severity = AlertSeverity::WARNING;
+        alert.category = AlertCategory::CPU;
+        alert.source = "test";
+        alert.message = "Alert " + std::to_string(i);
+        alert.status = AlertStatus::ACTIVE;
+        alert_manager_->create_alert(alert);
+    }
+    
+    // Acknowledge one alert
+    AlertFilter filter;
+    filter.status = AlertStatus::ACTIVE;
+    auto active_alerts = alert_manager_->get_alerts(filter);
+    if (!active_alerts.empty()) {
+        alert_manager_->acknowledge_alert(active_alerts[0].uuid);
+    }
+    
+    size_t count = alert_manager_->dismiss_all();
+    ASSERT_GE(count, 3);  // Should dismiss all active and acknowledged alerts
+    
+    AlertFilter dismissed_filter;
+    dismissed_filter.status = AlertStatus::DISMISSED;
+    auto dismissed_alerts = alert_manager_->get_alerts(dismissed_filter);
+    ASSERT_GE(dismissed_alerts.size(), 3);
+}
+
 TEST_F(AlertManagerTest, GetAlertCounts) {
     // Create alerts with different severities
     Alert alert1;
