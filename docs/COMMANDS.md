@@ -8,6 +8,8 @@ This document provides a comprehensive reference for all commands available in t
 |---------|-------------|
 | `cortex` | Show help and available commands |
 | `cortex install <pkg>` | Install software |
+| `cortex voice` | Voice input mode (hands-free with F9) |
+| `cortex ask <question>` | Ask questions about your system or learn about Linux |
 | `cortex demo` | See Cortex in action |
 | `cortex wizard` | Configure API key |
 | `cortex status` | Show comprehensive system status and health checks |
@@ -71,6 +73,64 @@ cortex install "python3 with pip and virtualenv" --execute
 - Without `--execute`, Cortex only shows the commands it would run
 - The `--dry-run` flag is recommended for first-time use to verify commands
 - Installation is recorded in history for potential rollback
+
+---
+
+### `cortex ask`
+
+Ask natural language questions about your system or learn about Linux, packages, and best practices. The AI automatically detects whether you're asking a diagnostic question about your system or an educational question to learn something new.
+
+**Usage:**
+```bash
+cortex ask "<question>"
+```
+
+**Question Types:**
+
+**Diagnostic Questions** - Questions about your specific system:
+```bash
+# System status queries
+cortex ask "why is my disk full"
+cortex ask "what packages need updating"
+cortex ask "is my Python version compatible with TensorFlow"
+cortex ask "check my GPU drivers"
+```
+
+**Educational Questions** - Learn about Linux, packages, and best practices:
+```bash
+# Explanations and tutorials
+cortex ask "explain how Docker containers work"
+cortex ask "what is systemd and how do I use it"
+cortex ask "teach me about nginx configuration"
+cortex ask "best practices for securing a Linux server"
+cortex ask "how to set up a Python virtual environment"
+```
+
+**Features:**
+- **Automatic Intent Detection**: The AI distinguishes between diagnostic and educational queries
+- **System-Aware Responses**: Uses your actual system context (OS, Python version, GPU, etc.)
+- **Structured Learning**: Educational responses include examples, best practices, and related topics
+- **Learning Progress Tracking**: Educational topics you explore are tracked in `~/.cortex/learning_history.json`
+- **Response Caching (best-effort)**: Repeated questions may return cached responses for faster performance; caching is disabled when `SemanticCache` is not available
+
+**Examples:**
+```bash
+# Diagnostic: Get specific info about your system
+cortex ask "what version of Python do I have"
+cortex ask "can I run PyTorch on this system"
+
+# Educational: Learn with structured tutorials
+cortex ask "explain how apt package management works"
+cortex ask "what are best practices for Docker security"
+cortex ask "guide to setting up nginx as a reverse proxy"
+
+# Mix of both
+cortex ask "how do I install and configure Redis"
+```
+
+**Notes:**
+- Educational responses are longer and include code examples with syntax highlighting
+- Learning history helps track what topics you've explored over time
 
 ---
 
@@ -541,6 +601,24 @@ cortex stack webdev --dry-run
 
 # 4. Install the stack
 cortex stack webdev
+```
+
+### Learning with Cortex Ask
+```bash
+# 1. Ask diagnostic questions about your system
+cortex ask "what version of Python do I have"
+cortex ask "is Docker installed"
+
+# 2. Learn about new topics with educational queries
+cortex ask "explain how Docker containers work"
+cortex ask "best practices for nginx configuration"
+
+# 3. Get step-by-step tutorials
+cortex ask "teach me how to set up a Python virtual environment"
+cortex ask "guide to configuring SSH keys"
+
+# 4. Your learning topics are automatically tracked
+# View at ~/.cortex/learning_history.json
 ```
 
 ---

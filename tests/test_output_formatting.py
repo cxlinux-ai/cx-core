@@ -5,6 +5,7 @@ Issue: #242 - Output Polish: Rich Formatting with Colors, Boxes, Spinners
 """
 
 import io
+import re
 from unittest.mock import patch
 
 import pytest
@@ -51,6 +52,15 @@ from cortex.output_formatter import (
     print_success,
     print_warning,
 )
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text.
+
+    Rich console outputs styling as ANSI escape codes, which can interfere
+    with text assertions. This helper removes them for clean text testing.
+    """
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 class TestBrandingColors:
@@ -126,17 +136,19 @@ class TestCxStep:
         """Test step numbering format."""
         cx_step(1, 4, "First step")
         captured = capsys.readouterr()
-        assert "[1/4]" in captured.out
-        assert "First step" in captured.out
+        output = strip_ansi(captured.out)
+        assert "[1/4]" in output
+        assert "First step" in output
 
     def test_cx_step_multiple(self, capsys):
         """Test multiple steps."""
         for i in range(1, 4):
             cx_step(i, 3, f"Step {i}")
         captured = capsys.readouterr()
-        assert "[1/3]" in captured.out
-        assert "[2/3]" in captured.out
-        assert "[3/3]" in captured.out
+        output = strip_ansi(captured.out)
+        assert "[1/3]" in output
+        assert "[2/3]" in output
+        assert "[3/3]" in output
 
 
 class TestCxHeader:

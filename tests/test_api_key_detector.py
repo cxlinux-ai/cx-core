@@ -159,10 +159,11 @@ class TestAPIKeyDetector:
         """Test when no key is found."""
         with patch.dict(os.environ, {}, clear=True):
             with patch("pathlib.Path.home", return_value=Path("/nonexistent")):
-                found, key, provider, _ = detector.detect()
-                assert found is False
-                assert key is None
-                assert provider is None
+                with patch("pathlib.Path.cwd", return_value=Path("/nonexistent")):
+                    found, key, provider, _ = detector.detect()
+                    assert found is False
+                    assert key is None
+                    assert provider is None
 
     def test_extract_key_from_env_file(self, detector):
         """Test extracting key from .env format file."""

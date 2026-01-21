@@ -64,6 +64,7 @@ cortex install "tools for video compression"
 | Feature | Description |
 |---------|-------------|
 | **Natural Language** | Describe what you need in plain English |
+| **Voice Input** | Hands-free mode with Whisper speech recognition ([F9 to speak](docs/VOICE_INPUT.md)) |
 | **Dry-Run Default** | Preview all commands before execution |
 | **Sandboxed Execution** | Commands run in Firejail isolation |
 | **Full Rollback** | Undo any installation with `cortex rollback` |

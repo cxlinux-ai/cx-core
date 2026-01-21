@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import select
 import sys
 import time
 import uuid
@@ -24,7 +25,6 @@ from cortex.dependency_importer import (
     DependencyImporter,
     PackageEcosystem,
     ParseResult,
-    format_package_list,
 )
 from cortex.env_manager import EnvironmentManager, get_env_manager
 from cortex.i18n import SUPPORTED_LANGUAGES, LanguageConfig, get_language, set_language, t
@@ -70,6 +70,8 @@ class CortexCLI:
         RiskLevel.HIGH: "orange1",
         RiskLevel.CRITICAL: "red",
     }
+    # Installation messages
+    INSTALL_FAIL_MSG = "Installation failed"
 
     def __init__(self, verbose: bool = False):
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -202,25 +204,26 @@ class CortexCLI:
         return None
 
     def _get_provider(self) -> str:
-        # Check environment variable for explicit provider choice
+        # 1. Check explicit provider override FIRST (highest priority)
         explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
+            self._debug(f"Using explicit CORTEX_PROVIDER={explicit_provider}")
             return explicit_provider
 
-        # Use provider from auto-detection (set by _get_api_key)
+        # 2. Use provider from auto-detection (set by _get_api_key)
         detected = getattr(self, "_detected_provider", None)
         if detected == "anthropic":
             return "claude"
         elif detected == "openai":
             return "openai"
 
-        # Check env vars (may have been set by auto-detect)
+        # 3. Check env vars (may have been set by auto-detect)
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
         elif os.environ.get("OPENAI_API_KEY"):
             return "openai"
 
-        # Fallback to Ollama for offline mode
+        # 4. Fallback to Ollama for offline mode
         return "ollama"
 
     def _print_status(self, emoji: str, message: str):
@@ -602,7 +605,6 @@ class CortexCLI:
             DockerSandbox,
             SandboxAlreadyExistsError,
             SandboxNotFoundError,
-            SandboxTestStatus,
         )
 
         action = getattr(args, "sandbox_action", None)
@@ -869,7 +871,8 @@ class CortexCLI:
                 provider=provider,
             )
             answer = handler.ask(question)
-            console.print(answer)
+            # Render as markdown for proper formatting in terminal
+            console.print(Markdown(answer))
             return 0
         except ImportError as e:
             # Provide a helpful message if provider SDK is missing
@@ -885,6 +888,560 @@ class CortexCLI:
             self._print_error(str(e))
             return 1
 
+    def _ask_with_session_key(self, question: str, api_key: str, provider: str) -> int:
+        """Answer a question using provided session API key without re-prompting.
+
+        This wrapper is used by continuous voice mode to avoid re-calling _get_api_key().
+        """
+        self._debug(f"Using provider: {provider}")
+
+        try:
+            handler = AskHandler(
+                api_key=api_key,
+                provider=provider,
+            )
+            answer = handler.ask(question)
+            console.print(answer)
+            return 0
+        except ImportError as e:
+            self._print_error(str(e))
+            cx_print(
+                "Install the required SDK or set CORTEX_PROVIDER=ollama for local mode.", "info"
+            )
+            return 1
+        except ValueError as e:
+            self._print_error(str(e))
+            return 1
+        except RuntimeError as e:
+            self._print_error(str(e))
+            return 1
+
+    def _install_with_session_key(
+        self,
+        software: str,
+        api_key: str,
+        provider: str,
+        execute: bool = False,
+        dry_run: bool = False,
+    ) -> int:
+        """Install software using provided session API key without re-prompting.
+
+        This wrapper is used by continuous voice mode to avoid re-calling _get_api_key().
+        """
+        history = InstallationHistory()
+        install_id = None
+        start_time = datetime.now()
+
+        # Validate input first
+        is_valid, error = validate_install_request(software)
+        if not is_valid:
+            self._print_error(error)
+            return 1
+
+        software = self._normalize_software_name(software)
+        self._debug(f"Using provider: {provider}")
+        self._debug("Using session API key: <REDACTED>")
+
+        try:
+            self._print_status("🧠", "Understanding request...")
+            interpreter = CommandInterpreter(api_key=api_key, provider=provider)
+            self._print_status("📦", "Planning installation...")
+
+            for _ in range(10):
+                self._animate_spinner("Analyzing system requirements...")
+            self._clear_line()
+
+            commands = interpreter.parse(f"install {software}")
+
+            if not commands:
+                self._print_error(t("install.no_commands"))
+                return 1
+
+            packages = history._extract_packages_from_commands(commands)
+
+            if execute or dry_run:
+                install_id = history.record_installation(
+                    InstallationType.INSTALL, packages, commands, start_time
+                )
+
+            self._print_status("⚙️", f"Installing {software}...")
+            print("\nGenerated commands:")
+            for i, cmd in enumerate(commands, 1):
+                print(f"  {i}. {cmd}")
+
+            if dry_run:
+                print(f"\n({t('install.dry_run_message')})")
+                if install_id:
+                    history.update_installation(install_id, InstallationStatus.SUCCESS)
+                return 0
+
+            if execute:
+                print(f"\n{t('install.executing')}")
+                coordinator = InstallationCoordinator(commands=commands)
+                result = coordinator.execute()
+
+                if result.success:
+                    if install_id:
+                        history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    return 0
+                else:
+                    error_msg = result.message or "Installation failed"
+                    if install_id:
+                        history.update_installation(
+                            install_id, InstallationStatus.FAILED, error_msg
+                        )
+                    self._print_error(error_msg)
+                    return 1
+            else:
+                # Neither dry_run nor execute - just show commands
+                return 0
+
+        except Exception as e:
+            error_msg = str(e)
+            if install_id:
+                history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
+            self._print_error(error_msg)
+            return 1
+
+    def voice(self, continuous: bool = False, model: str | None = None) -> int:
+        """Handle voice input mode.
+
+        Args:
+            continuous: If True, stay in voice mode until Ctrl+C.
+                       If False, record single input and exit.
+            model: Whisper model name (e.g., 'base.en', 'small.en').
+                  If None, uses CORTEX_WHISPER_MODEL env var or 'base.en'.
+        """
+        import queue
+        import threading
+
+        try:
+            from cortex.voice import (
+                MicrophoneNotFoundError,
+                ModelNotFoundError,
+                VoiceInputError,
+                VoiceInputHandler,
+            )
+        except ImportError:
+            self._print_error("Voice dependencies not installed.")
+            cx_print("Install with: pip install cortex-linux[voice]", "info")
+            return 1
+
+        api_key = self._get_api_key()
+        if not api_key:
+            return 1
+
+        # Capture provider once for session
+        provider = self._get_provider()
+        self._debug(f"Session using provider: {provider}")
+
+        # Display model information if specified
+        if model:
+            model_info = {
+                "tiny.en": "(39 MB, fastest, good for clear speech)",
+                "base.en": "(140 MB, balanced speed/accuracy)",
+                "small.en": "(466 MB, better accuracy)",
+                "medium.en": "(1.5 GB, high accuracy)",
+                "tiny": "(39 MB, multilingual)",
+                "base": "(290 MB, multilingual)",
+                "small": "(968 MB, multilingual)",
+                "medium": "(3 GB, multilingual)",
+                "large": "(6 GB, best accuracy, multilingual)",
+            }
+            cx_print(f"Using Whisper model: {model} {model_info.get(model, '')}", "info")
+
+        # Queue for thread-safe communication between worker and main thread
+        input_queue = queue.Queue()
+        response_queue = queue.Queue()
+
+        def process_voice_command(text: str) -> None:
+            """Process transcribed voice command."""
+            if not text:
+                return
+
+            # Determine if this is an install command or a question
+            text_lower = text.lower().strip()
+            is_install = any(
+                text_lower.startswith(word) for word in ["install", "setup", "add", "get", "put"]
+            )
+
+            if is_install:
+                # Remove the command verb for install
+                software = text
+                for verb in ["install", "setup", "add", "get", "put"]:
+                    if text_lower.startswith(verb):
+                        software = text[len(verb) :].strip()
+                        break
+
+                # Validate software name
+                if not software or len(software) > 200:
+                    cx_print("Invalid software name", "error")
+                    return
+
+                # Check for dangerous characters that shouldn't be in package names
+                dangerous_chars = [";", "&", "|", "`", "$", "(", ")"]
+                if any(char in software for char in dangerous_chars):
+                    cx_print("Invalid characters detected in software name", "error")
+                    return
+
+                cx_print(f"Installing: {software}", "info")
+
+                # Handle prompt based on mode
+                def _drain_queues() -> None:
+                    """Clear any stale prompt/response messages from previous interactions."""
+
+                    try:
+                        while not response_queue.empty():
+                            response_queue.get_nowait()
+                    except Exception:
+                        pass
+
+                    try:
+                        while not input_queue.empty():
+                            input_queue.get_nowait()
+                    except Exception:
+                        pass
+
+                def _flush_stdin() -> None:
+                    """Flush any pending input from stdin."""
+                    try:
+                        # Use select to check for pending input without blocking
+                        while select.select([sys.stdin], [], [], 0.0)[0]:
+                            sys.stdin.read(1)
+                    except (OSError, ValueError, TypeError):
+                        # OSError: fd not valid, ValueError: fd negative, TypeError: not selectable
+                        pass
+
+                def _resolve_choice() -> str:
+                    """Prompt user until a valid choice is provided."""
+
+                    def _prompt_inline() -> str:
+                        console.print()
+                        console.print("[bold cyan]Choose an action:[/bold cyan]")
+                        console.print("  [1] Dry run (preview commands)")
+                        console.print("  [2] Execute (run commands)")
+                        console.print("  [3] Cancel")
+                        console.print("  [dim](Ctrl+C to cancel)[/dim]")
+                        console.print()
+
+                        try:
+                            _flush_stdin()  # Clear any buffered input
+                            choice = input("Enter choice [1/2/3]: ").strip()
+                            # Blank input defaults to dry-run (1)
+                            return choice or "1"
+                        except (KeyboardInterrupt, EOFError):
+                            return "3"
+
+                    if input_handler_thread is None:
+                        # Single-shot mode: inline prompt handling (no input handler thread running)
+                        _flush_stdin()  # Clear any buffered input before prompting
+                        choice_local = _prompt_inline()
+                        while choice_local not in {"1", "2", "3"}:
+                            cx_print("Invalid choice. Please enter 1, 2, or 3.", "warning")
+                            choice_local = _prompt_inline()
+                        return choice_local
+
+                    # Continuous mode: use queue-based communication with input handler thread
+                    _drain_queues()
+                    while True:
+                        input_queue.put({"type": "prompt", "software": software})
+
+                        try:
+                            response = response_queue.get(timeout=60)
+                            choice_local = response.get("choice")
+                        except queue.Empty:
+                            cx_print("\nInput timeout - cancelled.", "warning")
+                            return "3"
+
+                        if choice_local in {"1", "2", "3"}:
+                            return choice_local
+
+                        # Invalid or malformed response — re-prompt
+                        cx_print("Invalid choice. Please enter 1, 2, or 3.", "warning")
+
+                def _prompt_execute_after_dry_run() -> str:
+                    """Prompt user to execute or cancel after dry-run preview."""
+                    console.print()
+                    console.print("[bold cyan]Dry-run complete. What next?[/bold cyan]")
+                    console.print("  [1] Execute (run commands)")
+                    console.print("  [2] Cancel")
+                    console.print("  [dim](Ctrl+C to cancel)[/dim]")
+                    console.print()
+
+                    try:
+                        _flush_stdin()  # Clear any buffered input
+                        choice_input = input("Enter choice [1/2]: ").strip()
+                        return choice_input or "2"  # Default to cancel
+                    except (KeyboardInterrupt, EOFError):
+                        return "2"
+
+                choice = _resolve_choice()
+
+                # Process choice (unified for both modes)
+                if choice == "1":
+                    self._install_with_session_key(
+                        software, api_key, provider, execute=False, dry_run=True
+                    )
+                    # After dry-run, ask if user wants to execute
+                    follow_up = _prompt_execute_after_dry_run()
+                    while follow_up not in {"1", "2"}:
+                        cx_print("Invalid choice. Please enter 1 or 2.", "warning")
+                        follow_up = _prompt_execute_after_dry_run()
+                    if follow_up == "1":
+                        cx_print("Executing installation...", "info")
+                        self._install_with_session_key(
+                            software, api_key, provider, execute=True, dry_run=False
+                        )
+                    else:
+                        cx_print("Cancelled.", "info")
+                elif choice == "2":
+                    cx_print("Executing installation...", "info")
+                    self._install_with_session_key(
+                        software, api_key, provider, execute=True, dry_run=False
+                    )
+                else:
+                    cx_print("Cancelled.", "info")
+            else:
+                # Treat as a question
+                cx_print(f"Question: {text}", "info")
+                self._ask_with_session_key(text, api_key, provider)
+
+        handler = None
+        input_handler_thread = None
+        stop_input_handler = threading.Event()
+
+        def input_handler_loop():
+            """Main thread loop to handle user input requests from worker thread."""
+            while not stop_input_handler.is_set():
+                try:
+                    request = input_queue.get(timeout=0.5)
+                    if request.get("type") == "prompt":
+                        console.print()
+                        console.print("[bold cyan]Choose an action:[/bold cyan]")
+                        console.print("  [1] Dry run (preview commands)")
+                        console.print("  [2] Execute (run commands)")
+                        console.print("  [3] Cancel")
+                        console.print()
+
+                        while True:
+                            try:
+                                choice = input("Enter choice [1/2/3]: ").strip()
+                                # Blank input defaults to dry-run (1)
+                                choice = choice or "1"
+                            except (KeyboardInterrupt, EOFError):
+                                response_queue.put({"choice": "3"})
+                                cx_print("\nCancelled.", "info")
+                                break
+
+                            if choice in {"1", "2", "3"}:
+                                response_queue.put({"choice": choice})
+                                break
+
+                            cx_print("Invalid choice. Please enter 1, 2, or 3.", "warning")
+                except queue.Empty:
+                    continue
+                except Exception as e:
+                    logging.debug(f"Input handler error: {e}")
+                    continue
+
+        try:
+            handler = VoiceInputHandler(model_name=model)
+
+            if continuous:
+                # Start input handler thread
+                input_handler_thread = threading.Thread(target=input_handler_loop, daemon=True)
+                input_handler_thread.start()
+
+                # Continuous voice mode
+                handler.start_voice_mode(process_voice_command)
+            else:
+                # Single recording mode
+                text = handler.record_single()
+                if text:
+                    process_voice_command(text)
+                else:
+                    cx_print("No speech detected.", "warning")
+
+            return 0
+
+        except (VoiceInputError, MicrophoneNotFoundError, ModelNotFoundError) as e:
+            self._print_error(str(e))
+            return 1
+        except KeyboardInterrupt:
+            cx_print("\nVoice mode exited.", "info")
+            return 0
+        finally:
+            # Stop input handler thread
+            stop_input_handler.set()
+            if input_handler_thread is not None and input_handler_thread.is_alive():
+                input_handler_thread.join(timeout=1.0)
+
+            # Ensure cleanup even if exceptions occur
+            if handler is not None:
+                try:
+                    handler.stop()
+                except Exception as e:
+                    # Log cleanup errors but don't raise
+                    logging.debug("Error during voice handler cleanup: %s", e)
+
+    def _normalize_software_name(self, software: str) -> str:
+        """Normalize software name by cleaning whitespace.
+
+        Returns a natural-language description suitable for LLM interpretation.
+        Does NOT return shell commands - all command generation must go through
+        the LLM and validation pipeline.
+        """
+        # Just normalize whitespace - return natural language description
+        return " ".join(software.split())
+
+    def _record_history_error(
+        self,
+        history: InstallationHistory,
+        install_id: str | None,
+        error: str,
+    ) -> None:
+        """Record installation error to history."""
+        if install_id:
+            history.update_installation(install_id, InstallationStatus.FAILED, error)
+
+    def _handle_parallel_execution(
+        self,
+        commands: list[str],
+        software: str,
+        install_id: str | None,
+        history: InstallationHistory,
+    ) -> int:
+        """Handle parallel installation execution."""
+        import asyncio
+
+        from cortex.install_parallel import run_parallel_install
+
+        def parallel_log_callback(message: str, level: str = "info"):
+            if level == "success":
+                cx_print(f"  ✅ {message}", "success")
+            elif level == "error":
+                cx_print(f"  ❌ {message}", "error")
+            else:
+                cx_print(f"  ℹ {message}", "info")
+
+        try:
+            success, parallel_tasks = asyncio.run(
+                run_parallel_install(
+                    commands=commands,
+                    descriptions=[f"Step {i + 1}" for i in range(len(commands))],
+                    timeout=300,
+                    stop_on_error=True,
+                    log_callback=parallel_log_callback,
+                )
+            )
+
+            if success:
+                total_duration = self._calculate_duration(parallel_tasks)
+                self._print_success(f"{software} installed successfully!")
+                print(f"\nCompleted in {total_duration:.2f} seconds (parallel mode)")
+                if install_id:
+                    history.update_installation(install_id, InstallationStatus.SUCCESS)
+                    print(f"\n📝 Installation recorded (ID: {install_id})")
+                    print(f"   To rollback: cortex rollback {install_id}")
+                return 0
+
+            error_msg = self._get_parallel_error_msg(parallel_tasks)
+            self._record_history_error(history, install_id, error_msg)
+            self._print_error(self.INSTALL_FAIL_MSG)
+            if error_msg:
+                print(f"  Error: {error_msg}", file=sys.stderr)
+            if install_id:
+                print(f"\n📝 Installation recorded (ID: {install_id})")
+                print(f"   View details: cortex history {install_id}")
+            return 1
+
+        except (ValueError, OSError) as e:
+            self._record_history_error(history, install_id, str(e))
+            self._print_error(f"Parallel execution failed: {str(e)}")
+            return 1
+        except Exception as e:
+            self._record_history_error(history, install_id, str(e))
+            self._print_error(f"Unexpected parallel execution error: {str(e)}")
+            if self.verbose:
+                import traceback
+
+                traceback.print_exc()
+            return 1
+
+    def _calculate_duration(self, parallel_tasks: list) -> float:
+        """Calculate total duration from parallel tasks."""
+        if not parallel_tasks:
+            return 0.0
+
+        max_end = max(
+            (t.end_time for t in parallel_tasks if t.end_time is not None),
+            default=None,
+        )
+        min_start = min(
+            (t.start_time for t in parallel_tasks if t.start_time is not None),
+            default=None,
+        )
+        if max_end is not None and min_start is not None:
+            return max_end - min_start
+        return 0.0
+
+    def _get_parallel_error_msg(self, parallel_tasks: list) -> str:
+        """Extract error message from failed parallel tasks."""
+        failed_tasks = [t for t in parallel_tasks if getattr(t.status, "value", "") == "failed"]
+        return failed_tasks[0].error if failed_tasks else self.INSTALL_FAIL_MSG
+
+    def _handle_sequential_execution(
+        self,
+        commands: list[str],
+        software: str,
+        install_id: str | None,
+        history: InstallationHistory,
+    ) -> int:
+        """Handle sequential installation execution."""
+
+        def progress_callback(current, total, step):
+            status_emoji = "⏳"
+            if step.status == StepStatus.SUCCESS:
+                status_emoji = "✅"
+            elif step.status == StepStatus.FAILED:
+                status_emoji = "❌"
+            print(f"\n[{current}/{total}] {status_emoji} {step.description}")
+            print(f"  Command: {step.command}")
+
+        coordinator = InstallationCoordinator(
+            commands=commands,
+            descriptions=[f"Step {i + 1}" for i in range(len(commands))],
+            timeout=300,
+            stop_on_error=True,
+            progress_callback=progress_callback,
+        )
+
+        result = coordinator.execute()
+
+        if result.success:
+            self._print_success(f"{software} installed successfully!")
+            print(f"\nCompleted in {result.total_duration:.2f} seconds")
+            if install_id:
+                history.update_installation(install_id, InstallationStatus.SUCCESS)
+                print(f"\n📝 Installation recorded (ID: {install_id})")
+                print(f"   To rollback: cortex rollback {install_id}")
+            return 0
+
+        # Handle failure
+        self._record_history_error(
+            history, install_id, result.error_message or self.INSTALL_FAIL_MSG
+        )
+        if result.failed_step is not None:
+            self._print_error(f"{self.INSTALL_FAIL_MSG} at step {result.failed_step + 1}")
+        else:
+            self._print_error(self.INSTALL_FAIL_MSG)
+        if result.error_message:
+            print(f"  Error: {result.error_message}", file=sys.stderr)
+        if install_id:
+            print(f"\n📝 Installation recorded (ID: {install_id})")
+            print(f"   View details: cortex history {install_id}")
+        return 1
+
     def install(
         self,
         software: str,
@@ -892,12 +1449,12 @@ class CortexCLI:
         dry_run: bool = False,
         parallel: bool = False,
         json_output: bool = False,
-    ):
+    ) -> int:
+        """Install software using the LLM-powered package manager."""
         # Initialize installation history
         history = InstallationHistory()
         install_id = None
         start_time = datetime.now()
-
         # Validate input first
         is_valid, error = validate_install_request(software)
         if not is_valid:
@@ -907,18 +1464,7 @@ class CortexCLI:
                 self._print_error(error)
             return 1
 
-        # Special-case the ml-cpu stack:
-        # The LLM sometimes generates outdated torch==1.8.1+cpu installs
-        # which fail on modern Python. For the "pytorch-cpu jupyter numpy pandas"
-        # combo, force a supported CPU-only PyTorch recipe instead.
-        normalized = " ".join(software.split()).lower()
-
-        if normalized == "pytorch-cpu jupyter numpy pandas":
-            software = (
-                "pip3 install torch torchvision torchaudio "
-                "--index-url https://download.pytorch.org/whl/cpu && "
-                "pip3 install jupyter numpy pandas"
-            )
+        software = self._normalize_software_name(software)
 
         api_key = self._get_api_key()
         if not api_key:
@@ -955,7 +1501,6 @@ class CortexCLI:
 
             if not json_output:
                 self._print_status("📦", "Planning installation...")
-
                 for _ in range(10):
                     self._animate_spinner("Analyzing system requirements...")
                 self._clear_line()
@@ -1165,8 +1710,13 @@ class CortexCLI:
             else:
                 print("\nTo execute these commands, run with --execute flag")
                 print("Example: cortex install docker --execute")
+                return 0
 
-            return 0
+            print("\nExecuting commands...")
+            if parallel:
+                return self._handle_parallel_execution(commands, software, install_id, history)
+
+            return self._handle_sequential_execution(commands, software, install_id, history)
 
         except ValueError as e:
             if install_id:
@@ -1196,8 +1746,7 @@ class CortexCLI:
                 self._print_error(f"System error: {str(e)}")
             return 1
         except Exception as e:
-            if install_id:
-                history.update_installation(install_id, InstallationStatus.FAILED, str(e))
+            self._record_history_error(history, install_id, str(e))
             self._print_error(f"Unexpected error: {str(e)}")
             if self.verbose:
                 import traceback
@@ -3731,7 +4280,6 @@ class CortexCLI:
         }
 
         ecosystem_name = ecosystem_names.get(result.ecosystem, "Unknown")
-        filename = os.path.basename(result.file_path)
 
         cx_print(f"\n📋 Found {result.prod_count} {ecosystem_name} packages", "info")
 
@@ -3792,7 +4340,7 @@ class CortexCLI:
             console.print(f"Completed in {result.total_duration:.2f} seconds")
             return 0
         else:
-            self._print_error("Installation failed")
+            self._print_error(self.INSTALL_FAIL_MSG)
             if result.error_message:
                 console.print(f"Error: {result.error_message}", style="red")
             return 1
@@ -3828,9 +4376,9 @@ class CortexCLI:
             return 0
         else:
             if result.failed_step is not None:
-                self._print_error(f"\nInstallation failed at step {result.failed_step + 1}")
+                self._print_error(f"\n{self.INSTALL_FAIL_MSG} at step {result.failed_step + 1}")
             else:
-                self._print_error("\nInstallation failed")
+                self._print_error(f"\n{self.INSTALL_FAIL_MSG}")
             if result.error_message:
                 console.print(f"Error: {result.error_message}", style="red")
             return 1
@@ -4035,11 +4583,13 @@ def show_rich_help():
 
     # Command Rows
     table.add_row("ask <question>", "Ask about your system")
+    table.add_row("voice", "Voice input mode (F9 to speak)")
     table.add_row("demo", "See Cortex in action")
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
     table.add_row("install <pkg>", "Install software")
     table.add_row("remove <pkg>", "Remove packages with impact analysis")
+    table.add_row("install --mic", "Install via voice input")
     table.add_row("import <file>", "Import deps from package files")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
@@ -4158,7 +4708,7 @@ def main():
     )
 
     # Demo command
-    demo_parser = subparsers.add_parser("demo", help="See Cortex in action")
+    subparsers.add_parser("demo", help="See Cortex in action")
 
     # Dashboard command
     dashboard_parser = subparsers.add_parser(
@@ -4166,7 +4716,7 @@ def main():
     )
 
     # Wizard command
-    wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
+    subparsers.add_parser("wizard", help="Configure API key interactively")
 
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
@@ -4214,11 +4764,48 @@ def main():
 
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
-    ask_parser.add_argument("question", type=str, help="Natural language question")
+    ask_parser.add_argument("question", nargs="?", type=str, help="Natural language question")
+    ask_parser.add_argument(
+        "--mic",
+        action="store_true",
+        help="Use voice input (press F9 to record)",
+    )
+
+    # Voice command - continuous voice mode
+    voice_parser = subparsers.add_parser(
+        "voice", help="Voice input mode (F9 to speak, Ctrl+C to exit)"
+    )
+    voice_parser.add_argument(
+        "--single",
+        "-s",
+        action="store_true",
+        help="Record single input and exit (default: continuous mode)",
+    )
+    voice_parser.add_argument(
+        "--model",
+        "-m",
+        type=str,
+        default=None,
+        metavar="MODEL",
+        choices=[
+            "tiny.en",
+            "base.en",
+            "small.en",
+            "medium.en",
+            "tiny",
+            "base",
+            "small",
+            "medium",
+            "large",
+        ],
+        help="Whisper model to use (default: base.en or CORTEX_WHISPER_MODEL env var). "
+        "Available models: tiny.en (39MB), base.en (140MB), small.en (466MB), "
+        "medium.en (1.5GB), tiny/base/small/medium (multilingual), large (6GB).",
+    )
 
     # Install command
     install_parser = subparsers.add_parser("install", help="Install software")
-    install_parser.add_argument("software", type=str, help="Software to install")
+    install_parser.add_argument("software", nargs="?", type=str, help="Software to install")
     install_parser.add_argument("--execute", action="store_true", help="Execute commands")
     install_parser.add_argument("--dry-run", action="store_true", help="Show commands only")
     install_parser.add_argument(
@@ -4230,6 +4817,9 @@ def main():
         "--json",
         action="store_true",
         help="Output as JSON",
+        "--mic",
+        action="store_true",
+        help="Use voice input for software name (press F9 to record)",
     )
 
     # Remove command - uninstall with impact analysis
@@ -4904,11 +5494,72 @@ def main():
             return cli.printer(
                 action=getattr(args, "action", "status"), verbose=getattr(args, "verbose", False)
             )
+        elif args.command == "voice":
+            model = getattr(args, "model", None)
+            return cli.voice(continuous=not getattr(args, "single", False), model=model)
         elif args.command == "ask":
+            # Handle --mic flag for voice input
+            if getattr(args, "mic", False):
+                try:
+                    from cortex.voice import VoiceInputError, VoiceInputHandler
+
+                    handler = VoiceInputHandler()
+                    cx_print("Press F9 to speak your question...", "info")
+                    transcript = handler.record_single()
+
+                    if not transcript:
+                        cli._print_error("No speech detected")
+                        return 1
+
+                    cx_print(f"Question: {transcript}", "info")
+                    return cli.ask(transcript)
+                except ImportError:
+                    cli._print_error("Voice dependencies not installed.")
+                    cx_print("Install with: pip install cortex-linux[voice]", "info")
+                    return 1
+                except VoiceInputError as e:
+                    cli._print_error(f"Voice input error: {e}")
+                    return 1
+            if not args.question:
+                cli._print_error("Please provide a question or use --mic for voice input")
+                return 1
             return cli.ask(args.question)
         elif args.command == "install":
+            # Handle --mic flag for voice input
+            if getattr(args, "mic", False):
+                handler = None
+                try:
+                    from cortex.voice import VoiceInputError, VoiceInputHandler
+
+                    handler = VoiceInputHandler()
+                    cx_print("Press F9 to speak what you want to install...", "info")
+                    software = handler.record_single()
+                    if not software:
+                        cx_print("No speech detected.", "warning")
+                        return 1
+                    cx_print(f"Installing: {software}", "info")
+                except ImportError:
+                    cli._print_error("Voice dependencies not installed.")
+                    cx_print("Install with: pip install cortex-linux[voice]", "info")
+                    return 1
+                except VoiceInputError as e:
+                    cli._print_error(f"Voice input error: {e}")
+                    return 1
+                finally:
+                    # Always clean up resources
+                    if handler is not None:
+                        try:
+                            handler.stop()
+                        except Exception as e:
+                            # Log cleanup errors but don't raise
+                            logging.debug("Error during voice handler cleanup: %s", e)
+            else:
+                software = args.software
+                if not software:
+                    cli._print_error("Please provide software name or use --mic for voice input")
+                    return 1
             return cli.install(
-                args.software,
+                software,
                 execute=args.execute,
                 dry_run=args.dry_run,
                 parallel=args.parallel,

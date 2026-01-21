@@ -87,8 +87,14 @@ docs = [
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.24.0",
 ]
+voice = [
+    "faster-whisper>=0.10.0",
+    "sounddevice>=0.4.6",
+    "pynput>=1.8.1",
+    "numpy>=1.24.0",
+]
 all = [
-    "cortex-linux[dev,security,docs,dashboard]",
+    "cortex-linux[dev,security,docs,dashboard,voice]",
 ]
 
 [project.scripts]
