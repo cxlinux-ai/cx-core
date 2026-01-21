@@ -19,6 +19,22 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# ==============================
+# Virtual Environments
+# ==============================
+env/
+venv/
+myenv/
+venv312/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# ==============================
+# Distribution / Packaging
+# ==============================
 .Python
 build/
 develop-eggs/
@@ -37,7 +53,11 @@ wheels/
 *.egg
 .venv/
 venv/
+myenv/
+venv312/
 ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .idea/

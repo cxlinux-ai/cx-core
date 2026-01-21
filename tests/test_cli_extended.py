@@ -46,9 +46,10 @@ class TestCortexCLIExtended(unittest.TestCase):
 
         with patch.dict(os.environ, {}, clear=True):
             with patch("pathlib.Path.home", return_value=self._temp_home):
-                with patch("builtins.input", return_value=PROVIDER_MENU_CHOICES["ollama"]):
-                    api_key = self.cli._get_api_key()
-                    self.assertEqual(api_key, "ollama-local")
+                with patch("pathlib.Path.cwd", return_value=self._temp_home):
+                    with patch("builtins.input", return_value=PROVIDER_MENU_CHOICES["ollama"]):
+                        api_key = self.cli._get_api_key()
+                        self.assertEqual(api_key, "ollama-local")
 
     def test_get_provider_openai(self) -> None:
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):

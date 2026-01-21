@@ -11,12 +11,15 @@ Enhanced with rich output formatting (Issue #242):
 - Consistent visual language
 """
 
+import sys
+
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-console = Console()
+# Use force_terminal for consistent styled output across environments
+console = Console(force_terminal=True)
 
 # Brand colors
 CORTEX_CYAN = "cyan"
@@ -70,13 +73,23 @@ def cx_print(message: str, status: str = "info"):
     """
     badge = "[bold white on dark_cyan] CX [/bold white on dark_cyan]"
 
-    status_icons = {
-        "info": "[dim]│[/dim]",
-        "success": "[green]✓[/green]",
-        "warning": "[yellow]⚠[/yellow]",
-        "error": "[red]✗[/red]",
-        "thinking": "[cyan]⠋[/cyan]",  # Spinner frame
-    }
+    # Use ASCII-only icons on Windows for better compatibility
+    if sys.platform == "win32":
+        status_icons = {
+            "info": "[dim]|[/dim]",
+            "success": "[green]+[/green]",
+            "warning": "[yellow]![/yellow]",
+            "error": "[red]x[/red]",
+            "thinking": "[cyan]*[/cyan]",
+        }
+    else:
+        status_icons = {
+            "info": "[dim]│[/dim]",
+            "success": "[green]✓[/green]",
+            "warning": "[yellow]⚠[/yellow]",
+            "error": "[red]✗[/red]",
+            "thinking": "[cyan]⠋[/cyan]",  # Spinner frame
+        }
 
     icon = status_icons.get(status, status_icons["info"])
     console.print(f"{badge} {icon} {message}")
@@ -86,10 +99,11 @@ def cx_step(step_num: int, total: int, message: str):
     """
     Print a numbered step with the CX badge.
 
-    Example: CX │ [1/4] Updating package lists...
+    Example: CX | [1/4] Updating package lists...
     """
     badge = "[bold white on dark_cyan] CX [/bold white on dark_cyan]"
-    console.print(f"{badge} [dim]│[/dim] [{step_num}/{total}] {message}")
+    separator = "|" if sys.platform == "win32" else "│"
+    console.print(f"{badge} [dim]{separator}[/dim] [{step_num}/{total}] {message}")
 
 
 def cx_header(title: str):
@@ -97,7 +111,8 @@ def cx_header(title: str):
     Print a section header.
     """
     console.print()
-    console.print(f"[bold cyan]━━━ {title} ━━━[/bold cyan]")
+    separator = "---" if sys.platform == "win32" else "━━━"
+    console.print(f"[bold cyan]{separator} {title} {separator}[/bold cyan]")
     console.print()
 
 
