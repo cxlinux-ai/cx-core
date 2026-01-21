@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from cortex.ask import AskHandler, LearningTracker, SystemInfoGatherer
+from cortex.ask import MAX_TOKENS, AskHandler, LearningTracker, SystemInfoGatherer
 
 
 class TestSystemInfoGatherer(unittest.TestCase):
@@ -191,9 +191,9 @@ class TestAskHandler(unittest.TestCase):
         handler.cache = None
         handler.ask("test question")
 
-        # Verify that max_tokens was set to LearningTracker.MAX_TOKENS
+        # Verify that max_tokens was set to MAX_TOKENS
         call_kwargs = mock_create.call_args[1]
-        self.assertEqual(call_kwargs["max_tokens"], LearningTracker.MAX_TOKENS)
+        self.assertEqual(call_kwargs["max_tokens"], MAX_TOKENS)
 
     @patch("anthropic.Anthropic")
     def test_call_claude_uses_max_tokens_constant(self, mock_anthropic_client):
@@ -208,9 +208,9 @@ class TestAskHandler(unittest.TestCase):
         handler.cache = None
         handler.ask("test question")
 
-        # Verify that max_tokens was set to LearningTracker.MAX_TOKENS
+        # Verify that max_tokens was set to MAX_TOKENS
         call_kwargs = mock_create.call_args[1]
-        self.assertEqual(call_kwargs["max_tokens"], LearningTracker.MAX_TOKENS)
+        self.assertEqual(call_kwargs["max_tokens"], MAX_TOKENS)
 
     @patch("urllib.request.urlopen")
     def test_call_ollama_uses_max_tokens_constant(self, mock_urlopen):
@@ -229,11 +229,11 @@ class TestAskHandler(unittest.TestCase):
         handler.cache = None
         handler.ask("test question")
 
-        # Verify that num_predict was set to LearningTracker.MAX_TOKENS
+        # Verify that num_predict was set to MAX_TOKENS
         call_args = mock_urlopen.call_args[0]
         request = call_args[0]
         data = json_module.loads(request.data.decode("utf-8"))
-        self.assertEqual(data["options"]["num_predict"], LearningTracker.MAX_TOKENS)
+        self.assertEqual(data["options"]["num_predict"], MAX_TOKENS)
 
     def test_ask_caches_response(self):
         """Test that responses are cached after successful API call."""
@@ -367,14 +367,13 @@ class TestLearningTracker(unittest.TestCase):
             shutil.rmtree(self.temp_dir)
 
     def test_max_tokens_constant_exists(self):
-        """Test that MAX_TOKENS constant is defined."""
-        self.assertTrue(hasattr(LearningTracker, "MAX_TOKENS"))
-        self.assertIsInstance(LearningTracker.MAX_TOKENS, int)
-        self.assertGreater(LearningTracker.MAX_TOKENS, 0)
+        """Test that MAX_TOKENS constant is defined at module level."""
+        self.assertIsInstance(MAX_TOKENS, int)
+        self.assertGreater(MAX_TOKENS, 0)
 
     def test_max_tokens_value(self):
         """Test that MAX_TOKENS has the expected value."""
-        self.assertEqual(LearningTracker.MAX_TOKENS, 2000)
+        self.assertEqual(MAX_TOKENS, 2000)
 
     def test_is_educational_query_explain(self):
         """Test detection of 'explain' queries."""

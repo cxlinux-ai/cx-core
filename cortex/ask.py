@@ -22,6 +22,9 @@ from cortex.config_utils import get_ollama_model
 # Module logger for debug diagnostics
 logger = logging.getLogger(__name__)
 
+# Maximum number of tokens to request from LLM
+MAX_TOKENS = 2000
+
 
 class SystemInfoGatherer:
     """Gathers local system information for context-aware responses."""
@@ -146,9 +149,6 @@ class LearningTracker:
     """Tracks educational topics the user has explored."""
 
     _progress_file: Path | None = None
-
-    # Maximum number of tokens to request from LLM
-    MAX_TOKENS = 2000
 
     # Patterns that indicate educational questions
     EDUCATIONAL_PATTERNS = [
@@ -501,7 +501,7 @@ sudo apt install nginx
                 {"role": "user", "content": question},
             ],
             temperature=0.3,
-            max_tokens=LearningTracker.MAX_TOKENS,
+            max_tokens=MAX_TOKENS,
         )
         # Defensive: content may be None or choices could be empty in edge cases
         try:
@@ -513,7 +513,7 @@ sudo apt install nginx
     def _call_claude(self, question: str, system_prompt: str) -> str:
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=LearningTracker.MAX_TOKENS,
+            max_tokens=MAX_TOKENS,
             temperature=0.3,
             system=system_prompt,
             messages=[{"role": "user", "content": question}],
@@ -537,7 +537,7 @@ sudo apt install nginx
                 "model": self.model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0.3, "num_predict": LearningTracker.MAX_TOKENS},
+                "options": {"temperature": 0.3, "num_predict": MAX_TOKENS},
             }
         ).encode("utf-8")
 
