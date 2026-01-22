@@ -11,32 +11,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from rich.console import Console
 from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.table import Table
 
 from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
 from cortex.demo import run_demo
-from cortex.dependency_importer import (
-    DependencyImporter,
-    PackageEcosystem,
-    ParseResult,
-)
+from cortex.dependency_importer import DependencyImporter, PackageEcosystem, ParseResult
 from cortex.env_manager import EnvironmentManager, get_env_manager
-from cortex.i18n import (
-    SUPPORTED_LANGUAGES,
-    LanguageConfig,
-    get_language,
-    set_language,
-    t,
-)
+from cortex.i18n import SUPPORTED_LANGUAGES, LanguageConfig, get_language, set_language, t
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
+from cortex.predictive_prevention import FailurePrediction, PredictiveErrorManager, RiskLevel
 from cortex.role_manager import RoleManager
 from cortex.stack_manager import StackManager
+from cortex.stdin_handler import StdinHandler
 from cortex.uninstall_impact import (
     ImpactResult,
     ImpactSeverity,
@@ -59,10 +54,18 @@ if TYPE_CHECKING:
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 class CortexCLI:
+    RISK_COLORS = {
+        RiskLevel.NONE: "green",
+        RiskLevel.LOW: "green",
+        RiskLevel.MEDIUM: "yellow",
+        RiskLevel.HIGH: "orange1",
+        RiskLevel.CRITICAL: "red",
+    }
     # Installation messages
     INSTALL_FAIL_MSG = "Installation failed"
 
@@ -70,6 +73,23 @@ class CortexCLI:
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.verbose = verbose
+        self.predict_manager = None
+
+    @property
+    def risk_labels(self) -> dict[RiskLevel, str]:
+        """
+        Localized mapping from RiskLevel enum values to human-readable strings.
+
+        Returns a dictionary mapping each tier (RiskLevel.NONE to CRITICAL)
+        to its corresponding localized label via the t() translation helper.
+        """
+        return {
+            RiskLevel.NONE: t("predictive.no_risk"),
+            RiskLevel.LOW: t("predictive.low_risk"),
+            RiskLevel.MEDIUM: t("predictive.medium_risk"),
+            RiskLevel.HIGH: t("predictive.high_risk"),
+            RiskLevel.CRITICAL: t("predictive.critical_risk"),
+        }
 
     # Define a method to handle Docker-specific permission repairs
     def docker_permissions(self, args: argparse.Namespace) -> int:
@@ -114,9 +134,10 @@ class CortexCLI:
                     )
                     try:
                         # Interactive confirmation prompt for administrative repair.
-                        response = console.input(
-                            "[bold cyan]Reclaim ownership using sudo? (y/n): [/bold cyan]"
+                        console.print(
+                            "[bold cyan]Reclaim ownership using sudo? (y/n): [/bold cyan]", end=""
                         )
+                        response = StdinHandler.get_input()
                         if response.lower() not in ("y", "yes"):
                             cx_print("Operation cancelled", "info")
                             return 0
@@ -718,8 +739,8 @@ class CortexCLI:
         if not skip_confirm:
             console.print(f"\nPromote '{package}' to main system? [Y/n]: ", end="")
             try:
-                response = input().strip().lower()
-                if response and response not in ("y", "yes"):
+                response = StdinHandler.get_input()
+                if response and response.lower() not in ("y", "yes"):
                     cx_print("Promotion cancelled", "warning")
                     return 0
             except (EOFError, KeyboardInterrupt):
@@ -788,6 +809,46 @@ class CortexCLI:
             console.print(result.stderr, style="red", end="")
 
         return result.exit_code
+
+    def _display_prediction_warning(self, prediction: FailurePrediction) -> None:
+        """Display formatted prediction warning."""
+        color = self.RISK_COLORS.get(prediction.risk_level, "white")
+        label = self.risk_labels.get(prediction.risk_level, "Unknown")
+
+        console.print()
+        if prediction.risk_level >= RiskLevel.HIGH:
+            console.print(f"⚠️  [bold red]{t('predictive.risks_detected')}:[/bold red]")
+        else:
+            console.print(f"ℹ️  [bold {color}]{t('predictive.risks_detected')}:[/bold {color}]")
+
+        if prediction.reasons:
+            console.print(f"\n[bold]{label}:[/bold]")
+            for reason in prediction.reasons:
+                console.print(f"   - {reason}")
+
+        if prediction.recommendations:
+            console.print(f"\n[bold]{t('predictive.recommendation')}:[/bold]")
+            for i, rec in enumerate(prediction.recommendations, 1):
+                console.print(f"   {i}. {rec}")
+
+        if prediction.predicted_errors:
+            console.print(f"\n[bold]{t('predictive.predicted_errors')}:[/bold]")
+            for err in prediction.predicted_errors:
+                msg = f"{err[:100]}..." if len(err) > 100 else err
+                console.print(f"   ! [dim]{msg}[/dim]")
+
+    def _confirm_risky_operation(self, prediction: FailurePrediction) -> bool:
+        """Prompt user for confirmation of a risky operation."""
+        if prediction.risk_level == RiskLevel.HIGH or prediction.risk_level == RiskLevel.CRITICAL:
+            cx_print(f"\n{t('predictive.high_risk_warning')}", "warning")
+
+        console.print(f"\n{t('predictive.continue_anyway')} [y/N]: ", end="", markup=False)
+        try:
+            response = StdinHandler.get_input().lower()
+            return response in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return False
 
     # --- End Sandbox Commands ---
 
@@ -1446,6 +1507,24 @@ class CortexCLI:
                 self._print_error(t("install.no_commands"))
                 return 1
 
+            # Predictive Analysis
+            if not json_output:
+                self._print_status("🔮", t("predictive.analyzing"))
+            if not self.predict_manager:
+                self.predict_manager = PredictiveErrorManager(api_key=api_key, provider=provider)
+            prediction = self.predict_manager.analyze_installation(software, commands)
+            if not json_output:
+                self._clear_line()
+
+            if not json_output:
+                if prediction.risk_level != RiskLevel.NONE:
+                    self._display_prediction_warning(prediction)
+                    if execute and not self._confirm_risky_operation(prediction):
+                        cx_print(f"\n{t('ui.operation_cancelled')}", "warning")
+                        return 0
+                else:
+                    cx_print(t("predictive.no_issues_detected"), "success")
+
             # Extract packages from commands for tracking
             packages = history._extract_packages_from_commands(commands)
 
@@ -1457,12 +1536,17 @@ class CortexCLI:
 
             # If JSON output requested, return structured data and exit early
             if json_output:
-
                 output = {
                     "success": True,
                     "commands": commands,
                     "packages": packages,
                     "install_id": install_id,
+                    "prediction": {
+                        "risk_level": prediction.risk_level.name,
+                        "reasons": prediction.reasons,
+                        "recommendations": prediction.recommendations,
+                        "predicted_errors": prediction.predicted_errors,
+                    },
                 }
                 print(json.dumps(output, indent=2))
                 return 0
@@ -1780,7 +1864,7 @@ class CortexCLI:
             confirm_msg += " and purge configuration"
         confirm_msg += "? [y/N]: "
         try:
-            response = input(confirm_msg).strip().lower()
+            response = StdinHandler.get_input(confirm_msg).lower()
             return response in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             console.print()
@@ -1800,8 +1884,6 @@ class CortexCLI:
 
     def _display_impact_report(self, result: ImpactResult) -> None:
         """Display formatted impact analysis report"""
-        from rich.panel import Panel
-        from rich.table import Table
 
         # Severity styling
         severity_styles = {
@@ -2327,7 +2409,6 @@ class CortexCLI:
     def update(self, args: argparse.Namespace) -> int:
         """Handle the update command for self-updating Cortex."""
         from rich.progress import Progress, SpinnerColumn, TextColumn
-        from rich.table import Table
 
         # Parse channel
         channel_str = getattr(args, "channel", "stable")
@@ -3553,7 +3634,9 @@ class CortexCLI:
 
         # Confirm unless --force is used
         if not force:
-            confirm = input(f"⚠️  Clear ALL environment variables for '{app}'? (y/n): ")
+            confirm = StdinHandler.get_input(
+                f"⚠️  Clear ALL environment variables for '{app}'? (y/n): "
+            )
             if confirm.lower() != "y":
                 cx_print("Operation cancelled", "info")
                 return 0
@@ -4174,7 +4257,7 @@ class CortexCLI:
 
         # Execute mode - confirm before installing
         total = total_packages + total_dev_packages
-        confirm = input(f"\nInstall all {total} packages? [Y/n]: ")
+        confirm = StdinHandler.get_input(f"\nInstall all {total} packages? [Y/n]: ")
         if confirm.lower() not in ["", "y", "yes"]:
             cx_print("Installation cancelled", "info")
             return 0
@@ -4481,7 +4564,6 @@ def show_rich_help():
     for all core Cortex utilities including installation, environment
     management, and container tools.
     """
-    from rich.table import Table
 
     show_banner(show_version=True)
     console.print()
@@ -4574,7 +4656,7 @@ def main():
     # Check for updates on startup (cached, non-blocking)
     # Only show notification for commands that aren't 'update' itself
     try:
-        if temp_args.command not in ["update", None]:
+        if temp_args.command not in ["update", None] and "--json" not in sys.argv:
             update_release = should_notify_update()
             if update_release:
                 console.print(
@@ -4726,6 +4808,11 @@ def main():
         "--parallel",
         action="store_true",
         help="Enable parallel execution for multi-step installs",
+    )
+    install_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
     )
     install_parser.add_argument(
         "--mic",
@@ -5343,6 +5430,14 @@ def main():
 
     args = parser.parse_args()
 
+    # Configure logging based on parsed arguments
+    if getattr(args, "json", False):
+        logging.getLogger("cortex").setLevel(logging.ERROR)
+        # Also suppress common SDK loggers
+        logging.getLogger("anthropic").setLevel(logging.ERROR)
+        logging.getLogger("openai").setLevel(logging.ERROR)
+        logging.getLogger("httpcore").setLevel(logging.ERROR)
+
     # Handle --set-language global flag first (before any command)
     if getattr(args, "set_language", None):
         result = _handle_set_language(args.set_language)
@@ -5466,6 +5561,7 @@ def main():
                 execute=args.execute,
                 dry_run=args.dry_run,
                 parallel=args.parallel,
+                json_output=args.json,
             )
         elif args.command == "remove":
             # Handle --execute flag to override default dry-run

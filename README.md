@@ -72,6 +72,7 @@ cortex install "tools for video compression"
 | **Docker Permission Fixer** | Fix root-owned bind mount issues automatically |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
+| **Predictive Error Prevention** | AI-driven checks for potential installation failures |
 | **Multi-LLM Support** | Works with Claude, GPT-4, or local Ollama models |
 
 ---
@@ -415,6 +416,7 @@ pip install -e .
 - [x] Dry-run preview mode
 - [x] Docker bind-mount permission fixer
 - [x] Automatic Role Discovery (AI-driven system context sensing)
+- [x] Predictive Error Prevention (pre-install compatibility checks)
 
 ### In Progress
 - [ ] Conflict resolution UI

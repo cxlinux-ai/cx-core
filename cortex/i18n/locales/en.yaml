@@ -480,3 +480,22 @@ progress:
   cleaning_up: "Cleaning up..."
   # {seconds} - duration
   completed_in: "Completed in {seconds} seconds"
+
+# =============================================================================
+# Predictive Error Prevention
+# =============================================================================
+predictive:
+  analyzing: "AI is predicting potential installation failures..."
+  risks_detected: "Potential issues detected"
+  risk_level: "Risk Level"
+  recommendations: "Recommendations"
+  predicted_errors: "Predicted Error Messages"
+  continue_anyway: "Continue anyway?"
+  high_risk_warning: "⚠️  Warning: This operation has HIGH RISK of failure."
+  no_issues_detected: "No compatibility issues detected"
+  low_risk: "Low Risk"
+  medium_risk: "Medium Risk"
+  high_risk: "High Risk"
+  critical_risk: "Critical Risk"
+  no_risk: "No Risk"
+  recommendation: "Recommendation"

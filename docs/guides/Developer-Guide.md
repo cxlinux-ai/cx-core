@@ -34,7 +34,8 @@ cortex/
 │   ├── rollback.py          # Rollback system
 │   ├── config_templates.py  # Config generation
 │   ├── logging_system.py    # Logging & diagnostics
-│   └── context_memory.py    # AI memory system
+│   ├── context_memory.py    # AI memory system
+│   └── predictive_prevention.py # Pre-install risk analysis
 ├── tests/
 │   └── test_*.py            # Unit tests
 ├── docs/
@@ -54,6 +55,8 @@ LLM Integration Layer (Claude API)
 Package Manager Wrapper (apt/yum/dnf)
     ↓
 Dependency Resolver
+    ↓
+Predictive Error Prevention (Risk Analysis)
     ↓
 Sandbox Executor (Firejail)
     ↓

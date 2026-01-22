@@ -114,8 +114,29 @@ class TestFallbackBehavior(unittest.TestCase):
         decision = router.route_task(TaskType.SYSTEM_OPERATION)
         self.assertEqual(decision.provider, LLMProvider.CLAUDE)
 
+    @patch("cortex.llm_router.OpenAI")
+    @patch("cortex.llm_router.AsyncOpenAI")
     @patch.dict(os.environ, {}, clear=True)
-    def test_error_when_no_providers_available(self):
+    def test_fallback_to_ollama(self, mock_async_openai, mock_openai):
+        """Should fallback to Ollama if primary providers unavailable."""
+        router = LLMRouter(
+            claude_api_key=None,
+            kimi_api_key=None,
+            ollama_base_url="http://localhost:11434",
+            enable_fallback=True,
+        )
+
+        # User chat normally Claude -> fallback to Ollama
+        decision = router.route_task(TaskType.USER_CHAT)
+        self.assertEqual(decision.provider, LLMProvider.OLLAMA)
+
+        # System ops normally Kimi -> fallback to Ollama
+        decision = router.route_task(TaskType.SYSTEM_OPERATION)
+        self.assertEqual(decision.provider, LLMProvider.OLLAMA)
+
+    @patch("cortex.llm_router.OpenAI", side_effect=ImportError)
+    @patch.dict(os.environ, {}, clear=True)
+    def test_error_when_no_providers_available(self, mock_openai):
         """Should raise error if no providers configured."""
         router = LLMRouter(claude_api_key=None, kimi_api_key=None, enable_fallback=True)
 

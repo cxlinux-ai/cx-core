@@ -232,6 +232,9 @@ class LLMRouter:
             if self.kimi_client and self.enable_fallback:
                 logger.warning("Claude unavailable, falling back to Kimi K2")
                 provider = LLMProvider.KIMI_K2
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("Claude unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
             else:
                 raise RuntimeError("Claude API not configured and no fallback available")
 
@@ -239,6 +242,9 @@ class LLMRouter:
             if self.claude_client and self.enable_fallback:
                 logger.warning("Kimi K2 unavailable, falling back to Claude")
                 provider = LLMProvider.CLAUDE
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("Kimi K2 unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
             else:
                 raise RuntimeError("Kimi K2 API not configured and no fallback available")
 
@@ -257,6 +263,22 @@ class LLMRouter:
         return RoutingDecision(
             provider=provider, task_type=task_type, reasoning=reasoning, confidence=0.95
         )
+
+    def _get_fallback_provider(self, current: LLMProvider) -> LLMProvider | None:
+        """Find the next available provider that isn't the current one."""
+        candidates = []
+
+        # Priority order: Claude -> Kimi -> Ollama
+        if self.claude_client and current != LLMProvider.CLAUDE:
+            candidates.append(LLMProvider.CLAUDE)
+
+        if self.kimi_client and current != LLMProvider.KIMI_K2:
+            candidates.append(LLMProvider.KIMI_K2)
+
+        if self.ollama_client and current != LLMProvider.OLLAMA:
+            candidates.append(LLMProvider.OLLAMA)
+
+        return candidates[0] if candidates else None
 
     def complete(
         self,
@@ -308,21 +330,21 @@ class LLMRouter:
 
             # Try fallback if enabled
             if self.enable_fallback:
-                fallback_provider = (
-                    LLMProvider.KIMI_K2
-                    if routing.provider == LLMProvider.CLAUDE
-                    else LLMProvider.CLAUDE
-                )
-                logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                fallback_provider = self._get_fallback_provider(routing.provider)
 
-                return self.complete(
-                    messages=messages,
-                    task_type=task_type,
-                    force_provider=fallback_provider,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                )
+                if fallback_provider:
+                    logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                    return self.complete(
+                        messages=messages,
+                        task_type=task_type,
+                        force_provider=fallback_provider,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                    )
+                else:
+                    logger.error("❌ No fallback providers available")
+                    raise
             else:
                 raise
 
@@ -334,6 +356,9 @@ class LLMRouter:
         tools: list[dict] | None = None,
     ) -> LLMResponse:
         """Generate completion using Claude API."""
+        if not self.claude_client:
+            raise RuntimeError("Claude client not initialized")
+
         # Extract system message if present
         system_message = None
         user_messages = []
@@ -390,6 +415,9 @@ class LLMRouter:
         tools: list[dict] | None = None,
     ) -> LLMResponse:
         """Generate completion using Kimi K2 API."""
+        if not self.kimi_client:
+            raise RuntimeError("Kimi K2 client not initialized")
+
         # Kimi K2 recommends temperature=0.6
         # Map user's temperature to Kimi's scale
         kimi_temp = temperature * 0.6
@@ -590,21 +618,21 @@ class LLMRouter:
 
             # Try fallback if enabled
             if self.enable_fallback:
-                fallback_provider = (
-                    LLMProvider.KIMI_K2
-                    if routing.provider == LLMProvider.CLAUDE
-                    else LLMProvider.CLAUDE
-                )
-                logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                fallback_provider = self._get_fallback_provider(routing.provider)
 
-                return await self.acomplete(
-                    messages=messages,
-                    task_type=task_type,
-                    force_provider=fallback_provider,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                )
+                if fallback_provider:
+                    logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                    return await self.acomplete(
+                        messages=messages,
+                        task_type=task_type,
+                        force_provider=fallback_provider,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                    )
+                else:
+                    logger.error("❌ No fallback providers available")
+                    raise
             else:
                 raise
 
