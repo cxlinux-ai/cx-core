@@ -17,16 +17,16 @@ from rich.prompt import Confirm
 from rich.table import Table
 
 # Dracula-Inspired Theme Colors
-PURPLE = "#bd93f9"      # Dracula purple
-PURPLE_LIGHT = "#ff79c6" # Dracula pink
+PURPLE = "#bd93f9"  # Dracula purple
+PURPLE_LIGHT = "#ff79c6"  # Dracula pink
 PURPLE_DARK = "#6272a4"  # Dracula comment
-WHITE = "#f8f8f2"        # Dracula foreground
-GRAY = "#6272a4"         # Dracula comment
-GREEN = "#50fa7b"        # Dracula green
-RED = "#ff5555"          # Dracula red
-YELLOW = "#f1fa8c"       # Dracula yellow
-CYAN = "#8be9fd"         # Dracula cyan
-ORANGE = "#ffb86c"       # Dracula orange
+WHITE = "#f8f8f2"  # Dracula foreground
+GRAY = "#6272a4"  # Dracula comment
+GREEN = "#50fa7b"  # Dracula green
+RED = "#ff5555"  # Dracula red
+YELLOW = "#f1fa8c"  # Dracula yellow
+CYAN = "#8be9fd"  # Dracula cyan
+ORANGE = "#ffb86c"  # Dracula orange
 
 # Round Icons
 ICON_SUCCESS = "●"
@@ -149,7 +149,9 @@ class DoHandler:
         signal_name = "Ctrl+Z" if signum == signal.SIGTSTP else "Ctrl+C"
 
         console.print()
-        console.print(f"[{YELLOW}]⚠ {signal_name} detected - Stopping current command...[/{YELLOW}]")
+        console.print(
+            f"[{YELLOW}]⚠ {signal_name} detected - Stopping current command...[/{YELLOW}]"
+        )
 
         # Kill current subprocess if running
         if self._current_process and self._current_process.poll() is None:
@@ -276,7 +278,9 @@ class DoHandler:
         if self.notifier:
             self.notifier.send(title, message, level=level)
         else:
-            console.print(f"[bold {YELLOW}]🔔 {title}:[/bold {YELLOW}] [{WHITE}]{message}[/{WHITE}]")
+            console.print(
+                f"[bold {YELLOW}]🔔 {title}:[/bold {YELLOW}] [{WHITE}]{message}[/{WHITE}]"
+            )
 
     def setup_cortex_user(self) -> bool:
         """Ensure the cortex user exists."""
@@ -813,7 +817,9 @@ class DoHandler:
         # Check which terminal is available
         for term_name, term_cmd in terminal_cmds:
             if shutil.which(term_name):
-                console.print(f"[{PURPLE_LIGHT}]🖥️  Opening in new terminal window ({term_name})...[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]🖥️  Opening in new terminal window ({term_name})...[/{PURPLE_LIGHT}]"
+                )
                 console.print(f"[{GRAY}]   Command: {full_cmd}[/{GRAY}]")
                 console.print()
 
@@ -861,7 +867,9 @@ class DoHandler:
         self.current_run = run
 
         console.print()
-        console.print(f"[bold {PURPLE_LIGHT}]🚀 Executing commands with conflict detection...[/bold {PURPLE_LIGHT}]")
+        console.print(
+            f"[bold {PURPLE_LIGHT}]🚀 Executing commands with conflict detection...[/bold {PURPLE_LIGHT}]"
+        )
         console.print()
 
         # Phase 1: Conflict Detection
@@ -1040,7 +1048,9 @@ class DoHandler:
                             fix_info.append(
                                 f"[{GRAY}]Attempted:[/{GRAY}] {len(fix_commands)} fix command(s)"
                             )
-                        fix_info.append(f"[bold {YELLOW}]Result:[/bold {YELLOW}] [{WHITE}]{fix_message}[/{WHITE}]")
+                        fix_info.append(
+                            f"[bold {YELLOW}]Result:[/bold {YELLOW}] [{WHITE}]{fix_message}[/{WHITE}]"
+                        )
                         console.print(
                             Panel(
                                 "\n".join(fix_info),
@@ -1217,7 +1227,9 @@ class DoHandler:
         from rich.panel import Panel
 
         status_text = (
-            f"[bold {PURPLE_LIGHT}]Active[/bold {PURPLE_LIGHT}]" if is_active else f"[{GRAY}]Inactive[/{GRAY}]"
+            f"[bold {PURPLE_LIGHT}]Active[/bold {PURPLE_LIGHT}]"
+            if is_active
+            else f"[{GRAY}]Inactive[/{GRAY}]"
         )
         conflict_content = (
             f"{icon} [bold {WHITE}]{resource_type.replace('_', ' ').title()}:[/bold {WHITE}] '{resource_name}'\n"
@@ -1271,7 +1283,9 @@ class DoHandler:
                 return True
 
             elif action == "start_existing":
-                console.print(f"[{PURPLE_LIGHT}]   Starting existing {resource_type}...[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]   Starting existing {resource_type}...[/{PURPLE_LIGHT}]"
+                )
                 for start_cmd in action_commands:
                     needs_sudo = start_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
@@ -1285,7 +1299,9 @@ class DoHandler:
                 return True
 
             elif action in ["restart", "upgrade", "reinstall"]:
-                console.print(f"[{PURPLE_LIGHT}]   {action.title()}ing {resource_type}...[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]   {action.title()}ing {resource_type}...[/{PURPLE_LIGHT}]"
+                )
                 for action_cmd in action_commands:
                     needs_sudo = action_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
@@ -1299,7 +1315,9 @@ class DoHandler:
                 return True
 
             elif action in ["recreate", "backup", "replace", "stop_existing"]:
-                console.print(f"[{PURPLE_LIGHT}]   Preparing to {action.replace('_', ' ')}...[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]   Preparing to {action.replace('_', ' ')}...[/{PURPLE_LIGHT}]"
+                )
                 for action_cmd in action_commands:
                     needs_sudo = action_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
@@ -1313,7 +1331,9 @@ class DoHandler:
                 return True
 
             elif action == "modify":
-                console.print(f"[{PURPLE_LIGHT}]   Will modify existing {resource_type}[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]   Will modify existing {resource_type}[/{PURPLE_LIGHT}]"
+                )
                 # Don't skip - let the original command run to modify
                 return True
 
@@ -1341,13 +1361,17 @@ class DoHandler:
                     # Don't skip - run the original command now that the tool is installed
                     return True
                 else:
-                    console.print(f"[{RED}]   {ICON_ERROR} Failed to install '{resource_name}'[/{RED}]")
+                    console.print(
+                        f"[{RED}]   {ICON_ERROR} Failed to install '{resource_name}'[/{RED}]"
+                    )
                     commands_to_skip.add(idx)
                     return True
 
             elif action == "use_apt":
                 # User chose to use apt instead of snap
-                console.print(f"[{PURPLE_LIGHT}]   Skipping snap command - use apt instead[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]   Skipping snap command - use apt instead[/{PURPLE_LIGHT}]"
+                )
                 commands_to_skip.add(idx)
                 return True
 
@@ -1425,7 +1449,9 @@ class DoHandler:
                         f"sudo systemctl start {service}", needs_sudo=True
                     )
                     if success:
-                        console.print(f"[{GREEN}]   {ICON_SUCCESS} Started service {service}[/{GREEN}]")
+                        console.print(
+                            f"[{GREEN}]   {ICON_SUCCESS} Started service {service}[/{GREEN}]"
+                        )
                     else:
                         console.print(
                             f"[{YELLOW}]   ⚠ Could not start {service}: {err[:50]}[/{YELLOW}]"
@@ -1440,7 +1466,9 @@ class DoHandler:
                     parent = os.path.dirname(path)
                     if parent and not os.path.exists(parent):
                         self._execute_single_command(f"sudo mkdir -p {parent}", needs_sudo=True)
-                        console.print(f"[{GREEN}]   {ICON_SUCCESS} Created directory {parent}[/{GREEN}]")
+                        console.print(
+                            f"[{GREEN}]   {ICON_SUCCESS} Created directory {parent}[/{GREEN}]"
+                        )
 
         return all_fixed
 
@@ -1486,7 +1514,9 @@ class DoHandler:
         self._setup_signal_handlers()
 
         # Phase 1: Conflict Detection - Claude-like header
-        console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Checking for Conflicts[/bold {WHITE}]")
+        console.print(
+            f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Checking for Conflicts[/bold {WHITE}]"
+        )
 
         conflicts_found = []
         cleanup_commands = []
@@ -1567,7 +1597,9 @@ class DoHandler:
         try:
             # Phase 2: Execute Commands - Claude-like header
             console.print()
-            console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Executing Commands[/bold {WHITE}]")
+            console.print(
+                f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Executing Commands[/bold {WHITE}]"
+            )
             console.print()
 
             # Track remaining commands for resume functionality
@@ -1588,7 +1620,9 @@ class DoHandler:
             if not self._interrupted:
                 # Phase 3: Verification Tests - Claude-like header
                 console.print()
-                console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Verification[/bold {WHITE}]")
+                console.print(
+                    f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Verification[/bold {WHITE}]"
+                )
 
                 all_tests_passed, test_results = self._verification_runner.run_verification_tests(
                     run.commands, user_query
@@ -1597,7 +1631,9 @@ class DoHandler:
                 # Phase 4: Auto-repair if tests failed
                 if not all_tests_passed:
                     console.print()
-                    console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Auto-Repair[/bold {WHITE}]")
+                    console.print(
+                        f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Auto-Repair[/bold {WHITE}]"
+                    )
 
                     repair_success = self._handle_test_failures(test_results, run)
 
@@ -1717,7 +1753,9 @@ class DoHandler:
                 f"[bold {YELLOW}]━━━[/bold {YELLOW}] [bold {WHITE}]Execution Interrupted - What would you like to do?[/bold {WHITE}]"
             )
         else:
-            console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Next Steps[/bold {WHITE}]")
+            console.print(
+                f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Next Steps[/bold {WHITE}]"
+            )
         console.print()
 
         # Display suggestions
@@ -1732,7 +1770,9 @@ class DoHandler:
 
         while True:
             try:
-                response = Prompt.ask(f"[bold {PURPLE_LIGHT}]{ICON_CMD}[/bold {PURPLE_LIGHT}]", default="exit")
+                response = Prompt.ask(
+                    f"[bold {PURPLE_LIGHT}]{ICON_CMD}[/bold {PURPLE_LIGHT}]", default="exit"
+                )
 
                 response_stripped = response.strip()
                 response_lower = response_stripped.lower()
@@ -1999,7 +2039,9 @@ class DoHandler:
             icon = suggestion.get("icon", "💡")
             label = suggestion.get("label", "")
             desc = suggestion.get("description", "")
-            console.print(f"  [{PURPLE_LIGHT}]{i}.[/{PURPLE_LIGHT}] {icon} [{WHITE}]{label}[/{WHITE}]")
+            console.print(
+                f"  [{PURPLE_LIGHT}]{i}.[/{PURPLE_LIGHT}] {icon} [{WHITE}]{label}[/{WHITE}]"
+            )
             if desc:
                 console.print(f"      [{GRAY}]{desc}[/{GRAY}]")
 
@@ -2189,7 +2231,9 @@ class DoHandler:
                 reasoning = llm_response.get("reasoning", "")
 
                 console.print()
-                console.print(f"[{PURPLE_LIGHT}]📋 Running:[/{PURPLE_LIGHT}] [{GREEN}]{cmd}[/{GREEN}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]📋 Running:[/{PURPLE_LIGHT}] [{GREEN}]{cmd}[/{GREEN}]"
+                )
                 if reasoning:
                     console.print(f"   [{GRAY}]{reasoning}[/{GRAY}]")
 
@@ -2277,7 +2321,9 @@ class DoHandler:
             return True
 
         # Couldn't understand the request
-        console.print(f"[{YELLOW}]I'm not sure how to do that. Could you be more specific?[/{YELLOW}]")
+        console.print(
+            f"[{YELLOW}]I'm not sure how to do that. Could you be more specific?[/{YELLOW}]"
+        )
         console.print(
             "[dim]Try something like: 'run the container', 'show me the config', or select a number.[/dim]"
         )
@@ -2793,7 +2839,9 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
             # Retry the command that was interrupted
             if self._interrupted_command:
                 console.print()
-                console.print(f"[{PURPLE_LIGHT}]🔄 Retrying:[/{PURPLE_LIGHT}] [{WHITE}]{self._interrupted_command}[/{WHITE}]")
+                console.print(
+                    f"[{PURPLE_LIGHT}]🔄 Retrying:[/{PURPLE_LIGHT}] [{WHITE}]{self._interrupted_command}[/{WHITE}]"
+                )
                 console.print()
 
                 needs_sudo = "sudo" in self._interrupted_command or self._needs_sudo(
@@ -2817,7 +2865,9 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
         elif suggestion_type == "skip_and_continue":
             # Skip the interrupted command and continue with remaining
             console.print()
-            console.print(f"[{PURPLE_LIGHT}]⏭️ Skipping interrupted command and continuing...[/{PURPLE_LIGHT}]")
+            console.print(
+                f"[{PURPLE_LIGHT}]⏭️ Skipping interrupted command and continuing...[/{PURPLE_LIGHT}]"
+            )
             self._interrupted_command = None
 
             if self._remaining_commands:
@@ -2837,7 +2887,9 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
             self._show_test_commands(run, user_query)
         elif "command" in suggestion:
             console.print()
-            console.print(f"[{PURPLE_LIGHT}]Executing:[/{PURPLE_LIGHT}] [{WHITE}]{suggestion['command']}[/{WHITE}]")
+            console.print(
+                f"[{PURPLE_LIGHT}]Executing:[/{PURPLE_LIGHT}] [{WHITE}]{suggestion['command']}[/{WHITE}]"
+            )
             console.print()
 
             needs_sudo = "sudo" in suggestion["command"]
@@ -2848,7 +2900,9 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
             if success:
                 console.print(f"[{GREEN}]{ICON_SUCCESS} Success[/{GREEN}]")
                 if stdout:
-                    console.print(f"[{GRAY}]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/{GRAY}]")
+                    console.print(
+                        f"[{GRAY}]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/{GRAY}]"
+                    )
             else:
                 console.print(f"[{RED}]{ICON_ERROR} Failed: {stderr[:200]}[/{RED}]")
         elif "manual_commands" in suggestion:
@@ -2988,7 +3042,9 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
                 if test_commands:
                     desc, cmd = test_commands[0]
                     console.print()
-                    console.print(f"[{PURPLE_LIGHT}]Running:[/{PURPLE_LIGHT}] [{WHITE}]{cmd}[/{WHITE}]")
+                    console.print(
+                        f"[{PURPLE_LIGHT}]Running:[/{PURPLE_LIGHT}] [{WHITE}]{cmd}[/{WHITE}]"
+                    )
                     needs_sudo = cmd.strip().startswith("sudo")
                     success, stdout, stderr = self._execute_single_command(
                         cmd, needs_sudo=needs_sudo
@@ -2997,7 +3053,11 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
                         console.print(f"[{GREEN}]{ICON_SUCCESS} {desc} - Passed[/{GREEN}]")
                         if stdout:
                             console.print(
-                                Panel(stdout[:500], title=f"[{GRAY}]Output[/{GRAY}]", border_style=GRAY)
+                                Panel(
+                                    stdout[:500],
+                                    title=f"[{GRAY}]Output[/{GRAY}]",
+                                    border_style=GRAY,
+                                )
                             )
                     else:
                         console.print(f"[{RED}]{ICON_ERROR} {desc} - Failed[/{RED}]")
@@ -3050,7 +3110,9 @@ response = requests.post('http://localhost:11434/api/generate',
 print(response.json()['response'])[/{GREEN}]""")
 
         elif demo_type == "nginx_config":
-            console.print(f"[bold {PURPLE_LIGHT}]📝 Nginx Configuration Example[/bold {PURPLE_LIGHT}]")
+            console.print(
+                f"[bold {PURPLE_LIGHT}]📝 Nginx Configuration Example[/bold {PURPLE_LIGHT}]"
+            )
             console.print()
             console.print(f"[{GRAY}]# Create a new site config:[/{GRAY}]")
             console.print(f"[{GREEN}]sudo nano /etc/nginx/sites-available/mysite[/{GREEN}]")
@@ -3115,7 +3177,9 @@ app.listen(3000, () => {{
 }});[/{GREEN}]""")
             console.print()
             console.print("[dim]# Run it:[/dim]")
-            console.print(f"[{GREEN}]npm init -y && npm install express && node server.js[/{GREEN}]")
+            console.print(
+                f"[{GREEN}]npm init -y && npm install express && node server.js[/{GREEN}]"
+            )
 
         elif demo_type == "python":
             console.print(f"[bold {PURPLE_LIGHT}]📝 Python Example[/bold {PURPLE_LIGHT}]")
@@ -3249,7 +3313,9 @@ if __name__ == '__main__':
         task.failure_reason = diagnosis.get("description", "Unknown error")
 
         # Claude-like error output
-        console.print(f"{indent}  [{RED}]{ICON_ERROR}[/{RED}] [bold {RED}]{diagnosis['error_type']}[/bold {RED}]")
+        console.print(
+            f"{indent}  [{RED}]{ICON_ERROR}[/{RED}] [bold {RED}]{diagnosis['error_type']}[/bold {RED}]"
+        )
         console.print(
             f"{indent}  [{GRAY}]{diagnosis['description'][:80]}{'...' if len(diagnosis['description']) > 80 else ''}[/{GRAY}]"
         )
@@ -3309,11 +3375,17 @@ if __name__ == '__main__':
                     f"{indent}[{GRAY}]   Or retry with: docker pull --timeout=0 <image>[/{GRAY}]"
                 )
             elif "apt" in task.command.lower():
-                console.print(f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  Package installation timed out[/{PURPLE_LIGHT}]")
-                console.print(f"{indent}[{GRAY}]   Check apt status: sudo dpkg --configure -a[/{GRAY}]")
+                console.print(
+                    f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  Package installation timed out[/{PURPLE_LIGHT}]"
+                )
+                console.print(
+                    f"{indent}[{GRAY}]   Check apt status: sudo dpkg --configure -a[/{GRAY}]"
+                )
                 console.print(f"{indent}[{GRAY}]   Then retry the command[/{GRAY}]")
             else:
-                console.print(f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  You can retry this command manually[/{PURPLE_LIGHT}]")
+                console.print(
+                    f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  You can retry this command manually[/{PURPLE_LIGHT}]"
+                )
 
             # Mark as needing manual intervention, not auto-fix
             task.status = CommandStatus.NEEDS_REPAIR

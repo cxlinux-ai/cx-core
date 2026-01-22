@@ -16,16 +16,16 @@ from rich.console import Console
 console = Console()
 
 # Dracula-Inspired Theme Colors
-PURPLE = "#bd93f9"      # Dracula purple
-PURPLE_LIGHT = "#ff79c6" # Dracula pink
+PURPLE = "#bd93f9"  # Dracula purple
+PURPLE_LIGHT = "#ff79c6"  # Dracula pink
 PURPLE_DARK = "#6272a4"  # Dracula comment
-WHITE = "#f8f8f2"        # Dracula foreground
-GRAY = "#6272a4"         # Dracula comment
-GREEN = "#50fa7b"        # Dracula green
-RED = "#ff5555"          # Dracula red
-YELLOW = "#f1fa8c"       # Dracula yellow
-CYAN = "#8be9fd"         # Dracula cyan
-ORANGE = "#ffb86c"       # Dracula orange
+WHITE = "#f8f8f2"  # Dracula foreground
+GRAY = "#6272a4"  # Dracula comment
+GREEN = "#50fa7b"  # Dracula green
+RED = "#ff5555"  # Dracula red
+YELLOW = "#f1fa8c"  # Dracula yellow
+CYAN = "#8be9fd"  # Dracula cyan
+ORANGE = "#ffb86c"  # Dracula orange
 
 # Round Icons
 ICON_MONITOR = "◉"
@@ -302,9 +302,13 @@ class TerminalMonitor:
 
         if verbose:
             if self._tmux_available:
-                console.print(f"[{GRAY}]{ICON_INFO} Tmux detected - will monitor tmux panes[/{GRAY}]")
+                console.print(
+                    f"[{GRAY}]{ICON_INFO} Tmux detected - will monitor tmux panes[/{GRAY}]"
+                )
             if self._screen_available:
-                console.print(f"[{GRAY}]{ICON_INFO} Screen detected - will monitor screen sessions[/{GRAY}]")
+                console.print(
+                    f"[{GRAY}]{ICON_INFO} Screen detected - will monitor screen sessions[/{GRAY}]"
+                )
 
     def _check_command_exists(self, cmd: str) -> bool:
         """Check if a command exists in PATH."""
@@ -375,7 +379,9 @@ class TerminalMonitor:
         llm_status = ""
         if self._llm and self._use_llm:
             if self._llm.is_available():
-                llm_status = f"\n[{GREEN}]{ICON_SUCCESS} AI Analysis: Mistral (local) - Active[/{GREEN}]"
+                llm_status = (
+                    f"\n[{GREEN}]{ICON_SUCCESS} AI Analysis: Mistral (local) - Active[/{GREEN}]"
+                )
             else:
                 llm_status = f"\n[{YELLOW}]{ICON_PENDING} AI Analysis: Mistral not available (install with: ollama pull mistral)[/{YELLOW}]"
 
@@ -481,7 +487,8 @@ class TerminalMonitor:
                     + ("Watching Tmux panes\n" if self._tmux_available else "")
                     + llm_status
                     + "\n\n"
-                    + setup_info + f"[/{WHITE}]",
+                    + setup_info
+                    + f"[/{WHITE}]",
                     title=f"[bold {PURPLE}]Live Terminal Monitor[/bold {PURPLE}]",
                     border_style=PURPLE,
                 )
@@ -518,14 +525,18 @@ class TerminalMonitor:
 
     def test_monitoring(self):
         """Test that monitoring is working by showing what files are being watched."""
-        console.print(f"\n[bold {PURPLE_LIGHT}]{ICON_MONITOR} Terminal Monitoring Test[/bold {PURPLE_LIGHT}]\n")
+        console.print(
+            f"\n[bold {PURPLE_LIGHT}]{ICON_MONITOR} Terminal Monitoring Test[/bold {PURPLE_LIGHT}]\n"
+        )
 
         # Check shell history files
         console.print(f"[bold {WHITE}]Shell History Files:[/bold {WHITE}]")
         for hist_file in self._shell_history_files:
             exists = hist_file.exists()
             size = hist_file.stat().st_size if exists else 0
-            status = f"[{GREEN}]{ICON_SUCCESS}[/{GREEN}]" if exists else f"[{RED}]{ICON_ERROR}[/{RED}]"
+            status = (
+                f"[{GREEN}]{ICON_SUCCESS}[/{GREEN}]" if exists else f"[{RED}]{ICON_ERROR}[/{RED}]"
+            )
             console.print(f"  {status} [{WHITE}]{hist_file} ({size} bytes)[/{WHITE}]")
 
         # Check Cursor terminal directories
@@ -533,14 +544,18 @@ class TerminalMonitor:
         for terminals_dir in self._cursor_terminals_dirs:
             if terminals_dir.exists():
                 files = list(terminals_dir.glob("*.txt"))
-                console.print(f"  [{GREEN}]{ICON_SUCCESS}[/{GREEN}] [{WHITE}]{terminals_dir} ({len(files)} files)[/{WHITE}]")
+                console.print(
+                    f"  [{GREEN}]{ICON_SUCCESS}[/{GREEN}] [{WHITE}]{terminals_dir} ({len(files)} files)[/{WHITE}]"
+                )
                 for f in files[:5]:  # Show first 5
                     size = f.stat().st_size
                     console.print(f"      [{GRAY}]- {f.name} ({size} bytes)[/{GRAY}]")
                 if len(files) > 5:
                     console.print(f"      [{GRAY}]... and {len(files) - 5} more[/{GRAY}]")
             else:
-                console.print(f"  [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{terminals_dir} (not found)[/{WHITE}]")
+                console.print(
+                    f"  [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{terminals_dir} (not found)[/{WHITE}]"
+                )
 
         # Check tmux
         console.print(f"\n[bold {WHITE}]Other Sources:[/bold {WHITE}]")
@@ -1255,7 +1270,9 @@ echo "✓ Cortex is now watching this terminal"
             else:
                 # Show success indicator for commands that completed
                 if "✓" in output or "success" in output.lower() or "complete" in output.lower():
-                    console.print(f"[{GREEN}]   {ICON_SUCCESS} Command completed successfully[/{GREEN}]")
+                    console.print(
+                        f"[{GREEN}]   {ICON_SUCCESS} Command completed successfully[/{GREEN}]"
+                    )
                 elif len(output.strip()) > 0:
                     # Show a preview of the output
                     output_lines = [l for l in output.split("\n") if l.strip()][:3]
@@ -1534,7 +1551,11 @@ echo "✓ Cortex is now watching this terminal"
             cmd_display = fix_cmd[:55] + "..." if len(fix_cmd) > 55 else fix_cmd
 
             try:
-                with Status(f"[{PURPLE_LIGHT}]{cmd_display}[/{PURPLE_LIGHT}]", console=console, spinner="dots"):
+                with Status(
+                    f"[{PURPLE_LIGHT}]{cmd_display}[/{PURPLE_LIGHT}]",
+                    console=console,
+                    spinner="dots",
+                ):
                     result = subprocess.run(
                         fix_cmd, shell=True, capture_output=True, text=True, timeout=60
                     )
@@ -1577,13 +1598,17 @@ echo "✓ Cortex is now watching this terminal"
             except Exception as e:
                 results.append((fix_cmd, "error", str(e)[:50]))
                 all_success = False
-                console.print(f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{cmd_display}[/{WHITE}]")
+                console.print(
+                    f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{cmd_display}[/{WHITE}]"
+                )
                 break
 
         # Show summary line
         success_count = sum(1 for _, s, _ in results if s == "success")
         if success_count > 0 and success_count == len([r for r in results if r[1] != "sudo"]):
-            console.print(f"\n  [{GREEN}]{ICON_SUCCESS} All {success_count} command(s) completed[/{GREEN}]")
+            console.print(
+                f"\n  [{GREEN}]{ICON_SUCCESS} All {success_count} command(s) completed[/{GREEN}]"
+            )
 
         # Show sudo commands in bordered panel
         if sudo_commands_pending:
@@ -1966,7 +1991,9 @@ Next command:"""
                 and len(self._session_context) >= 2
             ):
                 console.print()
-                console.print(f"[bold {PURPLE_LIGHT}]{ICON_MONITOR} AI Analysis:[/bold {PURPLE_LIGHT}]")
+                console.print(
+                    f"[bold {PURPLE_LIGHT}]{ICON_MONITOR} AI Analysis:[/bold {PURPLE_LIGHT}]"
+                )
 
                 # Analyze intent
                 intent = self.analyze_session_intent()

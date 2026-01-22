@@ -904,10 +904,10 @@ class CortexCLI:
             initial_question: Optional initial question to start with
         """
         from rich.prompt import Prompt
-        
+
         # Import and apply Cortex terminal theme at session start
-        from cortex.ask import _set_terminal_theme, _restore_terminal_theme, _print_cortex_banner
-        
+        from cortex.ask import _print_cortex_banner, _restore_terminal_theme, _set_terminal_theme
+
         try:
             _set_terminal_theme()
             _print_cortex_banner()
@@ -915,7 +915,7 @@ class CortexCLI:
             pass  # Silently continue if theming fails
 
         question = initial_question
-        
+
         # Dracula theme colors for prompt
         PURPLE_LIGHT = "#ff79c6"  # Dracula pink
         GRAY = "#6272a4"  # Dracula comment
@@ -925,24 +925,28 @@ class CortexCLI:
             while True:
                 try:
                     if not question:
-                        question = Prompt.ask(f"{INDENT}[bold {PURPLE_LIGHT}]What would you like to do?[/bold {PURPLE_LIGHT}]")
+                        question = Prompt.ask(
+                            f"{INDENT}[bold {PURPLE_LIGHT}]What would you like to do?[/bold {PURPLE_LIGHT}]"
+                        )
 
                     if not question or question.lower() in ["exit", "quit", "q"]:
                         console.print(f"{INDENT}[{GRAY}]Goodbye![/{GRAY}]")
                         return 0
-                    
+
                     # Handle /theme command
                     if question.strip().lower() == "/theme":
-                        from cortex.ask import show_theme_selector, set_theme, get_current_theme
-                        
+                        from cortex.ask import get_current_theme, set_theme, show_theme_selector
+
                         selected = show_theme_selector()
                         if selected:
                             set_theme(selected)
                             theme = get_current_theme()
-                            console.print(f"{INDENT}[{theme['success']}]● Theme changed to {theme['name']}[/{theme['success']}]")
+                            console.print(
+                                f"{INDENT}[{theme['success']}]● Theme changed to {theme['name']}[/{theme['success']}]"
+                            )
                         else:
                             console.print(f"{INDENT}[{GRAY}]Theme selection cancelled[/{GRAY}]")
-                        
+
                         # Re-print banner with new theme
                         _print_cortex_banner()
                         question = None

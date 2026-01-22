@@ -128,16 +128,16 @@ def get_current_theme() -> dict:
 def set_theme(theme_name: str) -> bool:
     """Set the active theme by name."""
     global _CURRENT_THEME, _CORTEX_BG, _CORTEX_FG, _CORTEX_CURSOR
-    
+
     if theme_name not in THEMES:
         return False
-    
+
     _CURRENT_THEME = theme_name
     theme = THEMES[theme_name]
     _CORTEX_BG = theme["bg"]
     _CORTEX_FG = theme["fg"]
     _CORTEX_CURSOR = theme["cursor"]
-    
+
     # Apply theme to terminal
     _set_terminal_theme()
     return True
@@ -145,24 +145,24 @@ def set_theme(theme_name: str) -> bool:
 
 def show_theme_selector() -> str | None:
     """Show interactive theme selector with arrow key navigation.
-    
+
     Returns:
         Selected theme name or None if cancelled
     """
     import sys
-    import tty
     import termios
-    
+    import tty
+
     theme_list = list(THEMES.keys())
     current_idx = theme_list.index(_CURRENT_THEME) if _CURRENT_THEME in theme_list else 0
     num_themes = len(theme_list)
-    
+
     # ANSI codes
     CLEAR_LINE = "\033[2K"
     MOVE_UP = "\033[A"
     HIDE_CURSOR = "\033[?25l"
     SHOW_CURSOR = "\033[?25h"
-    
+
     # Colors (ANSI)
     PURPLE = "\033[38;2;189;147;249m"
     PINK = "\033[38;2;255;121;198m"
@@ -170,7 +170,7 @@ def show_theme_selector() -> str | None:
     WHITE = "\033[38;2;248;248;242m"
     RESET = "\033[0m"
     BOLD = "\033[1m"
-    
+
     def get_key():
         """Get a single keypress."""
         fd = sys.stdin.fileno()
@@ -178,23 +178,23 @@ def show_theme_selector() -> str | None:
         try:
             tty.setraw(fd)
             ch = sys.stdin.read(1)
-            if ch == '\x1b':
+            if ch == "\x1b":
                 ch2 = sys.stdin.read(1)
-                if ch2 == '[':
+                if ch2 == "[":
                     ch3 = sys.stdin.read(1)
-                    if ch3 == 'A':
-                        return 'up'
-                    elif ch3 == 'B':
-                        return 'down'
-                return 'esc'
-            elif ch == '\r' or ch == '\n':
-                return 'enter'
-            elif ch == 'q' or ch == '\x03':
-                return 'quit'
+                    if ch3 == "A":
+                        return "up"
+                    elif ch3 == "B":
+                        return "down"
+                return "esc"
+            elif ch == "\r" or ch == "\n":
+                return "enter"
+            elif ch == "q" or ch == "\x03":
+                return "quit"
             return ch
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    
+
     def get_theme_color(theme, color_type):
         """Get ANSI color code for theme color."""
         hex_color = theme.get(color_type, "#ffffff")
@@ -202,59 +202,63 @@ def show_theme_selector() -> str | None:
         g = int(hex_color[3:5], 16)
         b = int(hex_color[5:7], 16)
         return f"\033[38;2;{r};{g};{b}m"
-    
+
     def draw_menu():
         """Draw the menu."""
         # Header
-        print(f"\r{CLEAR_LINE}   {PURPLE}{BOLD}◉{RESET} {PINK}{BOLD}Select Theme{RESET} {GRAY}(↑/↓ navigate, Enter select, q cancel){RESET}")
+        print(
+            f"\r{CLEAR_LINE}   {PURPLE}{BOLD}◉{RESET} {PINK}{BOLD}Select Theme{RESET} {GRAY}(↑/↓ navigate, Enter select, q cancel){RESET}"
+        )
         print(f"\r{CLEAR_LINE}")
-        
+
         # Theme options
         for idx, theme_key in enumerate(theme_list):
             theme = THEMES[theme_key]
-            primary = get_theme_color(theme, 'primary')
-            secondary = get_theme_color(theme, 'secondary')
-            success = get_theme_color(theme, 'success')
-            error = get_theme_color(theme, 'error')
-            
+            primary = get_theme_color(theme, "primary")
+            secondary = get_theme_color(theme, "secondary")
+            success = get_theme_color(theme, "success")
+            error = get_theme_color(theme, "error")
+
             if idx == current_idx:
-                print(f"\r{CLEAR_LINE}   {primary}→ {BOLD}{theme['name']}{RESET}  {primary}■{secondary}■{success}■{error}■{RESET}")
+                print(
+                    f"\r{CLEAR_LINE}   {primary}→ {BOLD}{theme['name']}{RESET}  {primary}■{secondary}■{success}■{error}■{RESET}"
+                )
             else:
                 print(f"\r{CLEAR_LINE}     {GRAY}{theme['name']}{RESET}")
-        
+
         print(f"\r{CLEAR_LINE}")
-    
+
     def clear_menu():
         """Move cursor up and clear all menu lines."""
         total_lines = num_themes + 3  # header + blank + themes + blank
         for _ in range(total_lines):
             sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
         sys.stdout.flush()
-    
+
     # Initial draw
     try:
         sys.stdout.write(HIDE_CURSOR)
         sys.stdout.flush()
         print()  # Initial blank line
         draw_menu()
-        
+
         while True:
             key = get_key()
-            
-            if key == 'up':
+
+            if key == "up":
                 current_idx = (current_idx - 1) % num_themes
                 clear_menu()
                 draw_menu()
-            elif key == 'down':
+            elif key == "down":
                 current_idx = (current_idx + 1) % num_themes
                 clear_menu()
                 draw_menu()
-            elif key == 'enter':
+            elif key == "enter":
                 clear_menu()
                 sys.stdout.write(SHOW_CURSOR)
                 sys.stdout.flush()
                 return theme_list[current_idx]
-            elif key == 'quit' or key == 'esc':
+            elif key == "quit" or key == "esc":
                 clear_menu()
                 sys.stdout.write(SHOW_CURSOR)
                 sys.stdout.flush()
@@ -271,22 +275,22 @@ def show_theme_selector() -> str | None:
 def _set_terminal_theme():
     """Set terminal colors to Dracula-inspired theme using OSC escape sequences."""
     global _ORIGINAL_COLORS_SAVED
-    
+
     # Only works on terminals that support OSC sequences (most modern terminals)
     if not sys.stdout.isatty():
         return
-    
+
     try:
         # Set background color (OSC 11) - Dracula dark
         sys.stdout.write(f"\033]11;{_CORTEX_BG}\007")
-        # Set foreground color (OSC 10) - Dracula light  
+        # Set foreground color (OSC 10) - Dracula light
         sys.stdout.write(f"\033]10;{_CORTEX_FG}\007")
         # Set cursor color to pink (OSC 12)
         sys.stdout.write(f"\033]12;{_CORTEX_CURSOR}\007")
         sys.stdout.flush()
-        
+
         _ORIGINAL_COLORS_SAVED = True
-        
+
         # Register cleanup to restore colors on exit
         atexit.register(_restore_terminal_theme)
     except Exception:
@@ -296,17 +300,17 @@ def _set_terminal_theme():
 def _restore_terminal_theme():
     """Restore terminal to default colors."""
     global _ORIGINAL_COLORS_SAVED
-    
+
     if not _ORIGINAL_COLORS_SAVED or not sys.stdout.isatty():
         return
-    
+
     try:
         # Reset to terminal defaults
         sys.stdout.write("\033]110\007")  # Reset foreground to default
-        sys.stdout.write("\033]111\007")  # Reset background to default  
+        sys.stdout.write("\033]111\007")  # Reset background to default
         sys.stdout.write("\033]112\007")  # Reset cursor to default
         sys.stdout.flush()
-        
+
         _ORIGINAL_COLORS_SAVED = False
     except Exception:
         pass
@@ -316,27 +320,27 @@ def _print_cortex_banner():
     """Print a Cortex session banner with Dracula-inspired styling."""
     if not sys.stdout.isatty():
         return
-    
+
     from rich.console import Console
+    from rich.padding import Padding
     from rich.panel import Panel
     from rich.text import Text
-    from rich.padding import Padding
-    
+
     # Dracula colors
     PURPLE = "#bd93f9"
     PINK = "#ff79c6"
     CYAN = "#8be9fd"
     GRAY = "#6272a4"
-    
+
     console = Console()
-    
+
     # Build banner content
     banner_text = Text()
     banner_text.append("◉ CORTEX", style=f"bold {PINK}")
     banner_text.append(" AI-Powered Terminal Session\n", style=CYAN)
     banner_text.append("Type your request • ", style=GRAY)
     banner_text.append("Ctrl+C to exit", style=GRAY)
-    
+
     # Create panel with fixed width
     panel = Panel(
         banner_text,
@@ -344,10 +348,10 @@ def _print_cortex_banner():
         padding=(0, 1),
         width=45,  # Fixed width
     )
-    
+
     # Fixed left margin of 3
     padded_panel = Padding(panel, (0, 0, 0, 3))
-    
+
     console.print()
     console.print(padded_panel)
     console.print()
@@ -775,14 +779,14 @@ class AskHandler:
     def _do_llm_callback(self, request: str, context: dict | None = None) -> dict:
         """LLM callback for DoHandler - generates structured do_commands responses."""
         system_prompt = self._get_do_system_prompt()
-        
+
         # Build context string if provided
         context_str = ""
         if context:
             context_str = f"\n\nContext:\n{json.dumps(context, indent=2)}"
-        
+
         full_prompt = f"{request}{context_str}"
-        
+
         try:
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
@@ -806,29 +810,34 @@ class AskHandler:
                 content = response.content[0].text or ""
             elif self.provider == "ollama":
                 import urllib.request
+
                 url = f"{self.ollama_url}/api/generate"
                 prompt = f"{system_prompt}\n\nRequest: {full_prompt}"
-                data = json.dumps({
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": MAX_TOKENS},
-                }).encode("utf-8")
-                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                data = json.dumps(
+                    {
+                        "model": self.model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {"temperature": 0.3, "num_predict": MAX_TOKENS},
+                    }
+                ).encode("utf-8")
+                req = urllib.request.Request(
+                    url, data=data, headers={"Content-Type": "application/json"}
+                )
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     result = json.loads(resp.read().decode("utf-8"))
                     content = result.get("response", "")
             else:
                 return {"response_type": "error", "error": f"Unsupported provider: {self.provider}"}
-            
+
             # Parse JSON from response
             json_match = re.search(r"\{[\s\S]*\}", content)
             if json_match:
                 return json.loads(json_match.group())
-            
+
             # If no JSON, return as answer
             return {"response_type": "answer", "answer": content.strip()}
-            
+
         except Exception as e:
             return {"response_type": "error", "error": str(e)}
 
@@ -868,31 +877,31 @@ RULES:
 
     def _handle_do_request(self, question: str) -> str:
         """Handle a request in do_mode - generates and executes commands.
-        
+
         Args:
             question: The user's request
-            
+
         Returns:
             Summary of what was done or the answer
         """
         from rich.console import Console
+        from rich.padding import Padding
         from rich.panel import Panel
         from rich.prompt import Confirm
         from rich.text import Text
-        from rich.padding import Padding
-        
+
         # Dracula-Inspired Theme Colors
-        PURPLE = "#bd93f9"      # Dracula purple
-        PURPLE_LIGHT = "#ff79c6" # Dracula pink
+        PURPLE = "#bd93f9"  # Dracula purple
+        PURPLE_LIGHT = "#ff79c6"  # Dracula pink
         PURPLE_DARK = "#6272a4"  # Dracula comment
-        WHITE = "#f8f8f2"        # Dracula foreground
-        GRAY = "#6272a4"         # Dracula comment
-        GREEN = "#50fa7b"        # Dracula green
-        RED = "#ff5555"          # Dracula red
-        YELLOW = "#f1fa8c"       # Dracula yellow
-        CYAN = "#8be9fd"         # Dracula cyan
-        ORANGE = "#ffb86c"       # Dracula orange
-        
+        WHITE = "#f8f8f2"  # Dracula foreground
+        GRAY = "#6272a4"  # Dracula comment
+        GREEN = "#50fa7b"  # Dracula green
+        RED = "#ff5555"  # Dracula red
+        YELLOW = "#f1fa8c"  # Dracula yellow
+        CYAN = "#8be9fd"  # Dracula cyan
+        ORANGE = "#ffb86c"  # Dracula orange
+
         # Icons (round/circle based)
         ICON_THINKING = "◐"
         ICON_PLAN = "◉"
@@ -901,31 +910,33 @@ RULES:
         ICON_ERROR = "●"
         ICON_ARROW = "→"
         ICON_LOCK = "◉"
-        
+
         console = Console()
-        
+
         # Fixed layout constants
         LEFT_MARGIN = 3
         INDENT = "   "
         BOX_WIDTH = 70  # Fixed box width
-        
+
         def print_padded(text: str) -> None:
             """Print text with left margin."""
             console.print(f"{INDENT}{text}")
-        
+
         def print_panel(content, **kwargs) -> None:
             """Print a panel with fixed width and left margin."""
             panel = Panel(content, width=BOX_WIDTH, **kwargs)
             padded = Padding(panel, (0, 0, 0, LEFT_MARGIN))
             console.print(padded)
-        
+
         # Processing indicator
         console.print()
-        print_padded(f"[{PURPLE}]{ICON_THINKING}[/{PURPLE}] [{PURPLE_LIGHT}]Analyzing results... Step 1[/{PURPLE_LIGHT}]")
+        print_padded(
+            f"[{PURPLE}]{ICON_THINKING}[/{PURPLE}] [{PURPLE_LIGHT}]Analyzing results... Step 1[/{PURPLE_LIGHT}]"
+        )
         console.print()
-        
+
         llm_response = self._do_llm_callback(question)
-        
+
         if not llm_response:
             print_panel(
                 f"[{RED}]{ICON_ERROR} I couldn't process that request. Please try again.[/{RED}]",
@@ -933,9 +944,9 @@ RULES:
                 padding=(0, 2),
             )
             return ""
-        
+
         response_type = llm_response.get("response_type", "")
-        
+
         # If it's just an answer (informational), return it in a panel
         if response_type == "answer":
             answer = llm_response.get("answer", "No response generated.")
@@ -947,7 +958,7 @@ RULES:
                 padding=(0, 2),
             )
             return ""
-        
+
         # If it's an error, return the error message in a panel
         if response_type == "error":
             print_panel(
@@ -958,12 +969,12 @@ RULES:
                 padding=(0, 2),
             )
             return ""
-        
+
         # Handle do_commands - execute with confirmation
         if response_type == "do_commands" and llm_response.get("do_commands"):
             do_commands = llm_response["do_commands"]
             reasoning = llm_response.get("reasoning", "")
-            
+
             # Show reasoning
             if reasoning:
                 print_panel(
@@ -974,27 +985,27 @@ RULES:
                     padding=(0, 2),
                 )
                 console.print()
-            
+
             # Build commands list
             commands_text = Text()
             for i, cmd_info in enumerate(do_commands, 1):
                 cmd = cmd_info.get("command", "")
                 purpose = cmd_info.get("purpose", "")
                 needs_sudo = cmd_info.get("requires_sudo", False)
-                
+
                 # Number and lock icon
                 if needs_sudo:
                     commands_text.append(f"  {ICON_LOCK} ", style=YELLOW)
                 else:
                     commands_text.append(f"  {ICON_CMD} ", style=PURPLE)
-                
+
                 commands_text.append(f"{i}. ", style=f"bold {WHITE}")
                 commands_text.append(f"{cmd}\n", style=f"bold {PURPLE_LIGHT}")
                 if purpose:
                     commands_text.append(f"     {ICON_ARROW} ", style=GRAY)
                     commands_text.append(f"{purpose}\n", style=GRAY)
                 commands_text.append("\n")
-            
+
             print_panel(
                 commands_text,
                 border_style=PURPLE,
@@ -1003,32 +1014,36 @@ RULES:
                 padding=(0, 2),
             )
             console.print()
-            
-            if not Confirm.ask(f"{INDENT}[{PURPLE}]Execute these commands?[/{PURPLE}]", default=True):
+
+            if not Confirm.ask(
+                f"{INDENT}[{PURPLE}]Execute these commands?[/{PURPLE}]", default=True
+            ):
                 console.print()
                 print_padded(f"[{YELLOW}]{ICON_ERROR} Skipped by user[/{YELLOW}]")
                 return ""
-            
+
             # Execute header
             console.print()
             print_padded(f"[{PURPLE_LIGHT}]Executing...[/{PURPLE_LIGHT}]")
-            
+
             results = []
             for idx, cmd_info in enumerate(do_commands, 1):
                 cmd = cmd_info.get("command", "")
                 purpose = cmd_info.get("purpose", "Execute command")
                 needs_sudo = cmd_info.get("requires_sudo", False)
-                
+
                 # Show step indicator
                 console.print()
-                print_padded(f"[{PURPLE_LIGHT}]Analyzing results... Step {idx + 1}[/{PURPLE_LIGHT}]")
+                print_padded(
+                    f"[{PURPLE_LIGHT}]Analyzing results... Step {idx + 1}[/{PURPLE_LIGHT}]"
+                )
                 console.print()
-                
+
                 # Build command display
                 cmd_text = Text()
                 cmd_text.append(f"  {ICON_CMD} ", style=PURPLE)
                 cmd_text.append(f"{cmd}", style=f"bold {PURPLE_LIGHT}")
-                
+
                 # Show command panel
                 print_panel(
                     cmd_text,
@@ -1037,15 +1052,18 @@ RULES:
                     title_align="left",
                     padding=(0, 2),
                 )
-                
+
                 # Show spinner while executing
                 with console.status(f"[{PURPLE}]Running...[/{PURPLE}]", spinner="dots") as status:
                     # Execute via DoHandler if available
                     if self._do_handler:
-                        success, stdout, stderr = self._do_handler._execute_single_command(cmd, needs_sudo)
+                        success, stdout, stderr = self._do_handler._execute_single_command(
+                            cmd, needs_sudo
+                        )
                     else:
                         # Fallback to direct subprocess
                         import subprocess
+
                         try:
                             exec_cmd = cmd
                             if needs_sudo and not cmd.startswith("sudo"):
@@ -1060,13 +1078,13 @@ RULES:
                             success = False
                             stdout = ""
                             stderr = str(e)
-                
+
                 if success:
                     if stdout:
-                        output_lines = stdout.split('\n')
+                        output_lines = stdout.split("\n")
                         line_count = len(output_lines)
                         truncated_lines = output_lines[:8]  # Show up to 8 lines
-                        
+
                         # Build output text
                         output_text = Text()
                         for line in truncated_lines:
@@ -1074,11 +1092,13 @@ RULES:
                                 # Truncate long lines at 80 chars
                                 display_line = line[:80] + ("..." if len(line) > 80 else "")
                                 output_text.append(f"{display_line}\n", style=WHITE)
-                        
+
                         console.print()
-                        print_padded(f"[{GREEN}]{ICON_SUCCESS} Got {line_count} lines of output[/{GREEN}]")
+                        print_padded(
+                            f"[{GREEN}]{ICON_SUCCESS} Got {line_count} lines of output[/{GREEN}]"
+                        )
                         console.print()
-                        
+
                         print_panel(
                             output_text,
                             border_style=PURPLE_DARK,
@@ -1088,7 +1108,7 @@ RULES:
                         )
                     else:
                         print_padded(f"[{GREEN}]{ICON_SUCCESS} Command succeeded[/{GREEN}]")
-                    
+
                     results.append(("success", cmd, stdout))
                 else:
                     console.print()
@@ -1098,33 +1118,30 @@ RULES:
                         error_text = stderr[:200] + ("..." if len(stderr) > 200 else "")
                         print_padded(f"  [{GRAY}]{error_text}[/{GRAY}]")
                     results.append(("failed", cmd, stderr))
-            
+
             # Generate LLM-based summary
             console.print()
             return self._generate_execution_summary(question, results, do_commands)
-        
+
         # Default fallback
         return self._format_answer(llm_response.get("answer", "Request processed."))
 
     def _generate_execution_summary(
-        self, 
-        question: str, 
-        results: list, 
-        commands: list[dict]
+        self, question: str, results: list, commands: list[dict]
     ) -> str:
         """Generate a comprehensive summary after command execution.
-        
+
         Args:
             question: The original user request
             results: List of (status, command, output/error) tuples
             commands: The original command list with purposes
-            
+
         Returns:
             Formatted summary with answer
         """
         success_count = sum(1 for r in results if r[0] == "success")
         fail_count = len(results) - success_count
-        
+
         # Build execution results for LLM - include actual outputs!
         execution_results = []
         for i, result in enumerate(results):
@@ -1142,7 +1159,7 @@ RULES:
                 else:
                     entry["error"] = result[2][:500]  # Include error message
             execution_results.append(entry)
-        
+
         # Generate LLM summary with command outputs
         summary_prompt = f"""The user asked: "{question}"
 
@@ -1156,7 +1173,7 @@ The following commands were executed with their outputs:
                 summary_prompt += f"\n   Output:\n{entry['output']}"
             if entry.get("error"):
                 summary_prompt += f"\n   Error: {entry['error']}"
-        
+
         summary_prompt += f"""
 
 Execution Summary: {success_count} succeeded, {fail_count} failed.
@@ -1179,7 +1196,10 @@ Respond with just the answer containing the actual data, no JSON."""
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant that summarizes command execution results concisely."},
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant that summarizes command execution results concisely.",
+                        },
                         {"role": "user", "content": summary_prompt},
                     ],
                     temperature=0.3,
@@ -1197,55 +1217,64 @@ Respond with just the answer containing the actual data, no JSON."""
                 summary = response.content[0].text or ""
             elif self.provider == "ollama":
                 import urllib.request
+
                 url = f"{self.ollama_url}/api/generate"
-                data = json.dumps({
-                    "model": self.model,
-                    "prompt": f"Summarize concisely:\n{summary_prompt}",
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 500},
-                }).encode("utf-8")
-                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                data = json.dumps(
+                    {
+                        "model": self.model,
+                        "prompt": f"Summarize concisely:\n{summary_prompt}",
+                        "stream": False,
+                        "options": {"temperature": 0.3, "num_predict": 500},
+                    }
+                ).encode("utf-8")
+                req = urllib.request.Request(
+                    url, data=data, headers={"Content-Type": "application/json"}
+                )
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     result = json.loads(resp.read().decode("utf-8"))
                     summary = result.get("response", "")
             else:
                 summary = ""
-            
+
             if summary.strip():
                 return self._format_answer(summary.strip())
         except Exception:
             pass  # Fall back to basic summary
-        
+
         # Fallback basic summary
         if fail_count == 0:
-            return self._format_answer(f"✅ Successfully completed your request. All {success_count} command(s) executed successfully.")
+            return self._format_answer(
+                f"✅ Successfully completed your request. All {success_count} command(s) executed successfully."
+            )
         else:
-            return self._format_answer(f"Completed with issues: {success_count} command(s) succeeded, {fail_count} failed. Check the output above for details.")
+            return self._format_answer(
+                f"Completed with issues: {success_count} command(s) succeeded, {fail_count} failed. Check the output above for details."
+            )
 
     def _format_answer(self, answer: str) -> str:
         """Format the final answer with a clear summary section in Dracula theme.
-        
+
         Args:
             answer: The answer text
-            
+
         Returns:
             Empty string (output is printed directly to console)
         """
         from rich.console import Console
-        from rich.panel import Panel
         from rich.padding import Padding
-        
+        from rich.panel import Panel
+
         # Dracula Theme Colors
         PURPLE = "#bd93f9"
         WHITE = "#f8f8f2"
         GREEN = "#50fa7b"
         ICON_SUCCESS = "●"
-        
+
         console = Console()
-        
+
         if not answer:
             answer = "Request completed."
-        
+
         # Create panel with fixed width
         panel = Panel(
             f"[{WHITE}]{answer}[/{WHITE}]",
@@ -1255,14 +1284,14 @@ Respond with just the answer containing the actual data, no JSON."""
             padding=(0, 2),
             width=70,  # Fixed width
         )
-        
+
         # Add left margin
         padded = Padding(panel, (0, 0, 0, 3))
-        
+
         console.print()
         console.print(padded)
         console.print()
-        
+
         return ""
 
     def _get_system_prompt(self, context: dict[str, Any]) -> str:
