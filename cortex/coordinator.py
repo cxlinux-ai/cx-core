@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from cortex.utils.retry import SmartRetry
 
 from cortex.validators import DANGEROUS_PATTERNS
 
@@ -178,8 +179,6 @@ class InstallationCoordinator:
             self._log(f"Command blocked: {step.command} - {error}")
             return False
 
-        from cortex.utils.retry import SmartRetry
-
         def run_cmd():
             # Use shell=True carefully - commands are validated first
             # For complex shell commands (pipes, redirects), shell=True is needed
@@ -190,8 +189,8 @@ class InstallationCoordinator:
 
         def status_callback(msg: str):
             self._log(msg)
-            # Optionally update UI here if needed, but for now logging is sufficient
-            # The CLI progress callback handles the main step status updates
+            # Also print to stdout so the user sees the retry happening
+            print(msg)
 
         retry_handler = SmartRetry(
             max_retries=self.max_retries,

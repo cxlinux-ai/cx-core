@@ -20,8 +20,13 @@ class SmartRetry:
         backoff_factor: float = 1.0,
         status_callback: Callable[[str], None] | None = None,
     ):
+        if not isinstance(max_retries, int) or max_retries < 0:
+            raise ValueError("max_retries must be a non-negative integer")
+        if not isinstance(backoff_factor, (int, float)) or backoff_factor < 0:
+            raise ValueError("backoff_factor must be a non-negative number")
+
         self.max_retries = max_retries
-        self.backoff_factor = backoff_factor
+        self.backoff_factor = float(backoff_factor)
         self.status_callback = status_callback
         self.error_parser = ErrorParser()
 
@@ -63,7 +68,7 @@ class SmartRetry:
             except Exception as e:
                 last_exception = e
                 if not self._should_retry(str(e)):
-                    raise e
+                    raise
 
             # If we are here, we need to retry (unless max retries reached)
             if attempt == self.max_retries:
@@ -94,6 +99,10 @@ class SmartRetry:
         analysis = self.error_parser.parse_error(error_message)
         category = analysis.primary_category
 
+        # If the error is explicitly marked as not fixable, fail fast
+        if not analysis.is_fixable:
+            return False
+
         # Retry on network errors, lock errors, or unknown errors (conservative)
         if category in [
             ErrorCategory.NETWORK_ERROR,
@@ -109,6 +118,7 @@ class SmartRetry:
             ErrorCategory.CONFIGURATION_ERROR,
             ErrorCategory.DEPENDENCY_MISSING,
             ErrorCategory.CONFLICT,
+            ErrorCategory.DISK_SPACE,
         ]:
             return False
 
