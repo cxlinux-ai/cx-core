@@ -904,38 +904,70 @@ class CortexCLI:
             initial_question: Optional initial question to start with
         """
         from rich.prompt import Prompt
-
-        console.print()
-        console.print("[bold cyan]🤖 Cortex AI Assistant (Execution Mode)[/bold cyan]")
-        console.print("[dim]Commands will be shown for your approval before execution.[/dim]")
-        console.print("[dim]Type 'exit' or press Ctrl+C to quit.[/dim]")
-        console.print()
+        
+        # Import and apply Cortex terminal theme at session start
+        from cortex.ask import _set_terminal_theme, _restore_terminal_theme, _print_cortex_banner
+        
+        try:
+            _set_terminal_theme()
+            _print_cortex_banner()
+        except Exception:
+            pass  # Silently continue if theming fails
 
         question = initial_question
+        
+        # Dracula theme colors for prompt
+        PURPLE_LIGHT = "#ff79c6"  # Dracula pink
+        GRAY = "#6272a4"  # Dracula comment
+        INDENT = "   "  # Fixed 3-space indent
 
-        while True:
-            try:
-                if not question:
-                    question = Prompt.ask("[bold green]What would you like to do?[/bold green]")
+        try:
+            while True:
+                try:
+                    if not question:
+                        question = Prompt.ask(f"{INDENT}[bold {PURPLE_LIGHT}]What would you like to do?[/bold {PURPLE_LIGHT}]")
 
-                if not question or question.lower() in ["exit", "quit", "q"]:
-                    console.print("[dim]Goodbye![/dim]")
+                    if not question or question.lower() in ["exit", "quit", "q"]:
+                        console.print(f"{INDENT}[{GRAY}]Goodbye![/{GRAY}]")
+                        return 0
+                    
+                    # Handle /theme command
+                    if question.strip().lower() == "/theme":
+                        from cortex.ask import show_theme_selector, set_theme, get_current_theme
+                        
+                        selected = show_theme_selector()
+                        if selected:
+                            set_theme(selected)
+                            theme = get_current_theme()
+                            console.print(f"{INDENT}[{theme['success']}]● Theme changed to {theme['name']}[/{theme['success']}]")
+                        else:
+                            console.print(f"{INDENT}[{GRAY}]Theme selection cancelled[/{GRAY}]")
+                        
+                        # Re-print banner with new theme
+                        _print_cortex_banner()
+                        question = None
+                        continue
+
+                    # Process the question
+                    result = handler.ask(question)
+                    if result:
+                        console.print(Markdown(result))
+
+                    # Reset for next iteration
+                    question = None
+
+                except KeyboardInterrupt:
+                    console.print(f"\n{INDENT}[{GRAY}]Session ended.[/{GRAY}]")
                     return 0
-
-                # Process the question
-                result = handler.ask(question)
-                if result:
-                    console.print(Markdown(result))
-
-                # Reset for next iteration
-                question = None
-
-            except KeyboardInterrupt:
-                console.print("\n[dim]Session ended.[/dim]")
-                return 0
-            except Exception as e:
-                self._print_error(f"Error: {e}")
-                question = None
+                except Exception as e:
+                    self._print_error(f"Error: {e}")
+                    question = None
+        finally:
+            # Always restore terminal theme when session ends
+            try:
+                _restore_terminal_theme()
+            except Exception:
+                pass
 
     def _ask_with_session_key(self, question: str, api_key: str, provider: str) -> int:
         """Answer a question using provided session API key without re-prompting.

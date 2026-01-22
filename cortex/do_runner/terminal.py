@@ -15,6 +15,26 @@ from rich.console import Console
 
 console = Console()
 
+# Dracula-Inspired Theme Colors
+PURPLE = "#bd93f9"      # Dracula purple
+PURPLE_LIGHT = "#ff79c6" # Dracula pink
+PURPLE_DARK = "#6272a4"  # Dracula comment
+WHITE = "#f8f8f2"        # Dracula foreground
+GRAY = "#6272a4"         # Dracula comment
+GREEN = "#50fa7b"        # Dracula green
+RED = "#ff5555"          # Dracula red
+YELLOW = "#f1fa8c"       # Dracula yellow
+CYAN = "#8be9fd"         # Dracula cyan
+ORANGE = "#ffb86c"       # Dracula orange
+
+# Round Icons
+ICON_MONITOR = "◉"
+ICON_SUCCESS = "●"
+ICON_ERROR = "●"
+ICON_INFO = "○"
+ICON_PENDING = "◐"
+ICON_ARROW = "→"
+
 
 class ClaudeLLM:
     """Claude LLM client using the LLMRouter for intelligent error analysis."""
@@ -98,7 +118,7 @@ FIX: <command 2 if needed>""",
             return result
 
         except Exception as e:
-            console.print(f"[dim]Claude analysis error: {e}[/dim]")
+            console.print(f"[{GRAY}]Claude analysis error: {e}[/{GRAY}]")
             return None
 
 
@@ -261,7 +281,7 @@ class TerminalMonitor:
             if hist_file.exists():
                 self._shell_history_files.append(hist_file)
                 if verbose:
-                    console.print(f"[dim]📝 Monitoring: {hist_file}[/dim]")
+                    console.print(f"[{GRAY}]{ICON_INFO} Monitoring: {hist_file}[/{GRAY}]")
 
         # Find ALL Cursor terminal directories (all projects)
         cursor_base = home / ".cursor" / "projects"
@@ -273,7 +293,7 @@ class TerminalMonitor:
                         self._cursor_terminals_dirs.append(terminals_path)
                         if verbose:
                             console.print(
-                                f"[dim]🖥️  Monitoring Cursor terminals: {terminals_path.parent.name}[/dim]"
+                                f"[{GRAY}]{ICON_INFO} Monitoring Cursor terminals: {terminals_path.parent.name}[/{GRAY}]"
                             )
 
         # Also check for tmux/screen panes
@@ -282,9 +302,9 @@ class TerminalMonitor:
 
         if verbose:
             if self._tmux_available:
-                console.print("[dim]📺 Tmux detected - will monitor tmux panes[/dim]")
+                console.print(f"[{GRAY}]{ICON_INFO} Tmux detected - will monitor tmux panes[/{GRAY}]")
             if self._screen_available:
-                console.print("[dim]📺 Screen detected - will monitor screen sessions[/dim]")
+                console.print(f"[{GRAY}]{ICON_INFO} Screen detected - will monitor screen sessions[/{GRAY}]")
 
     def _check_command_exists(self, cmd: str) -> bool:
         """Check if a command exists in PATH."""
@@ -355,9 +375,9 @@ class TerminalMonitor:
         llm_status = ""
         if self._llm and self._use_llm:
             if self._llm.is_available():
-                llm_status = "\n[green]🤖 AI Analysis: Mistral (local) - Active[/green]"
+                llm_status = f"\n[{GREEN}]{ICON_SUCCESS} AI Analysis: Mistral (local) - Active[/{GREEN}]"
             else:
-                llm_status = "\n[yellow]🤖 AI Analysis: Mistral not available (install with: ollama pull mistral)[/yellow]"
+                llm_status = f"\n[{YELLOW}]{ICON_PENDING} AI Analysis: Mistral not available (install with: ollama pull mistral)[/{YELLOW}]"
 
         if verbose:
             from rich.panel import Panel
@@ -377,8 +397,8 @@ class TerminalMonitor:
             # If service is running, we don't need the hook
             if service_running:
                 setup_info = (
-                    "[bold green]✓ Cortex Watch Service is running[/bold green]\n"
-                    "[dim]All terminal activity is being monitored automatically![/dim]"
+                    f"[{GREEN}]{ICON_SUCCESS} Cortex Watch Service is running[/{GREEN}]\n"
+                    f"[{GRAY}]All terminal activity is being monitored automatically![/{GRAY}]"
                 )
             else:
                 # Not using the service, need to set up hooks
@@ -415,15 +435,15 @@ class TerminalMonitor:
 
                 if hook_installed:
                     clipboard_msg = (
-                        "[green]📋 Copied to clipboard![/green] " if clipboard_copied else ""
+                        f"[{GREEN}]📋 Copied to clipboard![/{GREEN}] " if clipboard_copied else ""
                     )
                     setup_info = (
-                        "[green]✓ Terminal watch hook is installed in .bashrc[/green]\n"
-                        "[dim](New terminals will auto-activate)[/dim]\n\n"
-                        f"[bold yellow]For EXISTING terminals, paste this:[/bold yellow]\n"
-                        f"[bold cyan]{short_cmd}[/bold cyan]\n"
+                        f"[{GREEN}]{ICON_SUCCESS} Terminal watch hook is installed in .bashrc[/{GREEN}]\n"
+                        f"[{GRAY}](New terminals will auto-activate)[/{GRAY}]\n\n"
+                        f"[bold {YELLOW}]For EXISTING terminals, paste this:[/bold {YELLOW}]\n"
+                        f"[bold {PURPLE_LIGHT}]{short_cmd}[/bold {PURPLE_LIGHT}]\n"
                         f"{clipboard_msg}\n"
-                        "[dim]Or type [/dim][green]cortex watch --install --service[/green][dim] for automatic monitoring![/dim]"
+                        f"[{GRAY}]Or type [/{GRAY}][{GREEN}]cortex watch --install --service[/{GREEN}][{GRAY}] for automatic monitoring![/{GRAY}]"
                     )
 
                     # Send desktop notification with the command
@@ -447,30 +467,30 @@ class TerminalMonitor:
                         pass
                 else:
                     setup_info = (
-                        f"[bold yellow]⚠ For real-time monitoring in OTHER terminals:[/bold yellow]\n\n"
-                        f"[bold cyan]{short_cmd}[/bold cyan]\n\n"
-                        "[dim]Or install the watch service: [/dim][green]cortex watch --install --service[/green]"
+                        f"[bold {YELLOW}]⚠ For real-time monitoring in OTHER terminals:[/bold {YELLOW}]\n\n"
+                        f"[bold {PURPLE_LIGHT}]{short_cmd}[/bold {PURPLE_LIGHT}]\n\n"
+                        f"[{GRAY}]Or install the watch service: [/{GRAY}][{GREEN}]cortex watch --install --service[/{GREEN}]"
                     )
 
             console.print()
             console.print(
                 Panel(
-                    "[bold cyan]🔍 Terminal Monitoring Active[/bold cyan]\n\n"
-                    f"Watching {len(self._shell_history_files)} shell history files\n"
+                    f"[bold {PURPLE_LIGHT}]{ICON_MONITOR} Terminal Monitoring Active[/bold {PURPLE_LIGHT}]\n\n"
+                    f"[{WHITE}]Watching {len(self._shell_history_files)} shell history files\n"
                     f"Watching {len(self._cursor_terminals_dirs)} Cursor terminal directories\n"
                     + ("Watching Tmux panes\n" if self._tmux_available else "")
                     + llm_status
                     + "\n\n"
-                    + setup_info,
-                    title="[bold green]Live Terminal Monitor[/bold green]",
-                    border_style="green",
+                    + setup_info + f"[/{WHITE}]",
+                    title=f"[bold {PURPLE}]Live Terminal Monitor[/bold {PURPLE}]",
+                    border_style=PURPLE,
                 )
             )
             console.print()
-            console.print("[dim]─" * 60 + "[/dim]")
-            console.print("[bold]📡 Live Terminal Feed:[/bold]")
-            console.print("[dim]─" * 60 + "[/dim]")
-            console.print("[dim]Waiting for commands from other terminals...[/dim]")
+            console.print(f"[{GRAY}]─" * 60 + f"[/{GRAY}]")
+            console.print(f"[bold {WHITE}]📡 Live Terminal Feed:[/bold {WHITE}]")
+            console.print(f"[{GRAY}]─" * 60 + f"[/{GRAY}]")
+            console.print(f"[{GRAY}]Waiting for commands from other terminals...[/{GRAY}]")
             console.print()
 
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
@@ -498,43 +518,43 @@ class TerminalMonitor:
 
     def test_monitoring(self):
         """Test that monitoring is working by showing what files are being watched."""
-        console.print("\n[bold cyan]🔍 Terminal Monitoring Test[/bold cyan]\n")
+        console.print(f"\n[bold {PURPLE_LIGHT}]{ICON_MONITOR} Terminal Monitoring Test[/bold {PURPLE_LIGHT}]\n")
 
         # Check shell history files
-        console.print("[bold]Shell History Files:[/bold]")
+        console.print(f"[bold {WHITE}]Shell History Files:[/bold {WHITE}]")
         for hist_file in self._shell_history_files:
             exists = hist_file.exists()
             size = hist_file.stat().st_size if exists else 0
-            status = "[green]✓[/green]" if exists else "[red]✗[/red]"
-            console.print(f"  {status} {hist_file} ({size} bytes)")
+            status = f"[{GREEN}]{ICON_SUCCESS}[/{GREEN}]" if exists else f"[{RED}]{ICON_ERROR}[/{RED}]"
+            console.print(f"  {status} [{WHITE}]{hist_file} ({size} bytes)[/{WHITE}]")
 
         # Check Cursor terminal directories
-        console.print("\n[bold]Cursor Terminal Directories:[/bold]")
+        console.print(f"\n[bold {WHITE}]Cursor Terminal Directories:[/bold {WHITE}]")
         for terminals_dir in self._cursor_terminals_dirs:
             if terminals_dir.exists():
                 files = list(terminals_dir.glob("*.txt"))
-                console.print(f"  [green]✓[/green] {terminals_dir} ({len(files)} files)")
+                console.print(f"  [{GREEN}]{ICON_SUCCESS}[/{GREEN}] [{WHITE}]{terminals_dir} ({len(files)} files)[/{WHITE}]")
                 for f in files[:5]:  # Show first 5
                     size = f.stat().st_size
-                    console.print(f"      - {f.name} ({size} bytes)")
+                    console.print(f"      [{GRAY}]- {f.name} ({size} bytes)[/{GRAY}]")
                 if len(files) > 5:
-                    console.print(f"      ... and {len(files) - 5} more")
+                    console.print(f"      [{GRAY}]... and {len(files) - 5} more[/{GRAY}]")
             else:
-                console.print(f"  [red]✗[/red] {terminals_dir} (not found)")
+                console.print(f"  [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{terminals_dir} (not found)[/{WHITE}]")
 
         # Check tmux
-        console.print("\n[bold]Other Sources:[/bold]")
+        console.print(f"\n[bold {WHITE}]Other Sources:[/bold {WHITE}]")
         console.print(
-            f"  Tmux: {'[green]✓ available[/green]' if self._tmux_available else '[dim]not available[/dim]'}"
+            f"  [{WHITE}]Tmux: [/{WHITE}]{f'[{GREEN}]{ICON_SUCCESS} available[/{GREEN}]' if self._tmux_available else f'[{GRAY}]not available[/{GRAY}]'}"
         )
         console.print(
-            f"  Screen: {'[green]✓ available[/green]' if self._screen_available else '[dim]not available[/dim]'}"
+            f"  [{WHITE}]Screen: [/{WHITE}]{f'[{GREEN}]{ICON_SUCCESS} available[/{GREEN}]' if self._screen_available else f'[{GRAY}]not available[/{GRAY}]'}"
         )
 
         console.print(
-            "\n[yellow]Tip: For bash history to update in real-time, run in your terminal:[/yellow]"
+            f"\n[{YELLOW}]Tip: For bash history to update in real-time, run in your terminal:[/{YELLOW}]"
         )
-        console.print("[green]export PROMPT_COMMAND='history -a'[/green]")
+        console.print(f"[{GREEN}]export PROMPT_COMMAND='history -a'[/{GREEN}]")
         console.print()
 
     def inject_test_command(self, command: str, source: str = "test"):
@@ -571,11 +591,11 @@ echo "✓ Cortex is now watching this terminal"
         console.print()
         console.print(
             Panel(
-                "[bold yellow]⚠ For real-time terminal monitoring, run this in your OTHER terminal:[/bold yellow]\n\n"
-                f'[green]export PROMPT_COMMAND=\'history -a; echo "$(date +%H:%M:%S) $(history 1 | sed "s/^[ ]*[0-9]*[ ]*//")" >> {watch_file}\'[/green]\n\n'
-                "[dim]This makes bash write commands immediately so Cortex can see them.[/dim]",
-                title="[cyan]Setup Required[/cyan]",
-                border_style="yellow",
+                f"[bold {YELLOW}]⚠ For real-time terminal monitoring, run this in your OTHER terminal:[/bold {YELLOW}]\n\n"
+                f'[{GREEN}]export PROMPT_COMMAND=\'history -a; echo "$(date +%H:%M:%S) $(history 1 | sed "s/^[ ]*[0-9]*[ ]*//")" >> {watch_file}\'[/{GREEN}]\n\n'
+                f"[{GRAY}]This makes bash write commands immediately so Cortex can see them.[/{GRAY}]",
+                title=f"[{PURPLE_LIGHT}]Setup Required[/{PURPLE_LIGHT}]",
+                border_style=PURPLE,
             )
         )
         console.print()
@@ -971,7 +991,7 @@ echo "✓ Cortex is now watching this terminal"
             # Periodically show we're still monitoring (every 30 seconds)
             if check_count % 150 == 0 and self._show_live_output:
                 console.print(
-                    f"[dim]... still monitoring ({len(self._commands_observed)} commands observed so far)[/dim]"
+                    f"[{GRAY}]{ICON_PENDING} still monitoring ({len(self._commands_observed)} commands observed so far)[/{GRAY}]"
                 )
 
     def _is_cortex_terminal_command(self, command: str) -> bool:
@@ -1214,17 +1234,17 @@ echo "✓ Cortex is now watching this terminal"
                     output_preview = output[:200] + "..." if len(output) > 200 else output
 
                     error_text = Text()
-                    error_text.append(f"✗ {msg}\n\n", style="bold red")
+                    error_text.append(f"{ICON_ERROR} {msg}\n\n", style=f"bold {RED}")
                     for line in output_preview.split("\n")[:3]:
                         if line.strip():
-                            error_text.append(f"  {line.strip()[:80]}\n", style="dim")
+                            error_text.append(f"  {line.strip()[:80]}\n", style=GRAY)
 
                     console.print()
                     console.print(
                         Panel(
                             error_text,
-                            title="[red bold]Error[/red bold]",
-                            border_style="red",
+                            title=f"[bold {RED}]Error[/bold {RED}]",
+                            border_style=RED,
                             padding=(0, 1),
                         )
                     )
@@ -1235,13 +1255,13 @@ echo "✓ Cortex is now watching this terminal"
             else:
                 # Show success indicator for commands that completed
                 if "✓" in output or "success" in output.lower() or "complete" in output.lower():
-                    console.print("[green]   ✓ Command completed successfully[/green]")
+                    console.print(f"[{GREEN}]   {ICON_SUCCESS} Command completed successfully[/{GREEN}]")
                 elif len(output.strip()) > 0:
                     # Show a preview of the output
                     output_lines = [l for l in output.split("\n") if l.strip()][:3]
                     if output_lines:
                         console.print(
-                            f"[dim]   Output: {output_lines[0][:60]}{'...' if len(output_lines[0]) > 60 else ''}[/dim]"
+                            f"[{GRAY}]   Output: {output_lines[0][:60]}{'...' if len(output_lines[0]) > 60 else ''}[/{GRAY}]"
                         )
 
     def _provide_error_help(self, command: str, output: str):
@@ -1284,16 +1304,16 @@ echo "✓ Cortex is now watching this terminal"
                     analysis_text.append("Cause: ", style="bold cyan")
                     analysis_text.append(f"{cause}\n\n", style="white")
                 if claude_fixes:
-                    analysis_text.append("Solution:\n", style="bold green")
+                    analysis_text.append("Solution:\n", style=f"bold {GREEN}")
                     for fix in claude_fixes[:3]:
-                        analysis_text.append(f"  $ {fix}\n", style="green")
+                        analysis_text.append(f"  $ {fix}\n", style=GREEN)
 
                 console.print()
                 console.print(
                     Panel(
                         analysis_text,
-                        title="[cyan bold]🤖 Claude Analysis[/cyan bold]",
-                        border_style="cyan",
+                        title=f"[bold {PURPLE_LIGHT}]{ICON_MONITOR} Claude Analysis[/bold {PURPLE_LIGHT}]",
+                        border_style=PURPLE,
                         padding=(0, 1),
                     )
                 )
@@ -1327,20 +1347,20 @@ echo "✓ Cortex is now watching this terminal"
                 diag_table.add_row(
                     "Auto-Fix",
                     (
-                        f"[green]● Yes[/green] [dim]({fix_strategy})[/dim]"
+                        f"[{GREEN}]{ICON_SUCCESS} Yes[/{GREEN}] [{GRAY}]({fix_strategy})[/{GRAY}]"
                         if fix_strategy
-                        else "[green]● Yes[/green]"
+                        else f"[{GREEN}]{ICON_SUCCESS} Yes[/{GREEN}]"
                     ),
                 )
             else:
-                diag_table.add_row("Auto-Fix", "[red]○ No[/red]")
+                diag_table.add_row("Auto-Fix", f"[{RED}]{ICON_INFO} No[/{RED}]")
 
             console.print()
             console.print(
                 Panel(
                     diag_table,
-                    title="[yellow bold]Diagnosis[/yellow bold]",
-                    border_style="yellow",
+                    title=f"[bold {PURPLE_LIGHT}]Diagnosis[/bold {PURPLE_LIGHT}]",
+                    border_style=PURPLE,
                     padding=(0, 1),
                 )
             )
@@ -1357,9 +1377,9 @@ echo "✓ Cortex is now watching this terminal"
                 console.print()
                 console.print(
                     Panel(
-                        f"[bold]Running {len(actionable_commands)} fix command(s)...[/bold]",
-                        title="[green bold]🔧 Auto-Fix[/green bold]",
-                        border_style="green",
+                        f"[bold {WHITE}]Running {len(actionable_commands)} fix command(s)...[/bold {WHITE}]",
+                        title=f"[bold {PURPLE_LIGHT}]{ICON_SUCCESS} Auto-Fix[/bold {PURPLE_LIGHT}]",
+                        border_style=PURPLE,
                         padding=(0, 1),
                     )
                 )
@@ -1377,9 +1397,9 @@ echo "✓ Cortex is now watching this terminal"
                     console.print()
                     console.print(
                         Panel(
-                            f"[green]✓[/green] Auto-fix completed!\n\n[dim]Retry:[/dim] [cyan]{command}[/cyan]",
-                            title="[green bold]Success[/green bold]",
-                            border_style="green",
+                            f"[{GREEN}]{ICON_SUCCESS}[/{GREEN}] [{WHITE}]Auto-fix completed![/{WHITE}]\n\n[{GRAY}]Retry:[/{GRAY}] [{PURPLE_LIGHT}]{command}[/{PURPLE_LIGHT}]",
+                            title=f"[bold {GREEN}]Success[/bold {GREEN}]",
+                            border_style=PURPLE,
                             padding=(0, 1),
                         )
                     )
@@ -1423,19 +1443,19 @@ echo "✓ Cortex is now watching this terminal"
             llm_help = self._llm_analyze_error(command, output)
             if llm_help:
                 console.print()
-                console.print(f"[dim]{llm_help}[/dim]")
+                console.print(f"[{GRAY}]{llm_help}[/{GRAY}]")
 
                 # Try to extract fix command from LLM response
                 llm_fix = self._extract_fix_from_llm(llm_help)
                 if llm_fix:
                     console.print()
                     console.print(
-                        f"[bold green]💡 AI Suggested Fix:[/bold green] [cyan]{llm_fix}[/cyan]"
+                        f"[bold {GREEN}]{ICON_SUCCESS} AI Suggested Fix:[/bold {GREEN}] [{PURPLE_LIGHT}]{llm_fix}[/{PURPLE_LIGHT}]"
                     )
 
                     # Attempt to run the LLM suggested fix
                     if self._is_safe_fix_command(llm_fix):
-                        console.print("[dim]Attempting AI-suggested fix...[/dim]")
+                        console.print(f"[{GRAY}]Attempting AI-suggested fix...[/{GRAY}]")
                         self._run_auto_fix_commands([llm_fix], command, "ai_suggested")
 
         # Build notification message
@@ -1499,14 +1519,14 @@ echo "✓ Cortex is now watching this terminal"
                         sudo_commands_pending.append(fix_cmd)
                         results.append((fix_cmd, "sudo", None))
                         console.print(
-                            f"  [dim][{i}/{len(actionable)}][/dim] [yellow]![/yellow] {fix_cmd[:55]}... [dim](needs sudo)[/dim]"
+                            f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{YELLOW}]![/{YELLOW}] [{WHITE}]{fix_cmd[:55]}...[/{WHITE}] [{GRAY}](needs sudo)[/{GRAY}]"
                         )
                         continue
                 except Exception:
                     sudo_commands_pending.append(fix_cmd)
                     results.append((fix_cmd, "sudo", None))
                     console.print(
-                        f"  [dim][{i}/{len(actionable)}][/dim] [yellow]![/yellow] {fix_cmd[:55]}... [dim](needs sudo)[/dim]"
+                        f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{YELLOW}]![/{YELLOW}] [{WHITE}]{fix_cmd[:55]}...[/{WHITE}] [{GRAY}](needs sudo)[/{GRAY}]"
                     )
                     continue
 
@@ -1514,7 +1534,7 @@ echo "✓ Cortex is now watching this terminal"
             cmd_display = fix_cmd[:55] + "..." if len(fix_cmd) > 55 else fix_cmd
 
             try:
-                with Status(f"[cyan]{cmd_display}[/cyan]", console=console, spinner="dots"):
+                with Status(f"[{PURPLE_LIGHT}]{cmd_display}[/{PURPLE_LIGHT}]", console=console, spinner="dots"):
                     result = subprocess.run(
                         fix_cmd, shell=True, capture_output=True, text=True, timeout=60
                     )
@@ -1522,7 +1542,7 @@ echo "✓ Cortex is now watching this terminal"
                 if result.returncode == 0:
                     results.append((fix_cmd, "success", None))
                     console.print(
-                        f"  [dim][{i}/{len(actionable)}][/dim] [green]✓[/green] {cmd_display}"
+                        f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{GREEN}]{ICON_SUCCESS}[/{GREEN}] [{WHITE}]{cmd_display}[/{WHITE}]"
                     )
                 else:
                     if (
@@ -1532,7 +1552,7 @@ echo "✓ Cortex is now watching this terminal"
                         sudo_commands_pending.append(fix_cmd)
                         results.append((fix_cmd, "sudo", None))
                         console.print(
-                            f"  [dim][{i}/{len(actionable)}][/dim] [yellow]![/yellow] {cmd_display} [dim](needs sudo)[/dim]"
+                            f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{YELLOW}]![/{YELLOW}] [{WHITE}]{cmd_display}[/{WHITE}] [{GRAY}](needs sudo)[/{GRAY}]"
                         )
                     else:
                         results.append(
@@ -1540,10 +1560,10 @@ echo "✓ Cortex is now watching this terminal"
                         )
                         all_success = False
                         console.print(
-                            f"  [dim][{i}/{len(actionable)}][/dim] [red]✗[/red] {cmd_display}"
+                            f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{cmd_display}[/{WHITE}]"
                         )
                         console.print(
-                            f"      [dim red]{result.stderr[:80] if result.stderr else 'Command failed'}[/dim red]"
+                            f"      [{GRAY}]{result.stderr[:80] if result.stderr else 'Command failed'}[/{GRAY}]"
                         )
                         break
 
@@ -1551,19 +1571,19 @@ echo "✓ Cortex is now watching this terminal"
                 results.append((fix_cmd, "timeout", None))
                 all_success = False
                 console.print(
-                    f"  [dim][{i}/{len(actionable)}][/dim] [yellow]⏱[/yellow] {cmd_display} [dim](timeout)[/dim]"
+                    f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{YELLOW}]{ICON_PENDING}[/{YELLOW}] [{WHITE}]{cmd_display}[/{WHITE}] [{GRAY}](timeout)[/{GRAY}]"
                 )
                 break
             except Exception as e:
                 results.append((fix_cmd, "error", str(e)[:50]))
                 all_success = False
-                console.print(f"  [dim][{i}/{len(actionable)}][/dim] [red]✗[/red] {cmd_display}")
+                console.print(f"  [{GRAY}][{i}/{len(actionable)}][/{GRAY}] [{RED}]{ICON_ERROR}[/{RED}] [{WHITE}]{cmd_display}[/{WHITE}]")
                 break
 
         # Show summary line
         success_count = sum(1 for _, s, _ in results if s == "success")
         if success_count > 0 and success_count == len([r for r in results if r[1] != "sudo"]):
-            console.print(f"\n  [green]✓ All {success_count} command(s) completed[/green]")
+            console.print(f"\n  [{GREEN}]{ICON_SUCCESS} All {success_count} command(s) completed[/{GREEN}]")
 
         # Show sudo commands in bordered panel
         if sudo_commands_pending:
@@ -1571,16 +1591,16 @@ echo "✓ Cortex is now watching this terminal"
             from rich.text import Text
 
             sudo_text = Text()
-            sudo_text.append("Run these commands manually:\n\n", style="dim")
+            sudo_text.append("Run these commands manually:\n\n", style=GRAY)
             for cmd in sudo_commands_pending:
-                sudo_text.append(f"  $ {cmd}\n", style="green")
+                sudo_text.append(f"  $ {cmd}\n", style=GREEN)
 
             console.print()
             console.print(
                 Panel(
                     sudo_text,
-                    title="[yellow bold]🔐 Sudo Required[/yellow bold]",
-                    border_style="yellow",
+                    title=f"[bold {YELLOW}]🔐 Sudo Required[/bold {YELLOW}]",
+                    border_style=PURPLE,
                     padding=(0, 1),
                 )
             )
@@ -1904,15 +1924,15 @@ Next command:"""
 
         with self._lock:
             if not self._commands_observed:
-                console.print("[dim]No commands observed yet.[/dim]")
+                console.print(f"[{GRAY}]No commands observed yet.[/{GRAY}]")
                 return
 
             console.print()
             console.print(
                 Panel(
-                    f"[bold]Collected {len(self._commands_observed)} command(s) from other terminals[/bold]",
-                    title="[cyan]📋 Terminal Context Summary[/cyan]",
-                    border_style="cyan",
+                    f"[bold {WHITE}]Collected {len(self._commands_observed)} command(s) from other terminals[/bold {WHITE}]",
+                    title=f"[{PURPLE_LIGHT}]📋 Terminal Context Summary[/{PURPLE_LIGHT}]",
+                    border_style=PURPLE,
                 )
             )
 
@@ -1930,12 +1950,12 @@ Next command:"""
                     source = source.split(":")[-1]
 
                 console.print(
-                    f"  [dim]{timestamp}[/dim] [cyan]{source:12}[/cyan] [white]{command[:50]}{'...' if len(command) > 50 else ''}[/white]"
+                    f"  [{GRAY}]{timestamp}[/{GRAY}] [{PURPLE_LIGHT}]{source:12}[/{PURPLE_LIGHT}] [{WHITE}]{command[:50]}{'...' if len(command) > 50 else ''}[/{WHITE}]"
                 )
 
             if len(self._commands_observed) > 10:
                 console.print(
-                    f"  [dim]... and {len(self._commands_observed) - 10} more commands[/dim]"
+                    f"  [{GRAY}]... and {len(self._commands_observed) - 10} more commands[/{GRAY}]"
                 )
 
             # Add AI analysis if available
@@ -1946,17 +1966,17 @@ Next command:"""
                 and len(self._session_context) >= 2
             ):
                 console.print()
-                console.print("[bold magenta]🤖 AI Analysis:[/bold magenta]")
+                console.print(f"[bold {PURPLE_LIGHT}]{ICON_MONITOR} AI Analysis:[/bold {PURPLE_LIGHT}]")
 
                 # Analyze intent
                 intent = self.analyze_session_intent()
                 if intent:
-                    console.print(f"[white]   Intent: {intent}[/white]")
+                    console.print(f"[{WHITE}]   Intent: {intent}[/{WHITE}]")
 
                 # Suggest next step
                 next_step = self.get_next_step_suggestion()
                 if next_step:
-                    console.print(f"[green]   Suggested next: {next_step}[/green]")
+                    console.print(f"[{GREEN}]   Suggested next: {next_step}[/{GREEN}]")
 
             console.print()
 
@@ -2088,8 +2108,8 @@ Next command:"""
 
             console.print(
                 Panel(
-                    f"[bold yellow]⚠ Issue:[/bold yellow] {issues}",
-                    border_style="yellow",
+                    f"[bold {YELLOW}]⚠ Issue:[/bold {YELLOW}] [{WHITE}]{issues}[/{WHITE}]",
+                    border_style=PURPLE,
                     padding=(0, 1),
                     expand=False,
                 )
@@ -2105,8 +2125,8 @@ Next command:"""
             if matched:
                 console.print(
                     Panel(
-                        "[bold green]✓ Matches expected command[/bold green]",
-                        border_style="green",
+                        f"[bold {GREEN}]{ICON_SUCCESS} Matches expected command[/bold {GREEN}]",
+                        border_style=PURPLE,
                         padding=(0, 1),
                         expand=False,
                     )
@@ -2115,8 +2135,8 @@ Next command:"""
                 # User ran a DIFFERENT command than expected
                 console.print(
                     Panel(
-                        "[bold yellow]⚠ Not in expected commands[/bold yellow]",
-                        border_style="yellow",
+                        f"[bold {YELLOW}]⚠ Not in expected commands[/bold {YELLOW}]",
+                        border_style=PURPLE,
                         padding=(0, 1),
                         expand=False,
                     )
@@ -2188,7 +2208,7 @@ Next command:"""
 
             # Also show in console
             console.print(
-                f"         [bold yellow]📢 Expected command:[/bold yellow] [cyan]{correct_cmd}[/cyan]"
+                f"         [bold {YELLOW}]📢 Expected command:[/bold {YELLOW}] [{PURPLE_LIGHT}]{correct_cmd}[/{PURPLE_LIGHT}]"
             )
 
     def _notify_fixing_command(self, original_cmd: str, fix_cmd: str):

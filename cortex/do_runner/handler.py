@@ -16,6 +16,26 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
+# Dracula-Inspired Theme Colors
+PURPLE = "#bd93f9"      # Dracula purple
+PURPLE_LIGHT = "#ff79c6" # Dracula pink
+PURPLE_DARK = "#6272a4"  # Dracula comment
+WHITE = "#f8f8f2"        # Dracula foreground
+GRAY = "#6272a4"         # Dracula comment
+GREEN = "#50fa7b"        # Dracula green
+RED = "#ff5555"          # Dracula red
+YELLOW = "#f1fa8c"       # Dracula yellow
+CYAN = "#8be9fd"         # Dracula cyan
+ORANGE = "#ffb86c"       # Dracula orange
+
+# Round Icons
+ICON_SUCCESS = "●"
+ICON_ERROR = "●"
+ICON_INFO = "○"
+ICON_PENDING = "◐"
+ICON_ARROW = "→"
+ICON_CMD = "❯"
+
 from .database import DoRunDatabase
 from .diagnosis import AutoFixer, ErrorDiagnoser, LoginHandler
 from .managers import CortexUserManager, ProtectedPathsManager
@@ -129,7 +149,7 @@ class DoHandler:
         signal_name = "Ctrl+Z" if signum == signal.SIGTSTP else "Ctrl+C"
 
         console.print()
-        console.print(f"[yellow]⚠ {signal_name} detected - Stopping current command...[/yellow]")
+        console.print(f"[{YELLOW}]⚠ {signal_name} detected - Stopping current command...[/{YELLOW}]")
 
         # Kill current subprocess if running
         if self._current_process and self._current_process.poll() is None:
@@ -140,9 +160,9 @@ class DoHandler:
                     self._current_process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     self._current_process.kill()
-                console.print(f"[yellow]   Stopped: {self._current_command}[/yellow]")
+                console.print(f"[{YELLOW}]   Stopped: {self._current_command}[/{YELLOW}]")
             except Exception as e:
-                console.print(f"[dim]   Error stopping process: {e}[/dim]")
+                console.print(f"[{GRAY}]   Error stopping process: {e}[/{GRAY}]")
 
         # Note: We do NOT raise KeyboardInterrupt here
         # The session continues - only the current command is stopped
@@ -198,9 +218,9 @@ class DoHandler:
             console.print(
                 Panel(
                     output,
-                    title="[dim]Output[/dim]",
+                    title=f"[{GRAY}]Output[/{GRAY}]",
                     title_align="left",
-                    border_style="dim",
+                    border_style=GRAY,
                     padding=(0, 1),
                 )
             )
@@ -212,16 +232,16 @@ class DoHandler:
 
         content = Text()
         content.append(preview)
-        content.append(f"\n\n[dim]─── {remaining} more lines hidden ───[/dim]", style="dim")
+        content.append(f"\n\n[{GRAY}]─── {remaining} more lines hidden ───[/{GRAY}]", style=GRAY)
 
         console.print(
             Panel(
                 content,
-                title=f"[dim]Output ({total_lines} lines)[/dim]",
-                subtitle="[dim italic]Press Enter to continue, 'e' to expand[/dim italic]",
+                title=f"[{GRAY}]Output ({total_lines} lines)[/{GRAY}]",
+                subtitle=f"[italic {GRAY}]Press Enter to continue, 'e' to expand[/italic {GRAY}]",
                 subtitle_align="right",
                 title_align="left",
-                border_style="dim",
+                border_style=GRAY,
                 padding=(0, 1),
             )
         )
@@ -234,9 +254,9 @@ class DoHandler:
                 console.print(
                     Panel(
                         output,
-                        title=f"[dim]Full Output ({total_lines} lines)[/dim]",
+                        title=f"[{GRAY}]Full Output ({total_lines} lines)[/{GRAY}]",
                         title_align="left",
-                        border_style="green",
+                        border_style=PURPLE,
                         padding=(0, 1),
                     )
                 )
@@ -256,17 +276,17 @@ class DoHandler:
         if self.notifier:
             self.notifier.send(title, message, level=level)
         else:
-            console.print(f"[bold yellow]🔔 {title}:[/bold yellow] {message}")
+            console.print(f"[bold {YELLOW}]🔔 {title}:[/bold {YELLOW}] [{WHITE}]{message}[/{WHITE}]")
 
     def setup_cortex_user(self) -> bool:
         """Ensure the cortex user exists."""
         if not self.user_manager.user_exists():
-            console.print("[yellow]Setting up cortex user...[/yellow]")
+            console.print(f"[{YELLOW}]Setting up cortex user...[/{YELLOW}]")
             success, message = self.user_manager.create_user()
             if success:
-                console.print(f"[green]✓ {message}[/green]")
+                console.print(f"[{GREEN}]{ICON_SUCCESS} {message}[/{GREEN}]")
             else:
-                console.print(f"[red]✗ {message}[/red]")
+                console.print(f"[{RED}]{ICON_ERROR} {message}[/{RED}]")
             return success
         return True
 
@@ -304,15 +324,15 @@ class DoHandler:
         # Create a table for commands
         cmd_table = Table(
             show_header=True,
-            header_style="bold cyan",
+            header_style=f"bold {PURPLE_LIGHT}",
             box=box.ROUNDED,
-            border_style="blue",
+            border_style=PURPLE,
             expand=True,
             padding=(0, 1),
         )
-        cmd_table.add_column("#", style="bold cyan", width=3, justify="right")
-        cmd_table.add_column("Command", style="bold white")
-        cmd_table.add_column("Purpose", style="dim italic")
+        cmd_table.add_column("#", style=f"bold {PURPLE_LIGHT}", width=3, justify="right")
+        cmd_table.add_column("Command", style=f"bold {WHITE}")
+        cmd_table.add_column("Purpose", style=GRAY)
 
         all_protected = []
         for i, (cmd, purpose, protected) in enumerate(commands, 1):
@@ -322,7 +342,7 @@ class DoHandler:
 
             # Add protected path indicator
             if protected:
-                cmd_display = f"{cmd_display} [yellow]⚠[/yellow]"
+                cmd_display = f"{cmd_display} [{YELLOW}]⚠[/{YELLOW}]"
                 all_protected.extend(protected)
 
             cmd_table.add_row(str(i), cmd_display, purpose_display)
@@ -330,9 +350,9 @@ class DoHandler:
         # Create header
         header_text = Text()
         header_text.append("🔐 ", style="bold")
-        header_text.append("Permission Required", style="bold white")
+        header_text.append("Permission Required", style=f"bold {WHITE}")
         header_text.append(
-            f"  ({len(commands)} command{'s' if len(commands) > 1 else ''})", style="dim"
+            f"  ({len(commands)} command{'s' if len(commands) > 1 else ''})", style=GRAY
         )
 
         console.print(
@@ -340,7 +360,7 @@ class DoHandler:
                 cmd_table,
                 title=header_text,
                 title_align="left",
-                border_style="blue",
+                border_style=PURPLE,
                 padding=(1, 1),
             )
         )
@@ -349,12 +369,12 @@ class DoHandler:
         if all_protected:
             protected_set = set(all_protected)
             protected_text = Text()
-            protected_text.append("⚠ Protected paths: ", style="bold yellow")
-            protected_text.append(", ".join(protected_set), style="dim yellow")
+            protected_text.append("⚠ Protected paths: ", style=f"bold {YELLOW}")
+            protected_text.append(", ".join(protected_set), style=GRAY)
             console.print(
                 Panel(
                     protected_text,
-                    border_style="yellow",
+                    border_style=PURPLE,
                     padding=(0, 1),
                     expand=False,
                 )
@@ -675,7 +695,7 @@ class DoHandler:
         elif is_stderr and any(
             p in line.lower() for p in ["error", "fail", "denied", "cannot", "unable"]
         ):
-            console.print(f"[yellow]      ⚠ {line}[/yellow]")
+            console.print(f"[{YELLOW}]      ⚠ {line}[/{YELLOW}]")
         # Truncate very long lines
         elif len(line) > 100:
             console.print(f"[dim]      {line[:100]}...[/dim]")
@@ -767,8 +787,8 @@ class DoHandler:
         2. Or inform the user to run it manually
         """
         console.print()
-        console.print("[yellow]⚡ Interactive command detected[/yellow]")
-        console.print("[dim]   This command requires a terminal for interaction.[/dim]")
+        console.print(f"[{YELLOW}]⚡ Interactive command detected[/{YELLOW}]")
+        console.print(f"[{GRAY}]   This command requires a terminal for interaction.[/{GRAY}]")
         console.print()
 
         full_cmd = f"sudo {cmd}" if needs_sudo else cmd
@@ -793,8 +813,8 @@ class DoHandler:
         # Check which terminal is available
         for term_name, term_cmd in terminal_cmds:
             if shutil.which(term_name):
-                console.print(f"[cyan]🖥️  Opening in new terminal window ({term_name})...[/cyan]")
-                console.print(f"[dim]   Command: {full_cmd}[/dim]")
+                console.print(f"[{PURPLE_LIGHT}]🖥️  Opening in new terminal window ({term_name})...[/{PURPLE_LIGHT}]")
+                console.print(f"[{GRAY}]   Command: {full_cmd}[/{GRAY}]")
                 console.print()
 
                 try:
@@ -807,18 +827,18 @@ class DoHandler:
                     )
                     return True, f"Command opened in new {term_name} window", ""
                 except Exception as e:
-                    console.print(f"[yellow]   ⚠ Could not open terminal: {e}[/yellow]")
+                    console.print(f"[{YELLOW}]   ⚠ Could not open terminal: {e}[/{YELLOW}]")
                     break
 
         # Fallback: ask user to run manually
         console.print(
-            "[bold cyan]📋 Please run this command manually in another terminal:[/bold cyan]"
+            f"[bold {PURPLE_LIGHT}]📋 Please run this command manually in another terminal:[/bold {PURPLE_LIGHT}]"
         )
         console.print()
-        console.print(f"   [green]{full_cmd}[/green]")
+        console.print(f"   [{GREEN}]{full_cmd}[/{GREEN}]")
         console.print()
-        console.print("[dim]   This command needs interactive input (TTY).[/dim]")
-        console.print("[dim]   Cortex cannot capture its output automatically.[/dim]")
+        console.print(f"[{GRAY}]   This command needs interactive input (TTY).[/{GRAY}]")
+        console.print(f"[{GRAY}]   Cortex cannot capture its output automatically.[/{GRAY}]")
         console.print()
 
         # Return special status indicating manual run needed
@@ -841,18 +861,18 @@ class DoHandler:
         self.current_run = run
 
         console.print()
-        console.print("[bold cyan]🚀 Executing commands with conflict detection...[/bold cyan]")
+        console.print(f"[bold {PURPLE_LIGHT}]🚀 Executing commands with conflict detection...[/bold {PURPLE_LIGHT}]")
         console.print()
 
         # Phase 1: Conflict Detection
-        console.print("[dim]Checking for conflicts...[/dim]")
+        console.print(f"[{GRAY}]Checking for conflicts...[/{GRAY}]")
 
         cleanup_commands = []
         for cmd, purpose, protected in commands:
             conflict = self._conflict_detector.check_for_conflicts(cmd, purpose)
             if conflict["has_conflict"]:
                 console.print(
-                    f"[yellow]   ⚠ {conflict['conflict_type']}: {conflict['suggestion']}[/yellow]"
+                    f"[{YELLOW}]   ⚠ {conflict['conflict_type']}: {conflict['suggestion']}[/{YELLOW}]"
                 )
                 if conflict["cleanup_commands"]:
                     cleanup_commands.extend(conflict["cleanup_commands"])
@@ -879,16 +899,16 @@ class DoHandler:
         for i, (cmd, purpose, protected) in enumerate(commands, 1):
             # Create a visually distinct panel for each command
             cmd_header = Text()
-            cmd_header.append(f"[{i}/{len(commands)}] ", style="bold white on blue")
-            cmd_header.append(f" {cmd}", style="bold cyan")
+            cmd_header.append(f"[{i}/{len(commands)}] ", style=f"bold {WHITE}")
+            cmd_header.append(f" {cmd}", style=f"bold {PURPLE_LIGHT}")
 
             console.print()
             console.print(
                 Panel(
-                    f"[bold cyan]{cmd}[/bold cyan]\n[dim]└─ {purpose}[/dim]",
-                    title=f"[bold white] Command {i}/{len(commands)} [/bold white]",
+                    f"[bold {PURPLE_LIGHT}]{cmd}[/bold {PURPLE_LIGHT}]\n[{GRAY}]└─ {purpose}[/{GRAY}]",
+                    title=f"[bold {WHITE}] Command {i}/{len(commands)} [/bold {WHITE}]",
                     title_align="left",
-                    border_style="blue",
+                    border_style=PURPLE,
                     padding=(0, 1),
                 )
             )
@@ -917,15 +937,15 @@ class DoHandler:
 
                 # Create error panel for visual grouping
                 error_info = (
-                    f"[bold red]⚠ {diagnosis['description']}[/bold red]\n"
-                    f"[dim]Type: {diagnosis['error_type']} | Category: {diagnosis.get('category', 'unknown')}[/dim]"
+                    f"[bold {RED}]{ICON_ERROR} {diagnosis['description']}[/bold {RED}]\n"
+                    f"[{GRAY}]Type: {diagnosis['error_type']} | Category: {diagnosis.get('category', 'unknown')}[/{GRAY}]"
                 )
                 console.print(
                     Panel(
                         error_info,
-                        title="[bold red] ❌ Error Detected [/bold red]",
+                        title=f"[bold {RED}] {ICON_ERROR} Error Detected [/bold {RED}]",
                         title_align="left",
-                        border_style="red",
+                        border_style=RED,
                         padding=(0, 1),
                     )
                 )
@@ -934,8 +954,8 @@ class DoHandler:
                 if diagnosis.get("category") == "login_required":
                     console.print(
                         Panel(
-                            "[bold cyan]🔐 Authentication required for this command[/bold cyan]",
-                            border_style="cyan",
+                            f"[bold {PURPLE_LIGHT}]🔐 Authentication required for this command[/bold {PURPLE_LIGHT}]",
+                            border_style=PURPLE,
                             padding=(0, 1),
                             expand=False,
                         )
@@ -946,8 +966,8 @@ class DoHandler:
                     if login_success:
                         console.print(
                             Panel(
-                                f"[bold green]✓ {login_msg}[/bold green]\n[dim]Retrying command...[/dim]",
-                                border_style="green",
+                                f"[bold {GREEN}]{ICON_SUCCESS} {login_msg}[/bold {GREEN}]\n[{GRAY}]Retrying command...[/{GRAY}]",
+                                border_style=PURPLE,
                                 padding=(0, 1),
                                 expand=False,
                             )
@@ -959,8 +979,8 @@ class DoHandler:
                         if success:
                             console.print(
                                 Panel(
-                                    "[bold green]✓ Command succeeded after authentication![/bold green]",
-                                    border_style="green",
+                                    f"[bold {GREEN}]{ICON_SUCCESS} Command succeeded after authentication![/bold {GREEN}]",
+                                    border_style=PURPLE,
                                     padding=(0, 1),
                                     expand=False,
                                 )
@@ -968,30 +988,30 @@ class DoHandler:
                         else:
                             console.print(
                                 Panel(
-                                    f"[bold yellow]Command still failed after login[/bold yellow]\n[dim]{stderr[:100]}[/dim]",
-                                    border_style="yellow",
+                                    f"[bold {YELLOW}]Command still failed after login[/bold {YELLOW}]\n[{GRAY}]{stderr[:100]}[/{GRAY}]",
+                                    border_style=PURPLE,
                                     padding=(0, 1),
                                 )
                             )
                     else:
-                        console.print(f"[yellow]{login_msg}[/yellow]")
+                        console.print(f"[{YELLOW}]{login_msg}[/{YELLOW}]")
                 else:
                     # Not a login error, proceed with regular error handling
                     extra_info = []
                     if diagnosis.get("extracted_path"):
-                        extra_info.append(f"[dim]Path:[/dim] {diagnosis['extracted_path']}")
+                        extra_info.append(f"[{GRAY}]Path:[/{GRAY}] {diagnosis['extracted_path']}")
                     if diagnosis.get("extracted_info"):
                         for key, value in diagnosis["extracted_info"].items():
                             if value:
-                                extra_info.append(f"[dim]{key}:[/dim] {value}")
+                                extra_info.append(f"[{GRAY}]{key}:[/{GRAY}] {value}")
 
                     if extra_info:
                         console.print(
                             Panel(
                                 "\n".join(extra_info),
-                                title="[dim] Error Details [/dim]",
+                                title=f"[{GRAY}] Error Details [{GRAY}]",
                                 title_align="left",
-                                border_style="dim",
+                                border_style=GRAY,
                                 padding=(0, 1),
                                 expand=False,
                             )
@@ -1005,10 +1025,10 @@ class DoHandler:
                         success = True
                         console.print(
                             Panel(
-                                f"[bold green]✓ Auto-fixed:[/bold green] {fix_message}",
-                                title="[bold green] Fix Successful [/bold green]",
+                                f"[bold {GREEN}]{ICON_SUCCESS} Auto-fixed:[/bold {GREEN}] [{WHITE}]{fix_message}[/{WHITE}]",
+                                title=f"[bold {GREEN}] Fix Successful [/bold {GREEN}]",
                                 title_align="left",
-                                border_style="green",
+                                border_style=PURPLE,
                                 padding=(0, 1),
                                 expand=False,
                             )
@@ -1018,15 +1038,15 @@ class DoHandler:
                         fix_info = []
                         if fix_commands:
                             fix_info.append(
-                                f"[dim]Attempted:[/dim] {len(fix_commands)} fix command(s)"
+                                f"[{GRAY}]Attempted:[/{GRAY}] {len(fix_commands)} fix command(s)"
                             )
-                        fix_info.append(f"[bold yellow]Result:[/bold yellow] {fix_message}")
+                        fix_info.append(f"[bold {YELLOW}]Result:[/bold {YELLOW}] [{WHITE}]{fix_message}[/{WHITE}]")
                         console.print(
                             Panel(
                                 "\n".join(fix_info),
-                                title="[bold yellow] Fix Incomplete [/bold yellow]",
+                                title=f"[bold {YELLOW}] Fix Incomplete [/bold {YELLOW}]",
                                 title_align="left",
-                                border_style="yellow",
+                                border_style=PURPLE,
                                 padding=(0, 1),
                             )
                         )
@@ -1042,8 +1062,8 @@ class DoHandler:
             if success:
                 console.print(
                     Panel(
-                        f"[bold green]✓ Success[/bold green]  [dim]({cmd_log.duration_seconds:.2f}s)[/dim]",
-                        border_style="green",
+                        f"[bold {GREEN}]{ICON_SUCCESS} Success[/bold {GREEN}]  [{GRAY}]({cmd_log.duration_seconds:.2f}s)[/{GRAY}]",
+                        border_style=PURPLE,
                         padding=(0, 1),
                         expand=False,
                     )
@@ -1053,8 +1073,8 @@ class DoHandler:
             else:
                 console.print(
                     Panel(
-                        f"[bold red]✗ Failed[/bold red]\n[dim]{stderr[:200]}[/dim]",
-                        border_style="red",
+                        f"[bold {RED}]{ICON_ERROR} Failed[/bold {RED}]\n[{GRAY}]{stderr[:200]}[/{GRAY}]",
+                        border_style=RED,
                         padding=(0, 1),
                     )
                 )
@@ -1063,22 +1083,22 @@ class DoHandler:
                 if final_diagnosis["fix_commands"] and not final_diagnosis["can_auto_fix"]:
                     # Create a manual intervention panel
                     manual_content = [
-                        f"[bold yellow]Issue:[/bold yellow] {final_diagnosis['description']}",
+                        f"[bold {YELLOW}]Issue:[/bold {YELLOW}] [{WHITE}]{final_diagnosis['description']}[/{WHITE}]",
                         "",
                     ]
-                    manual_content.append("[bold]Suggested commands:[/bold]")
+                    manual_content.append(f"[bold {WHITE}]Suggested commands:[/bold {WHITE}]")
                     for fix_cmd in final_diagnosis["fix_commands"]:
                         if not fix_cmd.startswith("#"):
-                            manual_content.append(f"  [cyan]$ {fix_cmd}[/cyan]")
+                            manual_content.append(f"  [{PURPLE_LIGHT}]$ {fix_cmd}[/{PURPLE_LIGHT}]")
                         else:
-                            manual_content.append(f"  [dim]{fix_cmd}[/dim]")
+                            manual_content.append(f"  [{GRAY}]{fix_cmd}[/{GRAY}]")
 
                     console.print(
                         Panel(
                             "\n".join(manual_content),
-                            title="[bold yellow] 💡 Manual Intervention Required [/bold yellow]",
+                            title=f"[bold {YELLOW}] 💡 Manual Intervention Required [/bold {YELLOW}]",
                             title_align="left",
-                            border_style="yellow",
+                            border_style=PURPLE,
                             padding=(0, 1),
                         )
                     )
@@ -1091,10 +1111,10 @@ class DoHandler:
         console.print()
         console.print(
             Panel(
-                "[bold]Running verification tests...[/bold]",
-                title="[bold cyan] 🧪 Verification Phase [/bold cyan]",
+                f"[bold {WHITE}]Running verification tests...[/bold {WHITE}]",
+                title=f"[bold {PURPLE_LIGHT}] 🧪 Verification Phase [/bold {PURPLE_LIGHT}]",
                 title_align="left",
-                border_style="cyan",
+                border_style=PURPLE,
                 padding=(0, 1),
                 expand=False,
             )
@@ -1108,10 +1128,10 @@ class DoHandler:
             console.print()
             console.print(
                 Panel(
-                    "[bold yellow]Attempting to repair test failures...[/bold yellow]",
-                    title="[bold yellow] 🔧 Auto-Repair Phase [/bold yellow]",
+                    f"[bold {YELLOW}]Attempting to repair test failures...[/bold {YELLOW}]",
+                    title=f"[bold {YELLOW}] 🔧 Auto-Repair Phase [/bold {YELLOW}]",
                     title_align="left",
-                    border_style="yellow",
+                    border_style=PURPLE,
                     padding=(0, 1),
                     expand=False,
                 )
@@ -1120,7 +1140,7 @@ class DoHandler:
             repair_success = self._handle_test_failures(test_results, run)
 
             if repair_success:
-                console.print("[dim]Re-running verification tests...[/dim]")
+                console.print(f"[{GRAY}]Re-running verification tests...[/{GRAY}]")
                 all_tests_passed, test_results = self._verification_runner.run_verification_tests(
                     run.commands, user_query
                 )
@@ -1197,35 +1217,35 @@ class DoHandler:
         from rich.panel import Panel
 
         status_text = (
-            "[bold cyan]Active[/bold cyan]" if is_active else "[dim yellow]Inactive[/dim yellow]"
+            f"[bold {PURPLE_LIGHT}]Active[/bold {PURPLE_LIGHT}]" if is_active else f"[{GRAY}]Inactive[/{GRAY}]"
         )
         conflict_content = (
-            f"{icon} [bold]{resource_type.replace('_', ' ').title()}:[/bold] '{resource_name}'\n"
-            f"[dim]Status:[/dim] {status_text}\n"
-            f"[dim]{suggestion}[/dim]"
+            f"{icon} [bold {WHITE}]{resource_type.replace('_', ' ').title()}:[/bold {WHITE}] '{resource_name}'\n"
+            f"[{GRAY}]Status:[/{GRAY}] {status_text}\n"
+            f"[{GRAY}]{suggestion}[/{GRAY}]"
         )
 
         console.print()
         console.print(
             Panel(
                 conflict_content,
-                title="[bold yellow] ⚠️ Resource Conflict [/bold yellow]",
+                title=f"[bold {YELLOW}] ⚠️ Resource Conflict [/bold {YELLOW}]",
                 title_align="left",
-                border_style="yellow",
+                border_style=PURPLE,
                 padding=(0, 1),
             )
         )
 
         # If there are alternatives, show them
         if alternatives:
-            options_content = ["[bold]What would you like to do?[/bold]", ""]
+            options_content = [f"[bold {WHITE}]What would you like to do?[/bold {WHITE}]", ""]
             for j, alt in enumerate(alternatives, 1):
-                options_content.append(f"  {j}. {alt['description']}")
+                options_content.append(f"  [{WHITE}]{j}. {alt['description']}[/{WHITE}]")
 
             console.print(
                 Panel(
                     "\n".join(options_content),
-                    border_style="dim",
+                    border_style=GRAY,
                     padding=(0, 1),
                 )
             )
@@ -1245,62 +1265,62 @@ class DoHandler:
             # Handle different actions
             if action in ["use_existing", "use_different"]:
                 console.print(
-                    f"[green]   ✓ Using existing {resource_type} '{resource_name}'[/green]"
+                    f"[{GREEN}]   {ICON_SUCCESS} Using existing {resource_type} '{resource_name}'[/{GREEN}]"
                 )
                 commands_to_skip.add(idx)
                 return True
 
             elif action == "start_existing":
-                console.print(f"[cyan]   Starting existing {resource_type}...[/cyan]")
+                console.print(f"[{PURPLE_LIGHT}]   Starting existing {resource_type}...[/{PURPLE_LIGHT}]")
                 for start_cmd in action_commands:
                     needs_sudo = start_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
                         start_cmd, needs_sudo=needs_sudo
                     )
                     if success:
-                        console.print(f"[green]   ✓ {start_cmd}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} {start_cmd}[/{GREEN}]")
                     else:
-                        console.print(f"[red]   ✗ {start_cmd}: {stderr[:50]}[/red]")
+                        console.print(f"[{RED}]   {ICON_ERROR} {start_cmd}: {stderr[:50]}[/{RED}]")
                 commands_to_skip.add(idx)
                 return True
 
             elif action in ["restart", "upgrade", "reinstall"]:
-                console.print(f"[cyan]   {action.title()}ing {resource_type}...[/cyan]")
+                console.print(f"[{PURPLE_LIGHT}]   {action.title()}ing {resource_type}...[/{PURPLE_LIGHT}]")
                 for action_cmd in action_commands:
                     needs_sudo = action_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
                         action_cmd, needs_sudo=needs_sudo
                     )
                     if success:
-                        console.print(f"[green]   ✓ {action_cmd}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} {action_cmd}[/{GREEN}]")
                     else:
-                        console.print(f"[red]   ✗ {action_cmd}: {stderr[:50]}[/red]")
+                        console.print(f"[{RED}]   {ICON_ERROR} {action_cmd}: {stderr[:50]}[/{RED}]")
                 commands_to_skip.add(idx)
                 return True
 
             elif action in ["recreate", "backup", "replace", "stop_existing"]:
-                console.print(f"[cyan]   Preparing to {action.replace('_', ' ')}...[/cyan]")
+                console.print(f"[{PURPLE_LIGHT}]   Preparing to {action.replace('_', ' ')}...[/{PURPLE_LIGHT}]")
                 for action_cmd in action_commands:
                     needs_sudo = action_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
                         action_cmd, needs_sudo=needs_sudo
                     )
                     if success:
-                        console.print(f"[green]   ✓ {action_cmd}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} {action_cmd}[/{GREEN}]")
                     else:
-                        console.print(f"[red]   ✗ {action_cmd}: {stderr[:50]}[/red]")
+                        console.print(f"[{RED}]   {ICON_ERROR} {action_cmd}: {stderr[:50]}[/{RED}]")
                 # Don't skip - let the original command run after cleanup
                 return True
 
             elif action == "modify":
-                console.print(f"[cyan]   Will modify existing {resource_type}[/cyan]")
+                console.print(f"[{PURPLE_LIGHT}]   Will modify existing {resource_type}[/{PURPLE_LIGHT}]")
                 # Don't skip - let the original command run to modify
                 return True
 
             elif action == "install_first":
                 # Install a missing tool/dependency first
                 console.print(
-                    f"[cyan]   Installing required dependency '{resource_name}'...[/cyan]"
+                    f"[{PURPLE_LIGHT}]   Installing required dependency '{resource_name}'...[/{PURPLE_LIGHT}]"
                 )
                 all_success = True
                 for action_cmd in action_commands:
@@ -1309,40 +1329,40 @@ class DoHandler:
                         action_cmd, needs_sudo=needs_sudo
                     )
                     if success:
-                        console.print(f"[green]   ✓ {action_cmd}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} {action_cmd}[/{GREEN}]")
                     else:
-                        console.print(f"[red]   ✗ {action_cmd}: {stderr[:50]}[/red]")
+                        console.print(f"[{RED}]   {ICON_ERROR} {action_cmd}: {stderr[:50]}[/{RED}]")
                         all_success = False
 
                 if all_success:
                     console.print(
-                        f"[green]   ✓ '{resource_name}' installed. Continuing with original command...[/green]"
+                        f"[{GREEN}]   {ICON_SUCCESS} '{resource_name}' installed. Continuing with original command...[/{GREEN}]"
                     )
                     # Don't skip - run the original command now that the tool is installed
                     return True
                 else:
-                    console.print(f"[red]   ✗ Failed to install '{resource_name}'[/red]")
+                    console.print(f"[{RED}]   {ICON_ERROR} Failed to install '{resource_name}'[/{RED}]")
                     commands_to_skip.add(idx)
                     return True
 
             elif action == "use_apt":
                 # User chose to use apt instead of snap
-                console.print("[cyan]   Skipping snap command - use apt instead[/cyan]")
+                console.print(f"[{PURPLE_LIGHT}]   Skipping snap command - use apt instead[/{PURPLE_LIGHT}]")
                 commands_to_skip.add(idx)
                 return True
 
             elif action == "refresh":
                 # Refresh snap package
-                console.print("[cyan]   Refreshing snap package...[/cyan]")
+                console.print(f"[{PURPLE_LIGHT}]   Refreshing snap package...[/{PURPLE_LIGHT}]")
                 for action_cmd in action_commands:
                     needs_sudo = action_cmd.startswith("sudo")
                     success, _, stderr = self._execute_single_command(
                         action_cmd, needs_sudo=needs_sudo
                     )
                     if success:
-                        console.print(f"[green]   ✓ {action_cmd}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} {action_cmd}[/{GREEN}]")
                     else:
-                        console.print(f"[red]   ✗ {action_cmd}: {stderr[:50]}[/red]")
+                        console.print(f"[{RED}]   {ICON_ERROR} {action_cmd}: {stderr[:50]}[/{RED}]")
                 commands_to_skip.add(idx)
                 return True
 
@@ -1364,7 +1384,7 @@ class DoHandler:
             return True
 
         console.print()
-        console.print("[bold yellow]🔧 Attempting to fix test failures...[/bold yellow]")
+        console.print(f"[bold {YELLOW}]🔧 Attempting to fix test failures...[/bold {YELLOW}]")
 
         all_fixed = True
 
@@ -1372,7 +1392,7 @@ class DoHandler:
             test_name = test["test"]
             output = test["output"]
 
-            console.print(f"[dim]   Fixing: {test_name}[/dim]")
+            console.print(f"[{GRAY}]   Fixing: {test_name}[/{GRAY}]")
 
             if "nginx -t" in test_name:
                 diagnosis = self._diagnoser.diagnose_error("nginx -t", output)
@@ -1380,9 +1400,9 @@ class DoHandler:
                     "nginx -t", output, diagnosis, max_attempts=3
                 )
                 if fixed:
-                    console.print(f"[green]   ✓ Fixed: {msg}[/green]")
+                    console.print(f"[{GREEN}]   {ICON_SUCCESS} Fixed: {msg}[/{GREEN}]")
                 else:
-                    console.print(f"[red]   ✗ Could not fix: {msg}[/red]")
+                    console.print(f"[{RED}]   {ICON_ERROR} Could not fix: {msg}[/{RED}]")
                     all_fixed = False
 
             elif "apache2ctl" in test_name:
@@ -1391,7 +1411,7 @@ class DoHandler:
                     "apache2ctl configtest", output, diagnosis, max_attempts=3
                 )
                 if fixed:
-                    console.print(f"[green]   ✓ Fixed: {msg}[/green]")
+                    console.print(f"[{GREEN}]   {ICON_SUCCESS} Fixed: {msg}[/{GREEN}]")
                 else:
                     all_fixed = False
 
@@ -1405,10 +1425,10 @@ class DoHandler:
                         f"sudo systemctl start {service}", needs_sudo=True
                     )
                     if success:
-                        console.print(f"[green]   ✓ Started service {service}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} Started service {service}[/{GREEN}]")
                     else:
                         console.print(
-                            f"[yellow]   ⚠ Could not start {service}: {err[:50]}[/yellow]"
+                            f"[{YELLOW}]   ⚠ Could not start {service}: {err[:50]}[/{YELLOW}]"
                         )
 
             elif "file exists" in test_name:
@@ -1420,7 +1440,7 @@ class DoHandler:
                     parent = os.path.dirname(path)
                     if parent and not os.path.exists(parent):
                         self._execute_single_command(f"sudo mkdir -p {parent}", needs_sudo=True)
-                        console.print(f"[green]   ✓ Created directory {parent}[/green]")
+                        console.print(f"[{GREEN}]   {ICON_SUCCESS} Created directory {parent}[/{GREEN}]")
 
         return all_fixed
 
@@ -1452,11 +1472,12 @@ class DoHandler:
         console.print()
         console.print(
             Panel(
-                "[bold cyan]🌳 Task Tree Execution Mode[/bold cyan]\n"
-                "[dim]Commands will be executed with auto-repair capabilities.[/dim]\n"
-                "[dim]Conflict detection and verification tests enabled.[/dim]\n"
-                "[dim yellow]Press Ctrl+Z or Ctrl+C to stop execution at any time.[/dim yellow]",
+                f"[bold {PURPLE_LIGHT}]🌳 Task Tree Execution Mode[/bold {PURPLE_LIGHT}]\n"
+                f"[{GRAY}]Commands will be executed with auto-repair capabilities.[/{GRAY}]\n"
+                f"[{GRAY}]Conflict detection and verification tests enabled.[/{GRAY}]\n"
+                f"[{YELLOW}]Press Ctrl+Z or Ctrl+C to stop execution at any time.[/{YELLOW}]",
                 expand=False,
+                border_style=PURPLE,
             )
         )
         console.print()
@@ -1465,7 +1486,7 @@ class DoHandler:
         self._setup_signal_handlers()
 
         # Phase 1: Conflict Detection - Claude-like header
-        console.print("[bold blue]━━━[/bold blue] [bold]Checking for Conflicts[/bold]")
+        console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Checking for Conflicts[/bold {WHITE}]")
 
         conflicts_found = []
         cleanup_commands = []
@@ -1488,7 +1509,7 @@ class DoHandler:
                 unique_resources[resource_name].append((idx, cmd, conflict))
 
             console.print(
-                f"  [yellow]●[/yellow] Found [bold]{len(unique_resources)}[/bold] unique conflict(s)"
+                f"  [{YELLOW}]{ICON_PENDING}[/{YELLOW}] Found [bold {WHITE}]{len(unique_resources)}[/bold {WHITE}] unique conflict(s)"
             )
 
             for resource_name, resource_conflicts in unique_resources.items():
@@ -1531,7 +1552,7 @@ class DoHandler:
                         task.output = "Using existing resource"
                 commands = filtered_commands
         else:
-            console.print("  [green]●[/green] No conflicts detected")
+            console.print(f"  [{GREEN}]{ICON_SUCCESS}[/{GREEN}] No conflicts detected")
 
         console.print()
 
@@ -1540,13 +1561,13 @@ class DoHandler:
             all_protected.update(protected)
 
         if all_protected:
-            console.print(f"[dim]📁 Protected paths: {', '.join(all_protected)}[/dim]")
+            console.print(f"[{GRAY}]📁 Protected paths: {', '.join(all_protected)}[/{GRAY}]")
             console.print()
 
         try:
             # Phase 2: Execute Commands - Claude-like header
             console.print()
-            console.print("[bold blue]━━━[/bold blue] [bold]Executing Commands[/bold]")
+            console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Executing Commands[/bold {WHITE}]")
             console.print()
 
             # Track remaining commands for resume functionality
@@ -1567,7 +1588,7 @@ class DoHandler:
             if not self._interrupted:
                 # Phase 3: Verification Tests - Claude-like header
                 console.print()
-                console.print("[bold blue]━━━[/bold blue] [bold]Verification[/bold]")
+                console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Verification[/bold {WHITE}]")
 
                 all_tests_passed, test_results = self._verification_runner.run_verification_tests(
                     run.commands, user_query
@@ -1576,13 +1597,13 @@ class DoHandler:
                 # Phase 4: Auto-repair if tests failed
                 if not all_tests_passed:
                     console.print()
-                    console.print("[bold blue]━━━[/bold blue] [bold]Auto-Repair[/bold]")
+                    console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Auto-Repair[/bold {WHITE}]")
 
                     repair_success = self._handle_test_failures(test_results, run)
 
                     if repair_success:
                         console.print()
-                        console.print("[dim]   Re-running verification tests...[/dim]")
+                        console.print(f"[{GRAY}]   Re-running verification tests...[/{GRAY}]")
                         all_tests_passed, test_results = (
                             self._verification_runner.run_verification_tests(
                                 run.commands, user_query
@@ -1693,17 +1714,17 @@ class DoHandler:
         console.print()
         if was_interrupted:
             console.print(
-                "[bold yellow]━━━[/bold yellow] [bold]Execution Interrupted - What would you like to do?[/bold]"
+                f"[bold {YELLOW}]━━━[/bold {YELLOW}] [bold {WHITE}]Execution Interrupted - What would you like to do?[/bold {WHITE}]"
             )
         else:
-            console.print("[bold blue]━━━[/bold blue] [bold]Next Steps[/bold]")
+            console.print(f"[bold {PURPLE}]━━━[/bold {PURPLE}] [bold {WHITE}]Next Steps[/bold {WHITE}]")
         console.print()
 
         # Display suggestions
         self._display_suggestions(suggestions)
 
         console.print()
-        console.print("[dim]You can type any request in natural language[/dim]")
+        console.print(f"[{GRAY}]You can type any request in natural language[/{GRAY}]")
         console.print()
 
         # Ensure prompt is visible
@@ -1711,7 +1732,7 @@ class DoHandler:
 
         while True:
             try:
-                response = Prompt.ask("[bold cyan]>[/bold cyan]", default="exit")
+                response = Prompt.ask(f"[bold {PURPLE_LIGHT}]{ICON_CMD}[/bold {PURPLE_LIGHT}]", default="exit")
 
                 response_stripped = response.strip()
                 response_lower = response_stripped.lower()
@@ -1971,18 +1992,18 @@ class DoHandler:
     def _display_suggestions(self, suggestions: list[dict]) -> None:
         """Display numbered suggestions."""
         if not suggestions:
-            console.print("[dim]No specific suggestions available.[/dim]")
+            console.print(f"[{GRAY}]No specific suggestions available.[/{GRAY}]")
             return
 
         for i, suggestion in enumerate(suggestions, 1):
             icon = suggestion.get("icon", "💡")
             label = suggestion.get("label", "")
             desc = suggestion.get("description", "")
-            console.print(f"  [cyan]{i}.[/cyan] {icon} {label}")
+            console.print(f"  [{PURPLE_LIGHT}]{i}.[/{PURPLE_LIGHT}] {icon} [{WHITE}]{label}[/{WHITE}]")
             if desc:
-                console.print(f"      [dim]{desc}[/dim]")
+                console.print(f"      [{GRAY}]{desc}[/{GRAY}]")
 
-        console.print(f"  [cyan]{len(suggestions) + 1}.[/cyan] 🚪 Exit session")
+        console.print(f"  [{PURPLE_LIGHT}]{len(suggestions) + 1}.[/{PURPLE_LIGHT}] 🚪 Exit session")
 
     def _handle_natural_language_request(
         self,
@@ -2019,7 +2040,7 @@ class DoHandler:
 
         # Use LLM for full understanding if available
         console.print()
-        console.print("[cyan]🤔 Understanding your request...[/cyan]")
+        console.print(f"[{PURPLE_LIGHT}]🤔 Understanding your request...[/{PURPLE_LIGHT}]")
 
         if self.llm_callback:
             return self._handle_request_with_llm(request, context, run, commands)
@@ -2041,7 +2062,7 @@ class DoHandler:
 
             if not llm_response or llm_response.get("response_type") == "error":
                 console.print(
-                    f"[yellow]⚠ Could not process request: {llm_response.get('error', 'Unknown error')}[/yellow]"
+                    f"[{YELLOW}]⚠ Could not process request: {llm_response.get('error', 'Unknown error')}[/{YELLOW}]"
                 )
                 return False
 
@@ -2076,22 +2097,22 @@ class DoHandler:
                 # Final safety check: don't print JSON-looking reasoning
                 if reasoning and not self._is_json_like(reasoning):
                     console.print()
-                    console.print(f"[cyan]🤖 {reasoning}[/cyan]")
+                    console.print(f"[{PURPLE_LIGHT}]🤖 {reasoning}[/{PURPLE_LIGHT}]")
                 console.print()
 
                 # Show commands and ask for confirmation
-                console.print("[bold]📋 Commands to execute:[/bold]")
+                console.print(f"[bold {WHITE}]📋 Commands to execute:[/bold {WHITE}]")
                 for i, cmd_info in enumerate(do_commands, 1):
                     cmd = cmd_info.get("command", "")
                     purpose = cmd_info.get("purpose", "")
                     sudo = "🔐 " if cmd_info.get("requires_sudo") else ""
-                    console.print(f"  {i}. {sudo}[green]{cmd}[/green]")
+                    console.print(f"  {i}. {sudo}[{GREEN}]{cmd}[/{GREEN}]")
                     if purpose:
-                        console.print(f"     [dim]{purpose}[/dim]")
+                        console.print(f"     [{GRAY}]{purpose}[/{GRAY}]")
                 console.print()
 
                 if not Confirm.ask("Execute these commands?", default=True):
-                    console.print("[dim]Skipped.[/dim]")
+                    console.print(f"[{GRAY}]Skipped.[/{GRAY}]")
                     return False
 
                 # Execute the commands
@@ -2108,10 +2129,10 @@ class DoHandler:
                     console.print()
                     console.print(
                         Panel(
-                            f"[bold cyan]{cmd}[/bold cyan]\n[dim]└─ {purpose}[/dim]",
-                            title=f"[bold] Command {idx}/{len(do_commands)} [/bold]",
+                            f"[bold {PURPLE_LIGHT}]{cmd}[/bold {PURPLE_LIGHT}]\n[{GRAY}]└─ {purpose}[/{GRAY}]",
+                            title=f"[bold {WHITE}] Command {idx}/{len(do_commands)} [/bold {WHITE}]",
                             title_align="left",
-                            border_style="blue",
+                            border_style=PURPLE,
                             padding=(0, 1),
                         )
                     )
@@ -2121,21 +2142,21 @@ class DoHandler:
                     if success:
                         console.print(
                             Panel(
-                                "[bold green]✓ Success[/bold green]",
-                                border_style="green",
+                                f"[bold {GREEN}]{ICON_SUCCESS} Success[/bold {GREEN}]",
+                                border_style=PURPLE,
                                 padding=(0, 1),
                                 expand=False,
                             )
                         )
                         if stdout:
                             output_preview = stdout[:300] + ("..." if len(stdout) > 300 else "")
-                            console.print(f"[dim]{output_preview}[/dim]")
+                            console.print(f"[{GRAY}]{output_preview}[/{GRAY}]")
                         executed_in_session.append(cmd)
                     else:
                         console.print(
                             Panel(
-                                f"[bold red]✗ Failed[/bold red]\n[dim]{stderr[:150]}[/dim]",
-                                border_style="red",
+                                f"[bold {RED}]{ICON_ERROR} Failed[/bold {RED}]\n[{GRAY}]{stderr[:150]}[/{GRAY}]",
+                                border_style=RED,
                                 padding=(0, 1),
                             )
                         )
@@ -2147,8 +2168,8 @@ class DoHandler:
                             if fixed:
                                 console.print(
                                     Panel(
-                                        f"[bold green]✓ Fixed:[/bold green] {msg}",
-                                        border_style="green",
+                                        f"[bold {GREEN}]{ICON_SUCCESS} Fixed:[/bold {GREEN}] [{WHITE}]{msg}[/{WHITE}]",
+                                        border_style=PURPLE,
                                         padding=(0, 1),
                                         expand=False,
                                     )
@@ -2168,21 +2189,21 @@ class DoHandler:
                 reasoning = llm_response.get("reasoning", "")
 
                 console.print()
-                console.print(f"[cyan]📋 Running:[/cyan] [green]{cmd}[/green]")
+                console.print(f"[{PURPLE_LIGHT}]📋 Running:[/{PURPLE_LIGHT}] [{GREEN}]{cmd}[/{GREEN}]")
                 if reasoning:
-                    console.print(f"   [dim]{reasoning}[/dim]")
+                    console.print(f"   [{GRAY}]{reasoning}[/{GRAY}]")
 
                 needs_sudo = self._needs_sudo(cmd, [])
                 success, stdout, stderr = self._execute_single_command(cmd, needs_sudo)
 
                 if success:
-                    console.print("[green]✓ Success[/green]")
+                    console.print(f"[{GREEN}]{ICON_SUCCESS} Success[/{GREEN}]")
                     if stdout:
                         console.print(
-                            f"[dim]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/dim]"
+                            f"[{GRAY}]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/{GRAY}]"
                         )
                 else:
-                    console.print(f"[red]✗ Failed: {stderr[:200]}[/red]")
+                    console.print(f"[{RED}]{ICON_ERROR} Failed: {stderr[:200]}[/{RED}]")
 
                 return True
 
@@ -2200,11 +2221,11 @@ class DoHandler:
                 return True
 
             else:
-                console.print("[yellow]I didn't understand that. Could you rephrase?[/yellow]")
+                console.print(f"[{YELLOW}]I didn't understand that. Could you rephrase?[/{YELLOW}]")
                 return False
 
         except Exception as e:
-            console.print(f"[yellow]⚠ Error processing request: {e}[/yellow]")
+            console.print(f"[{YELLOW}]⚠ Error processing request: {e}[/{YELLOW}]")
             # Fall back to pattern matching
             return self._handle_request_with_patterns(request, context, run)
 
@@ -2224,14 +2245,14 @@ class DoHandler:
             needs_confirm = generated.get("needs_confirmation", True)
 
             console.print()
-            console.print("[cyan]📋 I'll run this command:[/cyan]")
-            console.print(f"   [green]{cmd}[/green]")
-            console.print(f"   [dim]{purpose}[/dim]")
+            console.print(f"[{PURPLE_LIGHT}]📋 I'll run this command:[/{PURPLE_LIGHT}]")
+            console.print(f"   [{GREEN}]{cmd}[/{GREEN}]")
+            console.print(f"   [{GRAY}]{purpose}[/{GRAY}]")
             console.print()
 
             if needs_confirm:
                 if not Confirm.ask("Proceed?", default=True):
-                    console.print("[dim]Skipped.[/dim]")
+                    console.print(f"[{GRAY}]Skipped.[/{GRAY}]")
                     return False
 
             # Execute the command
@@ -2239,24 +2260,24 @@ class DoHandler:
             success, stdout, stderr = self._execute_single_command(cmd, needs_sudo)
 
             if success:
-                console.print("[green]✓ Success[/green]")
+                console.print(f"[{GREEN}]{ICON_SUCCESS} Success[/{GREEN}]")
                 if stdout:
                     output_preview = stdout[:500] + ("..." if len(stdout) > 500 else "")
-                    console.print(f"[dim]{output_preview}[/dim]")
+                    console.print(f"[{GRAY}]{output_preview}[/{GRAY}]")
             else:
-                console.print(f"[red]✗ Failed: {stderr[:200]}[/red]")
+                console.print(f"[{RED}]{ICON_ERROR} Failed: {stderr[:200]}[/{RED}]")
 
                 # Offer to diagnose the error
                 if Confirm.ask("Would you like me to try to fix this?", default=True):
                     diagnosis = self._diagnoser.diagnose_error(cmd, stderr)
                     fixed, msg, _ = self._auto_fixer.auto_fix_error(cmd, stderr, diagnosis)
                     if fixed:
-                        console.print(f"[green]✓ Fixed: {msg}[/green]")
+                        console.print(f"[{GREEN}]{ICON_SUCCESS} Fixed: {msg}[/{GREEN}]")
 
             return True
 
         # Couldn't understand the request
-        console.print("[yellow]I'm not sure how to do that. Could you be more specific?[/yellow]")
+        console.print(f"[{YELLOW}]I'm not sure how to do that. Could you be more specific?[/{YELLOW}]")
         console.print(
             "[dim]Try something like: 'run the container', 'show me the config', or select a number.[/dim]"
         )
@@ -2772,7 +2793,7 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
             # Retry the command that was interrupted
             if self._interrupted_command:
                 console.print()
-                console.print(f"[cyan]🔄 Retrying:[/cyan] {self._interrupted_command}")
+                console.print(f"[{PURPLE_LIGHT}]🔄 Retrying:[/{PURPLE_LIGHT}] [{WHITE}]{self._interrupted_command}[/{WHITE}]")
                 console.print()
 
                 needs_sudo = "sudo" in self._interrupted_command or self._needs_sudo(
@@ -2783,20 +2804,20 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
                 )
 
                 if success:
-                    console.print("[green]✓ Success[/green]")
+                    console.print(f"[{GREEN}]{ICON_SUCCESS} Success[/{GREEN}]")
                     if stdout:
                         console.print(
-                            f"[dim]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/dim]"
+                            f"[{GRAY}]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/{GRAY}]"
                         )
                     self._interrupted_command = None  # Clear after successful retry
                 else:
-                    console.print(f"[red]✗ Failed: {stderr[:200]}[/red]")
+                    console.print(f"[{RED}]{ICON_ERROR} Failed: {stderr[:200]}[/{RED}]")
             else:
-                console.print("[yellow]No interrupted command to retry.[/yellow]")
+                console.print(f"[{YELLOW}]No interrupted command to retry.[/{YELLOW}]")
         elif suggestion_type == "skip_and_continue":
             # Skip the interrupted command and continue with remaining
             console.print()
-            console.print("[cyan]⏭️ Skipping interrupted command and continuing...[/cyan]")
+            console.print(f"[{PURPLE_LIGHT}]⏭️ Skipping interrupted command and continuing...[/{PURPLE_LIGHT}]")
             self._interrupted_command = None
 
             if self._remaining_commands:
@@ -2816,7 +2837,7 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
             self._show_test_commands(run, user_query)
         elif "command" in suggestion:
             console.print()
-            console.print(f"[cyan]Executing:[/cyan] {suggestion['command']}")
+            console.print(f"[{PURPLE_LIGHT}]Executing:[/{PURPLE_LIGHT}] [{WHITE}]{suggestion['command']}[/{WHITE}]")
             console.print()
 
             needs_sudo = "sudo" in suggestion["command"]
@@ -2825,21 +2846,21 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
             )
 
             if success:
-                console.print("[green]✓ Success[/green]")
+                console.print(f"[{GREEN}]{ICON_SUCCESS} Success[/{GREEN}]")
                 if stdout:
-                    console.print(f"[dim]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/dim]")
+                    console.print(f"[{GRAY}]{stdout[:500]}{'...' if len(stdout) > 500 else ''}[/{GRAY}]")
             else:
-                console.print(f"[red]✗ Failed: {stderr[:200]}[/red]")
+                console.print(f"[{RED}]{ICON_ERROR} Failed: {stderr[:200]}[/{RED}]")
         elif "manual_commands" in suggestion:
             # Show manual commands
             console.print()
-            console.print("[bold cyan]📋 Manual Commands:[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📋 Manual Commands:[/bold {PURPLE_LIGHT}]")
             for cmd in suggestion["manual_commands"]:
-                console.print(f"  [green]$ {cmd}[/green]")
+                console.print(f"  [{GREEN}]$ {cmd}[/{GREEN}]")
             console.print()
-            console.print("[dim]Copy and run these commands in your terminal.[/dim]")
+            console.print(f"[{GRAY}]Copy and run these commands in your terminal.[/{GRAY}]")
         else:
-            console.print("[yellow]No specific action available for this suggestion.[/yellow]")
+            console.print(f"[{YELLOW}]No specific action available for this suggestion.[/{YELLOW}]")
 
     def _show_test_commands(self, run: DoRun, user_query: str) -> None:
         """Show test commands based on what was installed/configured."""
@@ -2953,35 +2974,35 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
 
         # Display test commands
         for i, (desc, cmd) in enumerate(test_commands[:6], 1):  # Limit to 6
-            console.print(f"  [bold]{i}.[/bold] {desc}")
-            console.print(f"     [green]$ {cmd}[/green]")
+            console.print(f"  [bold {WHITE}]{i}.[/bold {WHITE}] {desc}")
+            console.print(f"     [{GREEN}]$ {cmd}[/{GREEN}]")
             console.print()
 
-        console.print("[dim]Copy and run these commands to verify your installation.[/dim]")
+        console.print(f"[{GRAY}]Copy and run these commands to verify your installation.[/{GRAY}]")
         console.print()
 
         # Offer to run the first test
         try:
-            response = input("[dim]Run first test? [y/N]: [/dim]").strip().lower()
+            response = input(f"[{GRAY}]Run first test? [y/N]: [/{GRAY}]").strip().lower()
             if response in ["y", "yes"]:
                 if test_commands:
                     desc, cmd = test_commands[0]
                     console.print()
-                    console.print(f"[cyan]Running:[/cyan] {cmd}")
+                    console.print(f"[{PURPLE_LIGHT}]Running:[/{PURPLE_LIGHT}] [{WHITE}]{cmd}[/{WHITE}]")
                     needs_sudo = cmd.strip().startswith("sudo")
                     success, stdout, stderr = self._execute_single_command(
                         cmd, needs_sudo=needs_sudo
                     )
                     if success:
-                        console.print(f"[green]✓ {desc} - Passed[/green]")
+                        console.print(f"[{GREEN}]{ICON_SUCCESS} {desc} - Passed[/{GREEN}]")
                         if stdout:
                             console.print(
-                                Panel(stdout[:500], title="[dim]Output[/dim]", border_style="dim")
+                                Panel(stdout[:500], title=f"[{GRAY}]Output[/{GRAY}]", border_style=GRAY)
                             )
                     else:
-                        console.print(f"[red]✗ {desc} - Failed[/red]")
+                        console.print(f"[{RED}]{ICON_ERROR} {desc} - Failed[/{RED}]")
                         if stderr:
-                            console.print(f"[dim red]{stderr[:200]}[/dim red]")
+                            console.print(f"[{GRAY}]{stderr[:200]}[/{GRAY}]")
         except (EOFError, KeyboardInterrupt):
             pass
 
@@ -2991,81 +3012,81 @@ If you cannot generate a safe command, respond with: {{"error": "reason"}}"""
 
         if demo_type == "docker":
             image = suggestion.get("image", "your-image")
-            console.print("[bold cyan]📝 Docker Usage Examples[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📝 Docker Usage Examples[/bold {PURPLE_LIGHT}]")
             console.print()
-            console.print("[dim]# Run container in foreground:[/dim]")
-            console.print(f"[green]docker run -it {image}[/green]")
+            console.print(f"[{GRAY}]# Run container in foreground:[/{GRAY}]")
+            console.print(f"[{GREEN}]docker run -it {image}[/{GREEN}]")
             console.print()
-            console.print("[dim]# Run container in background:[/dim]")
-            console.print(f"[green]docker run -d --name myapp {image}[/green]")
+            console.print(f"[{GRAY}]# Run container in background:[/{GRAY}]")
+            console.print(f"[{GREEN}]docker run -d --name myapp {image}[/{GREEN}]")
             console.print()
-            console.print("[dim]# Run with port mapping:[/dim]")
-            console.print(f"[green]docker run -d -p 8080:8080 {image}[/green]")
+            console.print(f"[{GRAY}]# Run with port mapping:[/{GRAY}]")
+            console.print(f"[{GREEN}]docker run -d -p 8080:8080 {image}[/{GREEN}]")
             console.print()
-            console.print("[dim]# Run with volume mount:[/dim]")
-            console.print(f"[green]docker run -d -v /host/path:/container/path {image}[/green]")
+            console.print(f"[{GRAY}]# Run with volume mount:[/{GRAY}]")
+            console.print(f"[{GREEN}]docker run -d -v /host/path:/container/path {image}[/{GREEN}]")
 
         elif demo_type == "ollama":
-            console.print("[bold cyan]📝 Ollama API Examples[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📝 Ollama API Examples[/bold {PURPLE_LIGHT}]")
             console.print()
-            console.print("[dim]# List available models:[/dim]")
-            console.print("[green]curl http://localhost:11434/api/tags[/green]")
+            console.print(f"[{GRAY}]# List available models:[/{GRAY}]")
+            console.print(f"[{GREEN}]curl http://localhost:11434/api/tags[/{GREEN}]")
             console.print()
-            console.print("[dim]# Generate text:[/dim]")
-            console.print("""[green]curl http://localhost:11434/api/generate -d '{
+            console.print(f"[{GRAY}]# Generate text:[/{GRAY}]")
+            console.print(f"""[{GREEN}]curl http://localhost:11434/api/generate -d '{{
   "model": "llama2",
   "prompt": "Hello, how are you?"
-}'[/green]""")
+}}'[/{GREEN}]""")
             console.print()
-            console.print("[dim]# Python example:[/dim]")
-            console.print("""[green]import requests
+            console.print(f"[{GRAY}]# Python example:[/{GRAY}]")
+            console.print(f"""[{GREEN}]import requests
 
 response = requests.post('http://localhost:11434/api/generate',
-    json={
+    json={{
         'model': 'llama2',
         'prompt': 'Explain quantum computing in simple terms',
         'stream': False
-    })
-print(response.json()['response'])[/green]""")
+    }})
+print(response.json()['response'])[/{GREEN}]""")
 
         elif demo_type == "nginx_config":
-            console.print("[bold cyan]📝 Nginx Configuration Example[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📝 Nginx Configuration Example[/bold {PURPLE_LIGHT}]")
             console.print()
-            console.print("[dim]# Create a new site config:[/dim]")
-            console.print("[green]sudo nano /etc/nginx/sites-available/mysite[/green]")
+            console.print(f"[{GRAY}]# Create a new site config:[/{GRAY}]")
+            console.print(f"[{GREEN}]sudo nano /etc/nginx/sites-available/mysite[/{GREEN}]")
             console.print()
-            console.print("[dim]# Example config:[/dim]")
-            console.print("""[green]server {
+            console.print(f"[{GRAY}]# Example config:[/{GRAY}]")
+            console.print(f"""[{GREEN}]server {{
     listen 80;
     server_name example.com;
 
-    location / {
+    location / {{
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-    }
-}[/green]""")
+    }}
+}}[/{GREEN}]""")
             console.print()
-            console.print("[dim]# Enable the site:[/dim]")
+            console.print(f"[{GRAY}]# Enable the site:[/{GRAY}]")
             console.print(
-                "[green]sudo ln -s /etc/nginx/sites-available/mysite /etc/nginx/sites-enabled/[/green]"
+                f"[{GREEN}]sudo ln -s /etc/nginx/sites-available/mysite /etc/nginx/sites-enabled/[/{GREEN}]"
             )
-            console.print("[green]sudo nginx -t && sudo systemctl reload nginx[/green]")
+            console.print(f"[{GREEN}]sudo nginx -t && sudo systemctl reload nginx[/{GREEN}]")
 
         elif demo_type == "postgres_setup":
-            console.print("[bold cyan]📝 PostgreSQL Setup Example[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📝 PostgreSQL Setup Example[/bold {PURPLE_LIGHT}]")
             console.print()
             console.print("[dim]# Create a new user and database:[/dim]")
-            console.print("[green]sudo -u postgres createuser --interactive myuser[/green]")
-            console.print("[green]sudo -u postgres createdb mydb -O myuser[/green]")
+            console.print("[{GREEN}]sudo -u postgres createuser --interactive myuser[/{GREEN}]")
+            console.print(f"[{GREEN}]sudo -u postgres createdb mydb -O myuser[/{GREEN}]")
             console.print()
             console.print("[dim]# Connect to the database:[/dim]")
-            console.print("[green]psql -U myuser -d mydb[/green]")
+            console.print(f"[{GREEN}]psql -U myuser -d mydb[/{GREEN}]")
             console.print()
             console.print("[dim]# Python connection example:[/dim]")
-            console.print("""[green]import psycopg2
+            console.print(f"""[{GREEN}]import psycopg2
 
 conn = psycopg2.connect(
     dbname="mydb",
@@ -3075,43 +3096,43 @@ conn = psycopg2.connect(
 )
 cursor = conn.cursor()
 cursor.execute("SELECT version();")
-print(cursor.fetchone())[/green]""")
+print(cursor.fetchone())[/{GREEN}]""")
 
         elif demo_type == "nodejs":
-            console.print("[bold cyan]📝 Node.js Example[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📝 Node.js Example[/bold {PURPLE_LIGHT}]")
             console.print()
             console.print("[dim]# Create a simple Express server:[/dim]")
-            console.print("""[green]// server.js
+            console.print(f"""[{GREEN}]// server.js
 const express = require('express');
 const app = express();
 
-app.get('/', (req, res) => {
-    res.json({ message: 'Hello from Node.js!' });
-});
+app.get('/', (req, res) => {{
+    res.json({{ message: 'Hello from Node.js!' }});
+}});
 
-app.listen(3000, () => {
+app.listen(3000, () => {{
     console.log('Server running on http://localhost:3000');
-});[/green]""")
+}});[/{GREEN}]""")
             console.print()
             console.print("[dim]# Run it:[/dim]")
-            console.print("[green]npm init -y && npm install express && node server.js[/green]")
+            console.print(f"[{GREEN}]npm init -y && npm install express && node server.js[/{GREEN}]")
 
         elif demo_type == "python":
-            console.print("[bold cyan]📝 Python Example[/bold cyan]")
+            console.print(f"[bold {PURPLE_LIGHT}]📝 Python Example[/bold {PURPLE_LIGHT}]")
             console.print()
             console.print("[dim]# Simple HTTP server:[/dim]")
-            console.print("[green]python3 -m http.server 8000[/green]")
+            console.print(f"[{GREEN}]python3 -m http.server 8000[/{GREEN}]")
             console.print()
             console.print("[dim]# Flask web app:[/dim]")
-            console.print("""[green]from flask import Flask
+            console.print(f"""[{GREEN}]from flask import Flask
 app = Flask(__name__)
 
 @app.route('/')
 def hello():
-    return {'message': 'Hello from Python!'}
+    return {{'message': 'Hello from Python!'}}
 
 if __name__ == '__main__':
-    app.run(debug=True)[/green]""")
+    app.run(debug=True)[/{GREEN}]""")
 
         else:
             console.print(
@@ -3135,10 +3156,10 @@ if __name__ == '__main__':
         if task.status == CommandStatus.SKIPPED:
             # Claude-like skipped output
             console.print(
-                f"{indent}[dim]○[/dim] [cyan]{task.command[:65]}{'...' if len(task.command) > 65 else ''}[/cyan]"
+                f"{indent}[{GRAY}]{ICON_INFO}[/{GRAY}] [{PURPLE_LIGHT}]{task.command[:65]}{'...' if len(task.command) > 65 else ''}[/{PURPLE_LIGHT}]"
             )
             console.print(
-                f"{indent}  [dim italic]↳ Skipped: {task.output or 'Using existing resource'}[/dim italic]"
+                f"{indent}  [{GRAY}]↳ Skipped: {task.output or 'Using existing resource'}[/{GRAY}]"
             )
 
             # Log the skipped command
@@ -3154,9 +3175,9 @@ if __name__ == '__main__':
 
         # Claude-like command output
         console.print(
-            f"{indent}[bold cyan]●[/bold cyan] [bold]{task.command[:65]}{'...' if len(task.command) > 65 else ''}[/bold]"
+            f"{indent}[bold {PURPLE_LIGHT}]{ICON_SUCCESS}[/bold {PURPLE_LIGHT}] [bold {WHITE}]{task.command[:65]}{'...' if len(task.command) > 65 else ''}[/bold {WHITE}]"
         )
-        console.print(f"{indent}  [dim italic]↳ {task.purpose}[/dim italic]")
+        console.print(f"{indent}  [{GRAY}]↳ {task.purpose}[/{GRAY}]")
 
         protected_paths = []
         user_query = run.user_query if run else ""
@@ -3195,7 +3216,7 @@ if __name__ == '__main__':
                 duration_seconds=task.duration_seconds,
             )
             console.print(
-                f"{indent}  [yellow]⚠[/yellow] [dim]Interrupted ({task.duration_seconds:.2f}s)[/dim]"
+                f"{indent}  [{YELLOW}]⚠[/{YELLOW}] [{GRAY}]Interrupted ({task.duration_seconds:.2f}s)[/{GRAY}]"
             )
             run.commands.append(cmd_log)
             return
@@ -3214,11 +3235,11 @@ if __name__ == '__main__':
             task.status = CommandStatus.SUCCESS
             # Claude-like success output
             console.print(
-                f"{indent}  [green]✓[/green] [dim]Done ({task.duration_seconds:.2f}s)[/dim]"
+                f"{indent}  [{GREEN}]{ICON_SUCCESS}[/{GREEN}] [{GRAY}]Done ({task.duration_seconds:.2f}s)[/{GRAY}]"
             )
             if stdout:
                 output_preview = stdout[:100] + ("..." if len(stdout) > 100 else "")
-                console.print(f"{indent}  [dim]{output_preview}[/dim]")
+                console.print(f"{indent}  [{GRAY}]{output_preview}[/{GRAY}]")
             console.print()
             run.commands.append(cmd_log)
             return
@@ -3228,20 +3249,20 @@ if __name__ == '__main__':
         task.failure_reason = diagnosis.get("description", "Unknown error")
 
         # Claude-like error output
-        console.print(f"{indent}  [red]✗[/red] [bold red]{diagnosis['error_type']}[/bold red]")
+        console.print(f"{indent}  [{RED}]{ICON_ERROR}[/{RED}] [bold {RED}]{diagnosis['error_type']}[/bold {RED}]")
         console.print(
-            f"{indent}  [dim]{diagnosis['description'][:80]}{'...' if len(diagnosis['description']) > 80 else ''}[/dim]"
+            f"{indent}  [{GRAY}]{diagnosis['description'][:80]}{'...' if len(diagnosis['description']) > 80 else ''}[/{GRAY}]"
         )
 
         # Check if this is a login/credential required error
         if diagnosis.get("category") == "login_required":
-            console.print(f"{indent}[cyan]   🔐 Authentication required[/cyan]")
+            console.print(f"{indent}[{PURPLE_LIGHT}]   🔐 Authentication required[/{PURPLE_LIGHT}]")
 
             login_success, login_msg = self._login_handler.handle_login(task.command, stderr)
 
             if login_success:
-                console.print(f"{indent}[green]   ✓ {login_msg}[/green]")
-                console.print(f"{indent}[cyan]   Retrying command...[/cyan]")
+                console.print(f"{indent}[{GREEN}]   {ICON_SUCCESS} {login_msg}[/{GREEN}]")
+                console.print(f"{indent}[{PURPLE_LIGHT}]   Retrying command...[/{PURPLE_LIGHT}]")
 
                 # Retry the command
                 needs_sudo = self._needs_sudo(task.command, [])
@@ -3255,7 +3276,7 @@ if __name__ == '__main__':
                     cmd_log.status = CommandStatus.SUCCESS
                     cmd_log.stdout = new_stdout[:500] if new_stdout else ""
                     console.print(
-                        f"{indent}[green]   ✓ Command succeeded after authentication![/green]"
+                        f"{indent}[{GREEN}]   {ICON_SUCCESS} Command succeeded after authentication![/{GREEN}]"
                     )
                     run.commands.append(cmd_log)
                     return
@@ -3264,35 +3285,35 @@ if __name__ == '__main__':
                     stderr = new_stderr
                     diagnosis = self._diagnoser.diagnose_error(task.command, stderr)
                     console.print(
-                        f"{indent}[yellow]   Command still failed: {stderr[:100]}[/yellow]"
+                        f"{indent}[{YELLOW}]   Command still failed: {stderr[:100]}[/{YELLOW}]"
                     )
             else:
-                console.print(f"{indent}[yellow]   {login_msg}[/yellow]")
+                console.print(f"{indent}[{YELLOW}]   {login_msg}[/{YELLOW}]")
 
         if diagnosis.get("extracted_path"):
             console.print(f"{indent}[dim]   Path: {diagnosis['extracted_path']}[/dim]")
 
         # Handle timeout errors specially - don't blindly retry
         if diagnosis.get("category") == "timeout" or "timed out" in stderr.lower():
-            console.print(f"{indent}[yellow]   ⏱️  This operation timed out[/yellow]")
+            console.print(f"{indent}[{YELLOW}]   ⏱️  This operation timed out[/{YELLOW}]")
 
             # Check if it's a docker pull - those might still be running
             if "docker pull" in task.command.lower():
                 console.print(
-                    f"{indent}[cyan]   ℹ️  Docker pull may still be downloading in background[/cyan]"
+                    f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  Docker pull may still be downloading in background[/{PURPLE_LIGHT}]"
                 )
                 console.print(
-                    f"{indent}[dim]   Check with: docker images | grep <image-name>[/dim]"
+                    f"{indent}[{GRAY}]   Check with: docker images | grep <image-name>[/{GRAY}]"
                 )
                 console.print(
-                    f"{indent}[dim]   Or retry with: docker pull --timeout=0 <image>[/dim]"
+                    f"{indent}[{GRAY}]   Or retry with: docker pull --timeout=0 <image>[/{GRAY}]"
                 )
             elif "apt" in task.command.lower():
-                console.print(f"{indent}[cyan]   ℹ️  Package installation timed out[/cyan]")
-                console.print(f"{indent}[dim]   Check apt status: sudo dpkg --configure -a[/dim]")
-                console.print(f"{indent}[dim]   Then retry the command[/dim]")
+                console.print(f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  Package installation timed out[/{PURPLE_LIGHT}]")
+                console.print(f"{indent}[{GRAY}]   Check apt status: sudo dpkg --configure -a[/{GRAY}]")
+                console.print(f"{indent}[{GRAY}]   Then retry the command[/{GRAY}]")
             else:
-                console.print(f"{indent}[cyan]   ℹ️  You can retry this command manually[/cyan]")
+                console.print(f"{indent}[{PURPLE_LIGHT}]   {ICON_INFO}  You can retry this command manually[/{PURPLE_LIGHT}]")
 
             # Mark as needing manual intervention, not auto-fix
             task.status = CommandStatus.NEEDS_REPAIR
@@ -3307,7 +3328,7 @@ if __name__ == '__main__':
 
             task.repair_attempts += 1
             console.print(
-                f"{indent}[cyan]   🔧 Auto-fix attempt {task.repair_attempts}/{task.max_repair_attempts}[/cyan]"
+                f"{indent}[{PURPLE_LIGHT}]   🔧 Auto-fix attempt {task.repair_attempts}/{task.max_repair_attempts}[/{PURPLE_LIGHT}]"
             )
 
             # Flush output before auto-fix to ensure clean display after sudo prompts
@@ -3329,12 +3350,12 @@ if __name__ == '__main__':
             if fixed:
                 task.status = CommandStatus.SUCCESS
                 task.reasoning = f"Auto-fixed: {fix_message}"
-                console.print(f"{indent}[green]   ✓ {fix_message}[/green]")
+                console.print(f"{indent}[{GREEN}]   {ICON_SUCCESS} {fix_message}[/{GREEN}]")
                 cmd_log.status = CommandStatus.SUCCESS
                 run.commands.append(cmd_log)
                 return
             else:
-                console.print(f"{indent}[yellow]   Auto-fix incomplete: {fix_message}[/yellow]")
+                console.print(f"{indent}[{YELLOW}]   Auto-fix incomplete: {fix_message}[/{YELLOW}]")
 
         task.status = CommandStatus.FAILED
         task.reasoning = self._generate_task_failure_reasoning(task, diagnosis)
