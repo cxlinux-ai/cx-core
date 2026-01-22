@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -2639,64 +2640,16 @@ class CortexCLI:
                         from cortex.llm_router import LLMRouter
 
                         llm_router = LLMRouter()
-                    except Exception:
+                    except (ImportError, ModuleNotFoundError):
                         pass
+                    except Exception as e:
+                        if self.verbose:
+                            logger.debug(f"LLM router initialization failed: {e}")
 
                 recommender = UpdateRecommender(llm_router=llm_router, verbose=self.verbose)
                 recommendation = recommender.get_recommendations(use_llm=use_llm)
 
-                # Convert to JSON-serializable format
-                output = {
-                    "timestamp": recommendation.timestamp,
-                    "total_updates": recommendation.total_updates,
-                    "overall_risk": recommendation.overall_risk.value,
-                    "security_updates": [
-                        {
-                            "package": u.package_name,
-                            "current": str(u.current_version),
-                            "new": str(u.new_version),
-                            "risk": u.risk_level.value,
-                            "type": u.change_type.value,
-                        }
-                        for u in recommendation.security_updates
-                    ],
-                    "immediate_updates": [
-                        {
-                            "package": u.package_name,
-                            "current": str(u.current_version),
-                            "new": str(u.new_version),
-                            "risk": u.risk_level.value,
-                            "type": u.change_type.value,
-                        }
-                        for u in recommendation.immediate_updates
-                    ],
-                    "scheduled_updates": [
-                        {
-                            "package": u.package_name,
-                            "current": str(u.current_version),
-                            "new": str(u.new_version),
-                            "risk": u.risk_level.value,
-                            "type": u.change_type.value,
-                        }
-                        for u in recommendation.scheduled_updates
-                    ],
-                    "deferred_updates": [
-                        {
-                            "package": u.package_name,
-                            "current": str(u.current_version),
-                            "new": str(u.new_version),
-                            "risk": u.risk_level.value,
-                            "type": u.change_type.value,
-                            "breaking_changes": u.breaking_changes,
-                        }
-                        for u in recommendation.deferred_updates
-                    ],
-                    "groups": {
-                        k: [u.package_name for u in v] for k, v in recommendation.groups.items()
-                    },
-                    "llm_analysis": recommendation.llm_analysis,
-                }
-                print(json_module.dumps(output, indent=2))
+                print(json_module.dumps(recommendation.to_dict(), indent=2))
                 return 0
             else:
                 cx_print(t("update_recommend.checking"), "thinking")

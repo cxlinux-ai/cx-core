@@ -154,6 +154,19 @@ class UpdateInfo:
     recommended_action: str = ""
     group: str = ""  # For grouping related updates
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a JSON-serializable dictionary."""
+        return {
+            "package": self.package_name,
+            "current": str(self.current_version),
+            "new": str(self.new_version),
+            "risk": self.risk_level.value_str,
+            "type": self.change_type.value,
+            "is_security": self.is_security,
+            "breaking_changes": self.breaking_changes,
+            "group": self.group,
+        }
+
 
 @dataclass
 class UpdateRecommendation:
@@ -168,6 +181,20 @@ class UpdateRecommendation:
     groups: dict[str, list[UpdateInfo]] = field(default_factory=dict)
     llm_analysis: str = ""
     overall_risk: RiskLevel = RiskLevel.LOW
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a JSON-serializable dictionary."""
+        return {
+            "timestamp": self.timestamp,
+            "total_updates": self.total_updates,
+            "overall_risk": self.overall_risk.value_str,
+            "security_updates": [u.to_dict() for u in self.security_updates],
+            "immediate_updates": [u.to_dict() for u in self.immediate_updates],
+            "scheduled_updates": [u.to_dict() for u in self.scheduled_updates],
+            "deferred_updates": [u.to_dict() for u in self.deferred_updates],
+            "groups": {k: [u.package_name for u in v] for k, v in self.groups.items()},
+            "llm_analysis": self.llm_analysis,
+        }
 
 
 class UpdateRecommender:
@@ -280,31 +307,41 @@ class UpdateRecommender:
 
         # Fallback check via DNF/YUM (RHEL/Fedora/Amazon Linux)
         for pm in ("dnf", "yum"):
-            # pm check-update returns 100 if updates available
             try:
+                # pm check-update returns 100 if updates available
                 result = subprocess.run(
                     [pm, "check-update", "-q"], capture_output=True, text=True, timeout=120
                 )
                 if result.returncode in (0, 100) and result.stdout:
+                    # Optimized: Fetch all installed packages once
+                    installed = self.get_installed_packages()
+
                     for line in result.stdout.strip().splitlines():
-                        if line and not line.startswith(" "):
+                        if (
+                            line
+                            and not line.startswith(" ")
+                            and not line.startswith("Last metadata")
+                        ):
                             parts = line.split()
                             if len(parts) >= 2:
-                                name, new_ver = parts[0].rsplit(".", 1)[0], parts[1]
-                                # Get current version
-                                info = self._run_pkg_cmd([pm, "info", "installed", name]) or ""
-                                old_ver = next(
-                                    (
-                                        l.split(":", 1)[1].strip()
-                                        for l in info.splitlines()
-                                        if l.startswith("Version")
-                                    ),
-                                    "0.0.0",
+                                # More robust name parsing: assumes name.arch format
+                                full_name = parts[0]
+                                name = (
+                                    full_name.rsplit(".", 1)[0] if "." in full_name else full_name
                                 )
+                                new_ver = parts[1]
+
+                                # Use cached installed data instead of per-package lookup
+                                current = installed.get(name)
+                                old_ver = str(current) if current else "0.0.0"
+
                                 updates.append((name, old_ver, new_ver))
                     if updates:
                         return updates
             except (subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+            except subprocess.SubprocessError as e:
+                logger.warning(f"Package manager check failed: {e}")
                 continue
 
         return updates
@@ -518,8 +555,11 @@ Keep response concise (under 150 words)."""
 
             return response.content
 
+        except (ImportError, RuntimeError, ConnectionError) as e:
+            logger.warning(f"LLM analysis context error: {e}")
+            return ""
         except Exception as e:
-            logger.warning(f"LLM analysis failed: {e}")
+            logger.error(f"Unexpected LLM analysis error: {e}")
             return ""
 
     def get_recommendations(self, use_llm: bool = True) -> UpdateRecommendation:
@@ -751,8 +791,11 @@ def recommend_updates(
 
         return 0
 
+    except (RuntimeError, subprocess.SubprocessError) as e:
+        console.print(f"[red]System Error: {e}[/red]")
+        return 1
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        console.print(f"[red]Unexpected Error: {e}[/red]")
         if verbose:
             import traceback
 
