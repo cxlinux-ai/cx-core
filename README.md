@@ -5,8 +5,8 @@
 <h1 align="center">Cortex Linux</h1>
 
 <p align="center">
-  <strong>Cortex is an AI layer for Linux Debian/Ubuntu</strong><br>
- Instead of memorizing commands, googling errors, and copy-pasting from Stack Overflow — describe what you need.
+  <strong>AI-Powered Package Manager for Debian/Ubuntu</strong><br>
+  Install software using natural language. No more memorizing package names.
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
     <img src="https://github.com/cortexlinux/cortex/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
   </a>
   <a href="https://github.com/cortexlinux/cortex/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" />
+    <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </a>
   <a href="https://www.python.org/downloads/">
     <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+" />
@@ -40,8 +40,8 @@
 
 ## What is Cortex?
 
-<strong>Cortex is an AI layer for Linux Debian/Ubuntu</strong><br>
-Instead of memorizing commands, googling errors, and copy-pasting from Stack Overflow — describe what you need.
+Cortex is an AI-native package manager that understands what you want to install, even when you don't know the exact package name.
+
 ```bash
 # Instead of googling "what's the package name for PDF editing on Ubuntu?"
 cortex install "something to edit PDFs"
@@ -64,15 +64,11 @@ cortex install "tools for video compression"
 | Feature | Description |
 |---------|-------------|
 | **Natural Language** | Describe what you need in plain English |
-| **Voice Input** | Hands-free mode with Whisper speech recognition ([F9 to speak](docs/VOICE_INPUT.md)) |
 | **Dry-Run Default** | Preview all commands before execution |
 | **Sandboxed Execution** | Commands run in Firejail isolation |
 | **Full Rollback** | Undo any installation with `cortex rollback` |
-| **Role Management** | AI-driven system personality detection and tailored recommendations |
-| **Docker Permission Fixer** | Fix root-owned bind mount issues automatically |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
-| **Predictive Error Prevention** | AI-driven checks for potential installation failures |
 | **Multi-LLM Support** | Works with Claude, GPT-4, or local Ollama models |
 
 ---
@@ -97,11 +93,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 3. Install Cortex
-# Using pyproject.toml (recommended)
 pip install -e .
-
-# Or install with dev dependencies
-pip install -e ".[dev]"
 
 # 4. Configure AI Provider (choose one):
 
@@ -118,8 +110,6 @@ echo 'OPENAI_API_KEY=your-key-here' > .env
 cortex --version
 ```
 
-> **💡 Zero-Config:** If you already have API keys from Claude CLI (`~/.config/anthropic/`) or OpenAI CLI (`~/.config/openai/`), Cortex will auto-detect them! Environment variables work immediately without prompting. See [Zero Config API Keys](docs/ZERO_CONFIG_API_KEYS.md).
-
 ### First Run
 
 ```bash
@@ -130,26 +120,60 @@ cortex install nginx --dry-run
 cortex install nginx --execute
 ```
 
----
+### AI Command Execution Setup (`ask --do`)
 
-## 🚀 Upgrade to Pro
+For the full AI-powered command execution experience, run the setup script:
 
-Unlock advanced features with Cortex Pro:
+```bash
+# Full setup (Ollama + Watch Service + Shell Hooks)
+./scripts/setup_ask_do.sh
 
-| Feature | Community (Free) | Pro ($20/mo) | Enterprise ($99/mo) |
-|---------|------------------|--------------|---------------------|
-| Natural language commands | ✅ | ✅ | ✅ |
-| Hardware detection | ✅ | ✅ | ✅ |
-| Installation history | 7 days | 90 days | Unlimited |
-| GPU/CUDA optimization | Basic | Advanced | Advanced |
-| Systems per license | 1 | 5 | 100 |
-| Cloud LLM connectors | ❌ | ✅ | ✅ |
-| Priority support | ❌ | ✅ | ✅ |
-| SSO/SAML | ❌ | ❌ | ✅ |
-| Compliance reports | ❌ | ❌ | ✅ |
-| Support | Community | Priority | Dedicated |
+# Or use Python directly
+python scripts/setup_ask_do.py
 
-**[Compare Plans →](https://cortexlinux.com/pricing)** | **[Start Free Trial →](https://cortexlinux.com/pricing)**
+# Options:
+#   --no-docker     Skip Docker/Ollama setup (use cloud LLM only)
+#   --model phi     Use a smaller model (2GB instead of 4GB)
+#   --skip-watch    Skip watch service installation
+#   --uninstall     Remove all components
+```
+
+This script will:
+1. **Set up Ollama** with a local LLM (Mistral by default) in Docker
+2. **Install the Watch Service** for terminal monitoring
+3. **Configure Shell Hooks** for command logging
+4. **Verify everything works**
+
+#### Quick Start After Setup
+
+```bash
+# Start an interactive AI session
+cortex ask --do
+
+# Or with a specific task
+cortex ask --do "install nginx and configure it for reverse proxy"
+
+# Check watch service status
+cortex watch --status
+```
+
+#### Manual Setup (Alternative)
+
+If you prefer manual setup:
+
+```bash
+# Install the Cortex Watch service (runs automatically on login)
+cortex watch --install --service
+
+# Check status
+cortex watch --status
+
+# For Ollama (optional - for local LLM)
+docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+docker exec ollama ollama pull mistral
+```
+
+This enables Cortex to monitor your terminal activity during manual intervention mode, providing real-time AI feedback and error detection.
 
 ---
 
@@ -169,16 +193,6 @@ cortex history
 cortex rollback <installation-id>
 ```
 
-### Role Management
-
-```bash
-# Auto-detect your system role using AI analysis of local context and patterns
-cortex role detect
-
-# Manually set your system role to receive specific AI recommendations
-cortex role set <slug>
-```
-
 ### Command Reference
 
 | Command | Description |
@@ -186,25 +200,15 @@ cortex role set <slug>
 | `cortex install <query>` | Install packages matching natural language query |
 | `cortex install <query> --dry-run` | Preview installation plan (default) |
 | `cortex install <query> --execute` | Execute the installation |
-| `cortex docker permissions` | Fix file ownership for Docker bind mounts |
-| `cortex role detect` | Automatically identifies the system's purpose |
-| `cortex role set <slug>` | Manually declare a system role |
+| `cortex ask <question>` | Ask questions about your system |
+| `cortex ask --do` | Interactive AI command execution mode |
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
+| `cortex watch --install --service` | Install terminal monitoring service |
+| `cortex watch --status` | Check terminal monitoring status |
 | `cortex --version` | Show version information |
 | `cortex --help` | Display help message |
-
-#### Daemon Commands
-
-| Command | Description |
-|---------|-------------|
-| `cortex daemon install --execute` | Install and enable the cortexd daemon |
-| `cortex daemon uninstall --execute` | Stop and remove the daemon |
-| `cortex daemon ping` | Test daemon connectivity |
-| `cortex daemon version` | Show daemon version |
-| `cortex daemon config` | Show daemon configuration |
-| `cortex daemon reload-config` | Reload daemon configuration |
 
 ### Configuration
 
@@ -212,9 +216,11 @@ Cortex stores configuration in `~/.cortex/`:
 
 ```
 ~/.cortex/
-├── config.yaml      # User preferences
-├── history.db       # Installation history (SQLite)
-└── audit.log        # Detailed audit trail
+├── config.yaml           # User preferences
+├── history.db            # Installation history (SQLite)
+├── audit.log             # Detailed audit trail
+├── terminal_watch.log    # Terminal monitoring log
+└── watch_service.log     # Watch service logs
 ```
 
 ---
@@ -238,10 +244,10 @@ Cortex stores configuration in `~/.cortex/`:
 │                      LLM Router                                 │
 │              Claude / GPT-4 / Ollama                            │
 │                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │  Anthropic  │  │   OpenAI    │  │   Ollama    │              │
-│  │   Claude    │  │    GPT-4    │  │   Local     │              │
-│  └─────────────┘  └─────────────┘  └─────────────┘              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │  Anthropic  │  │   OpenAI    │  │   Ollama    │             │
+│  │   Claude    │  │    GPT-4    │  │   Local     │             │
+│  └─────────────┘  └─────────────┘  └─────────────┘             │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -269,44 +275,30 @@ Cortex stores configuration in `~/.cortex/`:
 
 ```
 cortex/
-├── cortex/                 # Main Python package
+├── cortex/                 # Main package
 │   ├── cli.py              # Command-line interface
+│   ├── ask.py              # AI Q&A and command execution
 │   ├── coordinator.py      # Installation orchestration
 │   ├── llm_router.py       # Multi-LLM routing
-│   ├── daemon_client.py    # IPC client for cortexd
 │   ├── packages.py         # Package manager wrapper
 │   ├── hardware_detection.py
 │   ├── installation_history.py
+│   ├── watch_service.py    # Terminal monitoring service
+│   ├── do_runner/          # AI command execution
+│   │   ├── handler.py      # Main execution handler
+│   │   ├── terminal.py     # Terminal monitoring
+│   │   ├── diagnosis.py    # Error diagnosis & auto-fix
+│   │   └── verification.py # Conflict detection
 │   └── utils/              # Utility modules
-├── daemon/                 # C++ background daemon (cortexd)
-│   ├── src/                # Daemon source code
-│   ├── include/            # Header files
-│   ├── tests/              # Unit & integration tests
-│   ├── scripts/            # Build and setup scripts
-│   └── README.md           # Daemon documentation
-├── tests/                  # Python test suite
+├── tests/                  # Test suite
 ├── docs/                   # Documentation
+│   └── ASK_DO_ARCHITECTURE.md  # ask --do deep dive
 ├── examples/               # Example scripts
 └── scripts/                # Utility scripts
+    ├── setup_ask_do.py     # Full ask --do setup
+    ├── setup_ask_do.sh     # Bash setup alternative
+    └── setup_ollama.py     # Ollama-only setup
 ```
-
-### Background Daemon (cortexd)
-
-Cortex includes an optional C++ background daemon for system-level operations:
-
-```bash
-# Install the daemon
-cortex daemon install --execute
-
-# Check daemon status
-cortex daemon ping
-cortex daemon version
-
-# Run daemon tests (no installation required)
-cortex daemon run-tests
-```
-
-See [daemon/README.md](daemon/README.md) for full documentation.
 
 ---
 
@@ -334,27 +326,16 @@ Found a vulnerability? Please report it responsibly:
 ## Troubleshooting
 
 <details>
-<summary><strong>"No API key found"</strong></summary>
-
-Cortex auto-detects API keys from multiple locations. If none are found:
+<summary><strong>"ANTHROPIC_API_KEY not set"</strong></summary>
 
 ```bash
-# Option 1: Set environment variables (used immediately, no save needed)
-export ANTHROPIC_API_KEY=sk-ant-your-key
-cortex install nginx --dry-run
+# Verify .env file exists
+cat .env
+# Should show: ANTHROPIC_API_KEY=sk-ant-...
 
-# Option 2: Save directly to Cortex config
-echo 'ANTHROPIC_API_KEY=sk-ant-your-key' > ~/.cortex/.env
-
-# Option 3: Use Ollama (free, local, no key needed)
-export CORTEX_PROVIDER=ollama
-python scripts/setup_ollama.py
-
-# Option 4: If you have Claude CLI installed, Cortex will find it automatically
-# Just run: cortex install nginx --dry-run
+# If missing, create it:
+echo 'ANTHROPIC_API_KEY=your-actual-key' > .env
 ```
-
-See [Zero Config API Keys](docs/ZERO_CONFIG_API_KEYS.md) for details.
 </details>
 
 <details>
@@ -414,9 +395,6 @@ pip install -e .
 - [x] Hardware detection (GPU/CPU/Memory)
 - [x] Firejail sandboxing
 - [x] Dry-run preview mode
-- [x] Docker bind-mount permission fixer
-- [x] Automatic Role Discovery (AI-driven system context sensing)
-- [x] Predictive Error Prevention (pre-install compatibility checks)
 
 ### In Progress
 - [ ] Conflict resolution UI
@@ -472,36 +450,10 @@ pip install -e ".[dev]"
 
 # Install pre-commit hooks
 pre-commit install
-```
 
-### Running Tests
-
-**Python Tests:**
-
-```bash
-# Run all Python tests
+# Run tests
 pytest tests/ -v
-
-# Run with coverage
-pytest tests/ -v --cov=cortex
 ```
-
-**Daemon Tests (C++):**
-
-```bash
-# Build daemon with tests
-cd daemon && ./scripts/build.sh Release --with-tests
-
-# Run all daemon tests (no daemon installation required)
-cortex daemon run-tests
-
-# Run specific test types
-cortex daemon run-tests --unit         # Unit tests only
-cortex daemon run-tests --integration  # Integration tests only
-cortex daemon run-tests -t config      # Specific test
-```
-
-> **Note:** Daemon tests run against a static library and don't require the daemon to be installed as a systemd service. They test the code directly.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
@@ -524,7 +476,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
-BUSL-1.1 (Business Source License 1.1) - Free for personal use on 1 system. See [LICENSE](LICENSE) for details.
+Apache 2.0 - See [LICENSE](LICENSE) for details.
 
 ---
 

@@ -1,174 +1,42 @@
 import argparse
-import json
 import logging
 import os
-import select
+import subprocess
 import sys
 import time
-import uuid
-from collections.abc import Callable
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import Any
 
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.table import Table
-
-from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
 from cortex.demo import run_demo
-from cortex.dependency_importer import DependencyImporter, PackageEcosystem, ParseResult
+from cortex.dependency_importer import (
+    DependencyImporter,
+    PackageEcosystem,
+    ParseResult,
+    format_package_list,
+)
 from cortex.env_manager import EnvironmentManager, get_env_manager
-from cortex.i18n import SUPPORTED_LANGUAGES, LanguageConfig, get_language, set_language, t
 from cortex.installation_history import InstallationHistory, InstallationStatus, InstallationType
 from cortex.llm.interpreter import CommandInterpreter
 from cortex.network_config import NetworkConfig
 from cortex.notification_manager import NotificationManager
-from cortex.predictive_prevention import FailurePrediction, PredictiveErrorManager, RiskLevel
-from cortex.role_manager import RoleManager
 from cortex.stack_manager import StackManager
-from cortex.stdin_handler import StdinHandler
-from cortex.uninstall_impact import (
-    ImpactResult,
-    ImpactSeverity,
-    ServiceStatus,
-    UninstallImpactAnalyzer,
-)
-from cortex.update_checker import UpdateChannel, should_notify_update
-from cortex.updater import Updater, UpdateStatus
 from cortex.validators import validate_api_key, validate_install_request
-from cortex.version_manager import get_version_string
-
-# CLI Help Constants
-HELP_SKIP_CONFIRM = "Skip confirmation prompt"
-
-if TYPE_CHECKING:
-    from cortex.daemon_client import DaemonClient, DaemonResponse
-    from cortex.shell_env_analyzer import ShellEnvironmentAnalyzer
 
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 class CortexCLI:
-    RISK_COLORS = {
-        RiskLevel.NONE: "green",
-        RiskLevel.LOW: "green",
-        RiskLevel.MEDIUM: "yellow",
-        RiskLevel.HIGH: "orange1",
-        RiskLevel.CRITICAL: "red",
-    }
-    # Installation messages
-    INSTALL_FAIL_MSG = "Installation failed"
-
     def __init__(self, verbose: bool = False):
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_idx = 0
         self.verbose = verbose
-        self.predict_manager = None
-
-    @property
-    def risk_labels(self) -> dict[RiskLevel, str]:
-        """
-        Localized mapping from RiskLevel enum values to human-readable strings.
-
-        Returns a dictionary mapping each tier (RiskLevel.NONE to CRITICAL)
-        to its corresponding localized label via the t() translation helper.
-        """
-        return {
-            RiskLevel.NONE: t("predictive.no_risk"),
-            RiskLevel.LOW: t("predictive.low_risk"),
-            RiskLevel.MEDIUM: t("predictive.medium_risk"),
-            RiskLevel.HIGH: t("predictive.high_risk"),
-            RiskLevel.CRITICAL: t("predictive.critical_risk"),
-        }
-
-    # Define a method to handle Docker-specific permission repairs
-    def docker_permissions(self, args: argparse.Namespace) -> int:
-        """Handle the diagnosis and repair of Docker file permissions.
-
-        This method coordinates the environment-aware scanning of the project
-        directory and applies ownership reclamation logic. It ensures that
-        administrative actions (sudo) are never performed without user
-        acknowledgment unless the non-interactive flag is present.
-
-        Args:
-            args: The parsed command-line arguments containing the execution
-                context and safety flags.
-
-        Returns:
-            int: 0 if successful or the operation was gracefully cancelled,
-                1 if a system or logic error occurred.
-        """
-        from cortex.permission_manager import PermissionManager
-
-        try:
-            manager = PermissionManager(os.getcwd())
-            cx_print("🔍 Scanning for Docker-related permission issues...", "info")
-
-            # Validate Docker Compose configurations for missing user mappings
-            # to help prevent future permission drift.
-            manager.check_compose_config()
-
-            # Retrieve execution context from argparse.
-            execute_flag = getattr(args, "execute", False)
-            yes_flag = getattr(args, "yes", False)
-
-            # SAFETY GUARD: If executing repairs, prompt for confirmation unless
-            # the --yes flag was provided. This follows the project safety
-            # standard: 'No silent sudo execution'.
-            if execute_flag and not yes_flag:
-                mismatches = manager.diagnose()
-                if mismatches:
-                    cx_print(
-                        f"⚠️ Found {len(mismatches)} paths requiring ownership reclamation.",
-                        "warning",
-                    )
-                    try:
-                        # Interactive confirmation prompt for administrative repair.
-                        console.print(
-                            "[bold cyan]Reclaim ownership using sudo? (y/n): [/bold cyan]", end=""
-                        )
-                        response = StdinHandler.get_input()
-                        if response.lower() not in ("y", "yes"):
-                            cx_print("Operation cancelled", "info")
-                            return 0
-                    except (EOFError, KeyboardInterrupt):
-                        # Graceful handling of terminal exit or manual interruption.
-                        console.print()
-                        cx_print("Operation cancelled", "info")
-                        return 0
-
-            # Delegate repair logic to PermissionManager. If execute is False,
-            # a dry-run report is generated. If True, repairs are batched to
-            # avoid system ARG_MAX shell limits.
-            if manager.fix_permissions(execute=execute_flag):
-                if execute_flag:
-                    cx_print("✨ Permissions fixed successfully!", "success")
-                return 0
-
-            return 1
-
-        except (PermissionError, FileNotFoundError, OSError) as e:
-            # Handle system-level access issues or missing project files.
-            cx_print(f"❌ Permission check failed: {e}", "error")
-            return 1
-        except NotImplementedError as e:
-            # Report environment incompatibility (e.g., native Windows).
-            cx_print(f"❌ {e}", "error")
-            return 1
-        except Exception as e:
-            # Safety net for unexpected runtime exceptions to prevent CLI crashes.
-            cx_print(f"❌ Unexpected error: {e}", "error")
-            return 1
 
     def _debug(self, message: str):
         """Print debug info only in verbose mode"""
@@ -176,50 +44,37 @@ class CortexCLI:
             console.print(f"[dim][DEBUG] {message}[/dim]")
 
     def _get_api_key(self) -> str | None:
-        # 1. Check explicit provider override first (fake/ollama need no key)
-        explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
-        if explicit_provider == "fake":
-            self._debug("Using Fake provider for testing")
-            return "fake-key"
-        if explicit_provider == "ollama":
+        # Check if using Ollama or Fake provider (no API key needed)
+        provider = self._get_provider()
+        if provider == "ollama":
             self._debug("Using Ollama (no API key required)")
-            return "ollama-local"
+            return "ollama-local"  # Placeholder for Ollama
+        if provider == "fake":
+            self._debug("Using Fake provider for testing")
+            return "fake-key"  # Placeholder for Fake provider
 
-        # 2. Try auto-detection + prompt to save (setup_api_key handles both)
-        success, key, detected_provider = setup_api_key()
-        if success:
-            self._debug(f"Using {detected_provider} API key")
-            # Store detected provider so _get_provider can use it
-            self._detected_provider = detected_provider
-            return key
-
-        # Still no key
-        self._print_error(t("api_key.not_found"))
-        cx_print(t("api_key.configure_prompt"), "info")
-        cx_print(t("api_key.ollama_hint"), "info")
-        return None
+        is_valid, detected_provider, error = validate_api_key()
+        if not is_valid:
+            self._print_error(error)
+            cx_print("Run [bold]cortex wizard[/bold] to configure your API key.", "info")
+            cx_print("Or use [bold]CORTEX_PROVIDER=ollama[/bold] for offline mode.", "info")
+            return None
+        api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        return api_key
 
     def _get_provider(self) -> str:
-        # 1. Check explicit provider override FIRST (highest priority)
+        # Check environment variable for explicit provider choice
         explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
         if explicit_provider in ["ollama", "openai", "claude", "fake"]:
-            self._debug(f"Using explicit CORTEX_PROVIDER={explicit_provider}")
             return explicit_provider
 
-        # 2. Use provider from auto-detection (set by _get_api_key)
-        detected = getattr(self, "_detected_provider", None)
-        if detected == "anthropic":
-            return "claude"
-        elif detected == "openai":
-            return "openai"
-
-        # 3. Check env vars (may have been set by auto-detect)
+        # Auto-detect based on available API keys
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "claude"
         elif os.environ.get("OPENAI_API_KEY"):
             return "openai"
 
-        # 4. Fallback to Ollama for offline mode
+        # Fallback to Ollama for offline mode
         return "ollama"
 
     def _print_status(self, emoji: str, message: str):
@@ -234,7 +89,7 @@ class CortexCLI:
         cx_print(message, status)
 
     def _print_error(self, message: str):
-        cx_print(f"{t('ui.error_prefix')}: {message}", "error")
+        cx_print(f"Error: {message}", "error")
 
     def _print_success(self, message: str):
         cx_print(message, "success")
@@ -319,169 +174,6 @@ class CortexCLI:
             return 1
 
     # -------------------------------
-
-    def _ask_ai_and_render(self, question: str) -> int:
-        """Invoke AI with question and render response as Markdown."""
-        api_key = self._get_api_key()
-        if not api_key:
-            self._print_error("No API key found. Please configure an API provider.")
-            return 1
-
-        provider = self._get_provider()
-        try:
-            handler = AskHandler(api_key=api_key, provider=provider)
-            answer = handler.ask(question)
-            console.print(Markdown(answer))
-            return 0
-        except ImportError as e:
-            self._print_error(str(e))
-            cx_print("Install required SDK or use CORTEX_PROVIDER=ollama", "info")
-            return 1
-        except (ValueError, RuntimeError) as e:
-            self._print_error(str(e))
-            return 1
-
-    def role(self, args: argparse.Namespace) -> int:
-        """
-        Handles system role detection and manual configuration via AI context sensing.
-
-        This method supports two subcommands:
-        - 'detect': Analyzes the system and suggests appropriate roles based on
-                    installed binaries, hardware, and activity patterns.
-        - 'set': Manually assigns a role slug and provides tailored package recommendations.
-
-        Args:
-            args: The parsed command-line arguments containing the role_action
-                 and optional role_slug.
-
-        Returns:
-            int: Exit code - 0 on success, 1 on error.
-        """
-        manager = RoleManager()
-        action = getattr(args, "role_action", None)
-
-        # Step 1: Ensure a subcommand is provided to maintain a valid return state.
-        if not action:
-            self._print_error("Please specify a subcommand (detect/set)")
-            return 1
-
-        if action == "detect":
-            # Retrieve environmental facts including active persona and installation history.
-            context = manager.get_system_context()
-
-            # Step 2: Extract the most recent patterns for AI analysis.
-            # Python handles list slicing gracefully even if the list has fewer than 10 items.
-            patterns = context.get("patterns", [])
-            limited_patterns = patterns[-10:]
-            patterns_str = (
-                "\n".join([f"  • {p}" for p in limited_patterns]) or "  • No patterns sensed"
-            )
-
-            signals_str = ", ".join(context.get("binaries", [])) or "none detected"
-            gpu_status = (
-                "GPU Acceleration available" if context.get("has_gpu") else "Standard CPU only"
-            )
-
-            # Generate a unique timestamp for cache-busting and session tracking.
-            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-
-            # Construct the architectural analysis prompt for the LLM.
-            question = (
-                f"### SYSTEM ARCHITECT ANALYSIS [TIME: {timestamp}] ###\n"
-                f"ENVIRONMENTAL CONTEXT:\n"
-                f"- CURRENTLY SET ROLE: {context.get('active_role')}\n"
-                f"- Detected Binaries: [{signals_str}]\n"
-                f"- Hardware Acceleration: {gpu_status}\n"
-                f"- Installation History: {'Present' if context.get('has_install_history') else 'None'}\n\n"
-                f"OPERATIONAL_HISTORY (Technical Intents & Installed Packages):\n{patterns_str}\n\n"
-                f"TASK: Acting as a Senior Systems Architect, analyze the existing role and signals. "
-                f"Suggest 3-5 professional roles that complement the system.\n\n"
-                f"--- STRICT RESPONSE FORMAT ---\n"
-                f"YOUR RESPONSE MUST START WITH THE NUMBER '1.' AND CONTAIN ONLY THE LIST. "
-                f"DO NOT PROVIDE INTRODUCTIONS. DO NOT PROVIDE REASONING. DO NOT PROVIDE A SUMMARY. "
-                f"FAILURE TO COMPLY WILL BREAK THE CLI PARSER.\n\n"
-                f"Detected roles:\n"
-                f"1."
-            )
-
-            cx_print("🧠 AI is sensing system context and activity patterns...", "thinking")
-            if self._ask_ai_and_render(question) != 0:
-                return 1
-            console.print()
-
-            # Record the detection event in the installation history database for audit purposes.
-            history = InstallationHistory()
-            history.record_installation(
-                InstallationType.CONFIG,
-                ["system-detection"],
-                ["cortex role detect"],
-                datetime.now(timezone.utc),
-            )
-
-            console.print(
-                "\n[dim italic]💡 To install any recommended packages, simply run:[/dim italic]"
-            )
-            console.print("[bold cyan]    cortex install <package_name>[/bold cyan]\n")
-            return 0
-
-        elif action == "set":
-            if not args.role_slug:
-                self._print_error("Role slug is required for 'set' command.")
-                return 1
-
-            role_slug = args.role_slug
-
-            # Step 3: Persist the role and handle both validation and persistence errors.
-            try:
-                manager.save_role(role_slug)
-                history = InstallationHistory()
-                history.record_installation(
-                    InstallationType.CONFIG,
-                    [role_slug],
-                    [f"cortex role set {role_slug}"],
-                    datetime.now(timezone.utc),
-                )
-            except ValueError as e:
-                self._print_error(f"Invalid role slug: {e}")
-                return 1
-            except RuntimeError as e:
-                self._print_error(f"Failed to persist role: {e}")
-                return 1
-
-            cx_print(f"✓ Role set to: [bold cyan]{role_slug}[/bold cyan]", "success")
-
-            context = manager.get_system_context()
-            # Generate a unique request ID for cache-busting and tracking purposes.
-            req_id = f"{datetime.now().strftime('%H:%M:%S.%f')}-{uuid.uuid4().hex[:4]}"
-
-            cx_print(f"🔍 Fetching tailored AI recommendations for {role_slug}...", "info")
-
-            # Construct the recommendation prompt for the LLM.
-            rec_question = (
-                f"### ARCHITECTURAL ADVISORY [ID: {req_id}] ###\n"
-                f"NEW_TARGET_PERSONA: {role_slug}\n"
-                f"OS: {sys.platform} | GPU: {'Enabled' if context.get('has_gpu') else 'None'}\n\n"
-                f"TASK: Generate 3-5 unique packages for '{role_slug}' ONLY.\n"
-                f"--- PREFERRED RESPONSE FORMAT ---\n"
-                f"Please start with '1.' and provide only the list of roles. "
-                f"Omit introductions, reasoning, and summaries.\n\n"
-                f"💡 Recommended packages for {role_slug}:\n"
-                f"  - "
-            )
-
-            if self._ask_ai_and_render(rec_question) != 0:
-                return 1
-
-            console.print(
-                "\n[dim italic]💡 Ready to upgrade? Install any of these using:[/dim italic]"
-            )
-            console.print("[bold cyan]    cortex install <package_name>[/bold cyan]\n")
-            return 0
-
-        else:
-            self._print_error("Unknown role command")
-        return 1
-
     def demo(self):
         """
         Run the one-command investor demo
@@ -521,21 +213,21 @@ class CortexCLI:
     def _handle_stack_list(self, manager: StackManager) -> int:
         """List all available stacks."""
         stacks = manager.list_stacks()
-        cx_print(f"\n📦 {t('stack.available')}:\n", "info")
+        cx_print("\n📦 Available Stacks:\n", "info")
         for stack in stacks:
             pkg_count = len(stack.get("packages", []))
             console.print(f"  [green]{stack.get('id', 'unknown')}[/green]")
-            console.print(f"    {stack.get('name', t('stack.unnamed'))}")
-            console.print(f"    {stack.get('description', t('stack.no_description'))}")
+            console.print(f"    {stack.get('name', 'Unnamed Stack')}")
+            console.print(f"    {stack.get('description', 'No description')}")
             console.print(f"    [dim]({pkg_count} packages)[/dim]\n")
-        cx_print(t("stack.use_command"), "info")
+        cx_print("Use: cortex stack <name> to install a stack", "info")
         return 0
 
     def _handle_stack_describe(self, manager: StackManager, stack_id: str) -> int:
         """Describe a specific stack."""
         stack = manager.find_stack(stack_id)
         if not stack:
-            self._print_error(t("stack.not_found", name=stack_id))
+            self._print_error(f"Stack '{stack_id}' not found. Use --list to see available stacks.")
             return 1
         description = manager.describe_stack(stack_id)
         console.print(description)
@@ -548,18 +240,20 @@ class CortexCLI:
 
         if suggested_name != original_name:
             cx_print(
-                f"💡 {t('stack.gpu_fallback', original=original_name, suggested=suggested_name)}",
+                f"💡 No GPU detected, using '{suggested_name}' instead of '{original_name}'",
                 "info",
             )
 
         stack = manager.find_stack(suggested_name)
         if not stack:
-            self._print_error(t("stack.not_found", name=suggested_name))
+            self._print_error(
+                f"Stack '{suggested_name}' not found. Use --list to see available stacks."
+            )
             return 1
 
         packages = stack.get("packages", [])
         if not packages:
-            self._print_error(t("stack.no_packages", name=suggested_name))
+            self._print_error(f"Stack '{suggested_name}' has no packages configured.")
             return 1
 
         if args.dry_run:
@@ -569,28 +263,28 @@ class CortexCLI:
 
     def _handle_stack_dry_run(self, stack: dict[str, Any], packages: list[str]) -> int:
         """Preview packages that would be installed without executing."""
-        cx_print(f"\n📋 {t('stack.installing', name=stack['name'])}", "info")
-        console.print(f"\n{t('stack.dry_run_preview')}:")
+        cx_print(f"\n📋 Stack: {stack['name']}", "info")
+        console.print("\nPackages that would be installed:")
         for pkg in packages:
             console.print(f"  • {pkg}")
-        console.print(f"\n{t('stack.packages_total', count=len(packages))}")
-        cx_print(f"\n{t('stack.dry_run_note')}", "warning")
+        console.print(f"\nTotal: {len(packages)} packages")
+        cx_print("\nDry run only - no commands executed", "warning")
         return 0
 
     def _handle_stack_real_install(self, stack: dict[str, Any], packages: list[str]) -> int:
         """Install all packages in the stack."""
-        cx_print(f"\n🚀 {t('stack.installing', name=stack['name'])}\n", "success")
+        cx_print(f"\n🚀 Installing stack: {stack['name']}\n", "success")
 
         # Batch into a single LLM request
         packages_str = " ".join(packages)
         result = self.install(software=packages_str, execute=True, dry_run=False)
 
         if result != 0:
-            self._print_error(t("stack.failed", name=stack["name"]))
+            self._print_error(f"Failed to install stack '{stack['name']}'")
             return 1
 
-        self._print_success(f"\n✅ {t('stack.installed', name=stack['name'])}")
-        console.print(t("stack.packages_installed", count=len(packages)))
+        self._print_success(f"\n✅ Stack '{stack['name']}' installed successfully!")
+        console.print(f"Installed {len(packages)} packages")
         return 0
 
     # --- Sandbox Commands (Docker-based package testing) ---
@@ -601,22 +295,23 @@ class CortexCLI:
             DockerSandbox,
             SandboxAlreadyExistsError,
             SandboxNotFoundError,
+            SandboxTestStatus,
         )
 
         action = getattr(args, "sandbox_action", None)
 
         if not action:
-            cx_print(f"\n🐳 {t('sandbox.header')}\n", "info")
-            console.print(t("sandbox.usage"))
-            console.print(f"\n{t('sandbox.commands_header')}:")
-            console.print(f"  create <name>              {t('sandbox.cmd_create')}")
-            console.print(f"  install <name> <package>   {t('sandbox.cmd_install')}")
-            console.print(f"  test <name> [package]      {t('sandbox.cmd_test')}")
-            console.print(f"  promote <name> <package>   {t('sandbox.cmd_promote')}")
-            console.print(f"  cleanup <name>             {t('sandbox.cmd_cleanup')}")
-            console.print(f"  list                       {t('sandbox.cmd_list')}")
-            console.print(f"  exec <name> <cmd...>       {t('sandbox.cmd_exec')}")
-            console.print(f"\n{t('sandbox.example_workflow')}:")
+            cx_print("\n🐳 Docker Sandbox - Test packages safely before installing\n", "info")
+            console.print("Usage: cortex sandbox <command> [options]")
+            console.print("\nCommands:")
+            console.print("  create <name>              Create a sandbox environment")
+            console.print("  install <name> <package>   Install package in sandbox")
+            console.print("  test <name> [package]      Run tests in sandbox")
+            console.print("  promote <name> <package>   Install tested package on main system")
+            console.print("  cleanup <name>             Remove sandbox environment")
+            console.print("  list                       List all sandboxes")
+            console.print("  exec <name> <cmd...>       Execute command in sandbox")
+            console.print("\nExample workflow:")
             console.print("  cortex sandbox create test-env")
             console.print("  cortex sandbox install test-env nginx")
             console.print("  cortex sandbox test test-env")
@@ -739,8 +434,8 @@ class CortexCLI:
         if not skip_confirm:
             console.print(f"\nPromote '{package}' to main system? [Y/n]: ", end="")
             try:
-                response = StdinHandler.get_input()
-                if response and response.lower() not in ("y", "yes"):
+                response = input().strip().lower()
+                if response and response not in ("y", "yes"):
                     cx_print("Promotion cancelled", "warning")
                     return 0
             except (EOFError, KeyboardInterrupt):
@@ -799,7 +494,7 @@ class CortexCLI:
     def _sandbox_exec(self, sandbox, args: argparse.Namespace) -> int:
         """Execute command in sandbox."""
         name = args.name
-        command = args.cmd
+        command = args.command
 
         result = sandbox.exec_command(name, command)
 
@@ -810,50 +505,14 @@ class CortexCLI:
 
         return result.exit_code
 
-    def _display_prediction_warning(self, prediction: FailurePrediction) -> None:
-        """Display formatted prediction warning."""
-        color = self.RISK_COLORS.get(prediction.risk_level, "white")
-        label = self.risk_labels.get(prediction.risk_level, "Unknown")
-
-        console.print()
-        if prediction.risk_level >= RiskLevel.HIGH:
-            console.print(f"⚠️  [bold red]{t('predictive.risks_detected')}:[/bold red]")
-        else:
-            console.print(f"ℹ️  [bold {color}]{t('predictive.risks_detected')}:[/bold {color}]")
-
-        if prediction.reasons:
-            console.print(f"\n[bold]{label}:[/bold]")
-            for reason in prediction.reasons:
-                console.print(f"   - {reason}")
-
-        if prediction.recommendations:
-            console.print(f"\n[bold]{t('predictive.recommendation')}:[/bold]")
-            for i, rec in enumerate(prediction.recommendations, 1):
-                console.print(f"   {i}. {rec}")
-
-        if prediction.predicted_errors:
-            console.print(f"\n[bold]{t('predictive.predicted_errors')}:[/bold]")
-            for err in prediction.predicted_errors:
-                msg = f"{err[:100]}..." if len(err) > 100 else err
-                console.print(f"   ! [dim]{msg}[/dim]")
-
-    def _confirm_risky_operation(self, prediction: FailurePrediction) -> bool:
-        """Prompt user for confirmation of a risky operation."""
-        if prediction.risk_level == RiskLevel.HIGH or prediction.risk_level == RiskLevel.CRITICAL:
-            cx_print(f"\n{t('predictive.high_risk_warning')}", "warning")
-
-        console.print(f"\n{t('predictive.continue_anyway')} [y/N]: ", end="", markup=False)
-        try:
-            response = StdinHandler.get_input().lower()
-            return response in ("y", "yes")
-        except (EOFError, KeyboardInterrupt):
-            console.print()
-            return False
-
     # --- End Sandbox Commands ---
 
-    def ask(self, question: str) -> int:
-        """Answer a natural language question about the system."""
+    def ask(self, question: str | None, debug: bool = False, do_mode: bool = False) -> int:
+        """Answer a natural language question about the system.
+        
+        In --do mode, Cortex can execute write and modify commands with user confirmation.
+        If no question is provided in --do mode, starts an interactive session.
+        """
         api_key = self._get_api_key()
         if not api_key:
             return 1
@@ -861,14 +520,37 @@ class CortexCLI:
         provider = self._get_provider()
         self._debug(f"Using provider: {provider}")
 
+        # Setup cortex user if in do mode
+        if do_mode:
+            try:
+                from cortex.do_runner import setup_cortex_user
+                cx_print("🔧 Do mode enabled - Cortex can execute commands to solve problems", "info")
+                # Don't fail if user creation fails - we have fallbacks
+                setup_cortex_user()
+            except Exception as e:
+                self._debug(f"Cortex user setup skipped: {e}")
+
         try:
             handler = AskHandler(
                 api_key=api_key,
                 provider=provider,
+                debug=debug,
+                do_mode=do_mode,
             )
+            
+            # If no question and in do mode, start interactive session
+            if question is None and do_mode:
+                return self._run_interactive_do_session(handler)
+            elif question is None:
+                self._print_error("Please provide a question or use --do for interactive mode")
+                return 1
+            
             answer = handler.ask(question)
-            # Render as markdown for proper formatting in terminal
-            console.print(Markdown(answer))
+            # Don't print raw JSON or processing messages
+            if answer and not (answer.strip().startswith('{') or 
+                               "I'm processing your request" in answer or
+                               "I have a plan to execute" in answer):
+                console.print(answer)
             return 0
         except ImportError as e:
             # Provide a helpful message if provider SDK is missing
@@ -883,64 +565,330 @@ class CortexCLI:
         except RuntimeError as e:
             self._print_error(str(e))
             return 1
-
-    def _ask_with_session_key(self, question: str, api_key: str, provider: str) -> int:
-        """Answer a question using provided session API key without re-prompting.
-
-        This wrapper is used by continuous voice mode to avoid re-calling _get_api_key().
-        """
-        self._debug(f"Using provider: {provider}")
-
+    
+    def _run_interactive_do_session(self, handler: AskHandler) -> int:
+        """Run an interactive --do session where user can type queries."""
+        import signal
+        from rich.panel import Panel
+        from rich.prompt import Prompt
+        
+        # Create a session
+        from cortex.do_runner import DoRunDatabase
+        db = DoRunDatabase()
+        session_id = db.create_session()
+        
+        # Pass session_id to handler
+        if handler._do_handler:
+            handler._do_handler.current_session_id = session_id
+        
+        # Track if we're currently processing a request
+        processing_request = False
+        request_interrupted = False
+        
+        class SessionInterrupt(Exception):
+            """Exception raised to interrupt the current request and return to prompt."""
+            pass
+        
+        class SessionExit(Exception):
+            """Exception raised to exit the session immediately (Ctrl+C)."""
+            pass
+        
+        def handle_ctrl_z(signum, frame):
+            """Handle Ctrl+Z - stop current operation, return to prompt."""
+            nonlocal request_interrupted
+            
+            # Set interrupt flag on the handler - this will be checked in the loop
+            handler.interrupt()
+            
+            # If DoHandler has an active process, stop it
+            if handler._do_handler and handler._do_handler._current_process:
+                try:
+                    handler._do_handler._current_process.terminate()
+                    handler._do_handler._current_process.wait(timeout=1)
+                except:
+                    try:
+                        handler._do_handler._current_process.kill()
+                    except:
+                        pass
+                handler._do_handler._current_process = None
+            
+            # If we're processing a request, interrupt it immediately
+            if processing_request:
+                request_interrupted = True
+                console.print()
+                console.print(f"[yellow]⚠ Ctrl+Z - Stopping current operation...[/yellow]")
+                # Raise exception to break out and return to prompt
+                raise SessionInterrupt("Interrupted by Ctrl+Z")
+            else:
+                # Not processing anything, just inform the user
+                console.print()
+                console.print(f"[dim]Ctrl+Z - Type 'exit' to end the session[/dim]")
+        
+        def handle_ctrl_c(signum, frame):
+            """Handle Ctrl+C - exit the session immediately."""
+            # Stop any active process first
+            if handler._do_handler and handler._do_handler._current_process:
+                try:
+                    handler._do_handler._current_process.terminate()
+                    handler._do_handler._current_process.wait(timeout=1)
+                except:
+                    try:
+                        handler._do_handler._current_process.kill()
+                    except:
+                        pass
+                handler._do_handler._current_process = None
+            
+            console.print()
+            console.print("[cyan]👋 Session ended (Ctrl+C).[/cyan]")
+            raise SessionExit("Exited by Ctrl+C")
+        
+        # Set up signal handlers for the entire session
+        # Ctrl+Z (SIGTSTP) -> stop current operation, return to prompt
+        # Ctrl+C (SIGINT) -> exit session immediately
+        original_sigtstp = signal.signal(signal.SIGTSTP, handle_ctrl_z)
+        original_sigint = signal.signal(signal.SIGINT, handle_ctrl_c)
+        
         try:
-            handler = AskHandler(
-                api_key=api_key,
-                provider=provider,
-            )
-            answer = handler.ask(question)
-            console.print(answer)
-            return 0
-        except ImportError as e:
-            self._print_error(str(e))
-            cx_print(
-                "Install the required SDK or set CORTEX_PROVIDER=ollama for local mode.", "info"
-            )
-            return 1
-        except ValueError as e:
-            self._print_error(str(e))
-            return 1
-        except RuntimeError as e:
-            self._print_error(str(e))
-            return 1
+            console.print()
+            console.print(Panel(
+                "[bold cyan]🚀 Cortex Interactive Session[/bold cyan]\n\n"
+                f"[dim]Session ID: {session_id[:30]}...[/dim]\n\n"
+                "Type what you want to do and Cortex will help you.\n"
+                "Commands will be shown for approval before execution.\n\n"
+                "[dim]Examples:[/dim]\n"
+                "  • install docker and run nginx\n"
+                "  • setup a postgresql database\n"
+                "  • configure nginx to proxy port 3000\n"
+                "  • check system resources\n\n"
+                "[dim]Type 'exit' or 'quit' to end the session.[/dim]\n"
+                "[dim]Press Ctrl+Z to stop current operation | Ctrl+C to exit immediately[/dim]",
+                title="[bold green]Welcome[/bold green]",
+                border_style="cyan",
+            ))
+            console.print()
+            
+            session_history = []  # Track what was done in this session
+            run_count = 0
+            
+            while True:
+                try:
+                    # Show compact session status (not the full history panel)
+                    if session_history:
+                        console.print(f"[dim]Session: {len(session_history)} task(s) | {run_count} run(s) | Type 'history' to see details[/dim]")
+                    
+                    # Get user input
+                    query = Prompt.ask("[bold cyan]What would you like to do?[/bold cyan]")
+                    
+                    if not query.strip():
+                        continue
+                    
+                    # Check for exit
+                    if query.lower().strip() in ["exit", "quit", "bye", "q"]:
+                        db.end_session(session_id)
+                        console.print()
+                        console.print(f"[cyan]👋 Session ended ({run_count} runs). Run 'cortex do history' to see past runs.[/cyan]")
+                        break
+                    
+                    # Check for help
+                    if query.lower().strip() in ["help", "?"]:
+                        console.print()
+                        console.print("[bold]Available commands:[/bold]")
+                        console.print("  [green]exit[/green], [green]quit[/green] - End the session")
+                        console.print("  [green]history[/green] - Show session history")
+                        console.print("  [green]clear[/green] - Clear session history")
+                        console.print("  Or type any request in natural language!")
+                        console.print()
+                        continue
+                    
+                    # Check for history
+                    if query.lower().strip() == "history":
+                        if session_history:
+                            from rich.table import Table
+                            from rich.panel import Panel
+                            
+                            console.print()
+                            table = Table(
+                                show_header=True, 
+                                header_style="bold cyan",
+                                title=f"[bold]Session History[/bold]",
+                                title_style="bold",
+                            )
+                            table.add_column("#", style="dim", width=3)
+                            table.add_column("Query", style="white", max_width=45)
+                            table.add_column("Status", justify="center", width=8)
+                            table.add_column("Commands", justify="center", width=10)
+                            table.add_column("Run ID", style="dim", max_width=20)
+                            
+                            for i, item in enumerate(session_history, 1):
+                                status = "[green]✓ Success[/green]" if item.get("success") else "[red]✗ Failed[/red]"
+                                query_short = item['query'][:42] + "..." if len(item['query']) > 42 else item['query']
+                                cmd_count = str(item.get('commands_count', 0)) if item.get('success') else "-"
+                                run_id = item.get('run_id', '-')[:18] + "..." if item.get('run_id') and len(item.get('run_id', '')) > 18 else item.get('run_id', '-')
+                                table.add_row(str(i), query_short, status, cmd_count, run_id)
+                            
+                            console.print(table)
+                            console.print()
+                            console.print(f"[dim]Total: {len(session_history)} tasks | {run_count} runs | Session: {session_id[:20]}...[/dim]")
+                            console.print()
+                        else:
+                            console.print("[dim]No tasks completed yet.[/dim]")
+                        continue
+                    
+                    # Check for clear
+                    if query.lower().strip() == "clear":
+                        session_history.clear()
+                        console.print("[dim]Session history cleared.[/dim]")
+                        continue
+                    
+                    # Update session with query
+                    db.update_session(session_id, query=query)
+                    
+                    # Process the query
+                    console.print()
+                    processing_request = True
+                    request_interrupted = False
+                    handler.reset_interrupt()  # Reset interrupt flag before new request
+                    
+                    try:
+                        answer = handler.ask(query)
+                        
+                        # Check if request was interrupted
+                        if request_interrupted:
+                            console.print("[yellow]⚠ Request was interrupted[/yellow]")
+                            session_history.append({
+                                "query": query,
+                                "success": False,
+                                "error": "Interrupted by user",
+                            })
+                            continue
+                        
+                        # Get the run_id and command count if one was created
+                        run_id = None
+                        commands_count = 0
+                        if handler._do_handler and handler._do_handler.current_run:
+                            run_id = handler._do_handler.current_run.run_id
+                            # Count commands from the run
+                            if handler._do_handler.current_run.commands:
+                                commands_count = len(handler._do_handler.current_run.commands)
+                            run_count += 1
+                            db.update_session(session_id, increment_runs=True)
+                        
+                        # Track in session history
+                        session_history.append({
+                            "query": query,
+                            "success": True,
+                            "answer": answer[:100] if answer else "",
+                            "run_id": run_id,
+                            "commands_count": commands_count,
+                        })
+                        
+                        # Print response if it's informational (filter out JSON)
+                        if answer and not answer.startswith("USER_DECLINED"):
+                            # Don't print raw JSON or processing messages
+                            if not (answer.strip().startswith('{') or 
+                                    "I'm processing your request" in answer or
+                                    "I have a plan to execute" in answer):
+                                console.print(answer)
+                        
+                    except SessionInterrupt:
+                        # Ctrl+Z/Ctrl+C pressed - return to prompt immediately
+                        console.print()
+                        session_history.append({
+                            "query": query,
+                            "success": False,
+                            "error": "Interrupted by user",
+                        })
+                        continue  # Go back to "What would you like to do?" prompt
+                    except Exception as e:
+                        if request_interrupted:
+                            console.print("[yellow]⚠ Request was interrupted[/yellow]")
+                        else:
+                            # Show user-friendly error without internal details
+                            error_msg = str(e)
+                            if isinstance(e, AttributeError):
+                                console.print("[yellow]⚠ Something went wrong. Please try again.[/yellow]")
+                                # Log the actual error for debugging
+                                import logging
+                                logging.debug(f"Internal error: {e}")
+                            else:
+                                console.print(f"[red]⚠ {error_msg}[/red]")
+                        session_history.append({
+                            "query": query,
+                            "success": False,
+                            "error": "Interrupted" if request_interrupted else str(e),
+                        })
+                    finally:
+                        processing_request = False
+                        request_interrupted = False
+                    
+                    console.print()
+                    
+                except SessionInterrupt:
+                    # Ctrl+Z - just return to prompt
+                    console.print()
+                    continue
+                except SessionExit:
+                    # Ctrl+C - exit session immediately
+                    db.end_session(session_id)
+                    break
+                except (KeyboardInterrupt, EOFError):
+                    # Fallback for any other interrupts
+                    db.end_session(session_id)
+                    console.print()
+                    console.print("[cyan]👋 Session ended.[/cyan]")
+                    break
+        
+        finally:
+            # Always restore signal handlers when session ends
+            signal.signal(signal.SIGTSTP, original_sigtstp)
+            signal.signal(signal.SIGINT, original_sigint)
+        
+        return 0
 
-    def _install_with_session_key(
+    def install(
         self,
         software: str,
-        api_key: str,
-        provider: str,
         execute: bool = False,
         dry_run: bool = False,
-    ) -> int:
-        """Install software using provided session API key without re-prompting.
-
-        This wrapper is used by continuous voice mode to avoid re-calling _get_api_key().
-        """
-        history = InstallationHistory()
-        install_id = None
-        start_time = datetime.now()
-
+        parallel: bool = False,
+    ):
         # Validate input first
         is_valid, error = validate_install_request(software)
         if not is_valid:
             self._print_error(error)
             return 1
 
-        software = self._normalize_software_name(software)
+        # Special-case the ml-cpu stack:
+        # The LLM sometimes generates outdated torch==1.8.1+cpu installs
+        # which fail on modern Python. For the "pytorch-cpu jupyter numpy pandas"
+        # combo, force a supported CPU-only PyTorch recipe instead.
+        normalized = " ".join(software.split()).lower()
+
+        if normalized == "pytorch-cpu jupyter numpy pandas":
+            software = (
+                "pip3 install torch torchvision torchaudio "
+                "--index-url https://download.pytorch.org/whl/cpu && "
+                "pip3 install jupyter numpy pandas"
+            )
+
+        api_key = self._get_api_key()
+        if not api_key:
+            return 1
+
+        provider = self._get_provider()
         self._debug(f"Using provider: {provider}")
-        self._debug("Using session API key: <REDACTED>")
+        self._debug(f"API key: {api_key[:10]}...{api_key[-4:]}")
+
+        # Initialize installation history
+        history = InstallationHistory()
+        install_id = None
+        start_time = datetime.now()
 
         try:
             self._print_status("🧠", "Understanding request...")
+
             interpreter = CommandInterpreter(api_key=api_key, provider=provider)
+
             self._print_status("📦", "Planning installation...")
 
             for _ in range(10):
@@ -950,580 +898,10 @@ class CortexCLI:
             commands = interpreter.parse(f"install {software}")
 
             if not commands:
-                self._print_error(t("install.no_commands"))
+                self._print_error(
+                    "No commands generated. Please try again with a different request."
+                )
                 return 1
-
-            packages = history._extract_packages_from_commands(commands)
-
-            if execute or dry_run:
-                install_id = history.record_installation(
-                    InstallationType.INSTALL, packages, commands, start_time
-                )
-
-            self._print_status("⚙️", f"Installing {software}...")
-            print("\nGenerated commands:")
-            for i, cmd in enumerate(commands, 1):
-                print(f"  {i}. {cmd}")
-
-            if dry_run:
-                print(f"\n({t('install.dry_run_message')})")
-                if install_id:
-                    history.update_installation(install_id, InstallationStatus.SUCCESS)
-                return 0
-
-            if execute:
-                print(f"\n{t('install.executing')}")
-                coordinator = InstallationCoordinator(commands=commands)
-                result = coordinator.execute()
-
-                if result.success:
-                    if install_id:
-                        history.update_installation(install_id, InstallationStatus.SUCCESS)
-                    return 0
-                else:
-                    error_msg = result.message or "Installation failed"
-                    if install_id:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    self._print_error(error_msg)
-                    return 1
-            else:
-                # Neither dry_run nor execute - just show commands
-                return 0
-
-        except Exception as e:
-            error_msg = str(e)
-            if install_id:
-                history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
-            self._print_error(error_msg)
-            return 1
-
-    def voice(self, continuous: bool = False, model: str | None = None) -> int:
-        """Handle voice input mode.
-
-        Args:
-            continuous: If True, stay in voice mode until Ctrl+C.
-                       If False, record single input and exit.
-            model: Whisper model name (e.g., 'base.en', 'small.en').
-                  If None, uses CORTEX_WHISPER_MODEL env var or 'base.en'.
-        """
-        import queue
-        import threading
-
-        try:
-            from cortex.voice import (
-                MicrophoneNotFoundError,
-                ModelNotFoundError,
-                VoiceInputError,
-                VoiceInputHandler,
-            )
-        except ImportError:
-            self._print_error("Voice dependencies not installed.")
-            cx_print("Install with: pip install cortex-linux[voice]", "info")
-            return 1
-
-        api_key = self._get_api_key()
-        if not api_key:
-            return 1
-
-        # Capture provider once for session
-        provider = self._get_provider()
-        self._debug(f"Session using provider: {provider}")
-
-        # Display model information if specified
-        if model:
-            model_info = {
-                "tiny.en": "(39 MB, fastest, good for clear speech)",
-                "base.en": "(140 MB, balanced speed/accuracy)",
-                "small.en": "(466 MB, better accuracy)",
-                "medium.en": "(1.5 GB, high accuracy)",
-                "tiny": "(39 MB, multilingual)",
-                "base": "(290 MB, multilingual)",
-                "small": "(968 MB, multilingual)",
-                "medium": "(3 GB, multilingual)",
-                "large": "(6 GB, best accuracy, multilingual)",
-            }
-            cx_print(f"Using Whisper model: {model} {model_info.get(model, '')}", "info")
-
-        # Queue for thread-safe communication between worker and main thread
-        input_queue = queue.Queue()
-        response_queue = queue.Queue()
-
-        def process_voice_command(text: str) -> None:
-            """Process transcribed voice command."""
-            if not text:
-                return
-
-            # Determine if this is an install command or a question
-            text_lower = text.lower().strip()
-            is_install = any(
-                text_lower.startswith(word) for word in ["install", "setup", "add", "get", "put"]
-            )
-
-            if is_install:
-                # Remove the command verb for install
-                software = text
-                for verb in ["install", "setup", "add", "get", "put"]:
-                    if text_lower.startswith(verb):
-                        software = text[len(verb) :].strip()
-                        break
-
-                # Validate software name
-                if not software or len(software) > 200:
-                    cx_print("Invalid software name", "error")
-                    return
-
-                # Check for dangerous characters that shouldn't be in package names
-                dangerous_chars = [";", "&", "|", "`", "$", "(", ")"]
-                if any(char in software for char in dangerous_chars):
-                    cx_print("Invalid characters detected in software name", "error")
-                    return
-
-                cx_print(f"Installing: {software}", "info")
-
-                # Handle prompt based on mode
-                def _drain_queues() -> None:
-                    """Clear any stale prompt/response messages from previous interactions."""
-
-                    try:
-                        while not response_queue.empty():
-                            response_queue.get_nowait()
-                    except Exception:
-                        pass
-
-                    try:
-                        while not input_queue.empty():
-                            input_queue.get_nowait()
-                    except Exception:
-                        pass
-
-                def _flush_stdin() -> None:
-                    """Flush any pending input from stdin."""
-                    try:
-                        # Use select to check for pending input without blocking
-                        while select.select([sys.stdin], [], [], 0.0)[0]:
-                            sys.stdin.read(1)
-                    except (OSError, ValueError, TypeError):
-                        # OSError: fd not valid, ValueError: fd negative, TypeError: not selectable
-                        pass
-
-                def _resolve_choice() -> str:
-                    """Prompt user until a valid choice is provided."""
-
-                    def _prompt_inline() -> str:
-                        console.print()
-                        console.print("[bold cyan]Choose an action:[/bold cyan]")
-                        console.print("  [1] Dry run (preview commands)")
-                        console.print("  [2] Execute (run commands)")
-                        console.print("  [3] Cancel")
-                        console.print("  [dim](Ctrl+C to cancel)[/dim]")
-                        console.print()
-
-                        try:
-                            _flush_stdin()  # Clear any buffered input
-                            choice = input("Enter choice [1/2/3]: ").strip()
-                            # Blank input defaults to dry-run (1)
-                            return choice or "1"
-                        except (KeyboardInterrupt, EOFError):
-                            return "3"
-
-                    if input_handler_thread is None:
-                        # Single-shot mode: inline prompt handling (no input handler thread running)
-                        _flush_stdin()  # Clear any buffered input before prompting
-                        choice_local = _prompt_inline()
-                        while choice_local not in {"1", "2", "3"}:
-                            cx_print("Invalid choice. Please enter 1, 2, or 3.", "warning")
-                            choice_local = _prompt_inline()
-                        return choice_local
-
-                    # Continuous mode: use queue-based communication with input handler thread
-                    _drain_queues()
-                    while True:
-                        input_queue.put({"type": "prompt", "software": software})
-
-                        try:
-                            response = response_queue.get(timeout=60)
-                            choice_local = response.get("choice")
-                        except queue.Empty:
-                            cx_print("\nInput timeout - cancelled.", "warning")
-                            return "3"
-
-                        if choice_local in {"1", "2", "3"}:
-                            return choice_local
-
-                        # Invalid or malformed response — re-prompt
-                        cx_print("Invalid choice. Please enter 1, 2, or 3.", "warning")
-
-                def _prompt_execute_after_dry_run() -> str:
-                    """Prompt user to execute or cancel after dry-run preview."""
-                    console.print()
-                    console.print("[bold cyan]Dry-run complete. What next?[/bold cyan]")
-                    console.print("  [1] Execute (run commands)")
-                    console.print("  [2] Cancel")
-                    console.print("  [dim](Ctrl+C to cancel)[/dim]")
-                    console.print()
-
-                    try:
-                        _flush_stdin()  # Clear any buffered input
-                        choice_input = input("Enter choice [1/2]: ").strip()
-                        return choice_input or "2"  # Default to cancel
-                    except (KeyboardInterrupt, EOFError):
-                        return "2"
-
-                choice = _resolve_choice()
-
-                # Process choice (unified for both modes)
-                if choice == "1":
-                    self._install_with_session_key(
-                        software, api_key, provider, execute=False, dry_run=True
-                    )
-                    # After dry-run, ask if user wants to execute
-                    follow_up = _prompt_execute_after_dry_run()
-                    while follow_up not in {"1", "2"}:
-                        cx_print("Invalid choice. Please enter 1 or 2.", "warning")
-                        follow_up = _prompt_execute_after_dry_run()
-                    if follow_up == "1":
-                        cx_print("Executing installation...", "info")
-                        self._install_with_session_key(
-                            software, api_key, provider, execute=True, dry_run=False
-                        )
-                    else:
-                        cx_print("Cancelled.", "info")
-                elif choice == "2":
-                    cx_print("Executing installation...", "info")
-                    self._install_with_session_key(
-                        software, api_key, provider, execute=True, dry_run=False
-                    )
-                else:
-                    cx_print("Cancelled.", "info")
-            else:
-                # Treat as a question
-                cx_print(f"Question: {text}", "info")
-                self._ask_with_session_key(text, api_key, provider)
-
-        handler = None
-        input_handler_thread = None
-        stop_input_handler = threading.Event()
-
-        def input_handler_loop():
-            """Main thread loop to handle user input requests from worker thread."""
-            while not stop_input_handler.is_set():
-                try:
-                    request = input_queue.get(timeout=0.5)
-                    if request.get("type") == "prompt":
-                        console.print()
-                        console.print("[bold cyan]Choose an action:[/bold cyan]")
-                        console.print("  [1] Dry run (preview commands)")
-                        console.print("  [2] Execute (run commands)")
-                        console.print("  [3] Cancel")
-                        console.print()
-
-                        while True:
-                            try:
-                                choice = input("Enter choice [1/2/3]: ").strip()
-                                # Blank input defaults to dry-run (1)
-                                choice = choice or "1"
-                            except (KeyboardInterrupt, EOFError):
-                                response_queue.put({"choice": "3"})
-                                cx_print("\nCancelled.", "info")
-                                break
-
-                            if choice in {"1", "2", "3"}:
-                                response_queue.put({"choice": choice})
-                                break
-
-                            cx_print("Invalid choice. Please enter 1, 2, or 3.", "warning")
-                except queue.Empty:
-                    continue
-                except Exception as e:
-                    logging.debug(f"Input handler error: {e}")
-                    continue
-
-        try:
-            handler = VoiceInputHandler(model_name=model)
-
-            if continuous:
-                # Start input handler thread
-                input_handler_thread = threading.Thread(target=input_handler_loop, daemon=True)
-                input_handler_thread.start()
-
-                # Continuous voice mode
-                handler.start_voice_mode(process_voice_command)
-            else:
-                # Single recording mode
-                text = handler.record_single()
-                if text:
-                    process_voice_command(text)
-                else:
-                    cx_print("No speech detected.", "warning")
-
-            return 0
-
-        except (VoiceInputError, MicrophoneNotFoundError, ModelNotFoundError) as e:
-            self._print_error(str(e))
-            return 1
-        except KeyboardInterrupt:
-            cx_print("\nVoice mode exited.", "info")
-            return 0
-        finally:
-            # Stop input handler thread
-            stop_input_handler.set()
-            if input_handler_thread is not None and input_handler_thread.is_alive():
-                input_handler_thread.join(timeout=1.0)
-
-            # Ensure cleanup even if exceptions occur
-            if handler is not None:
-                try:
-                    handler.stop()
-                except Exception as e:
-                    # Log cleanup errors but don't raise
-                    logging.debug("Error during voice handler cleanup: %s", e)
-
-    def _normalize_software_name(self, software: str) -> str:
-        """Normalize software name by cleaning whitespace.
-
-        Returns a natural-language description suitable for LLM interpretation.
-        Does NOT return shell commands - all command generation must go through
-        the LLM and validation pipeline.
-        """
-        # Just normalize whitespace - return natural language description
-        return " ".join(software.split())
-
-    def _record_history_error(
-        self,
-        history: InstallationHistory,
-        install_id: str | None,
-        error: str,
-    ) -> None:
-        """Record installation error to history."""
-        if install_id:
-            history.update_installation(install_id, InstallationStatus.FAILED, error)
-
-    def _handle_parallel_execution(
-        self,
-        commands: list[str],
-        software: str,
-        install_id: str | None,
-        history: InstallationHistory,
-    ) -> int:
-        """Handle parallel installation execution."""
-        import asyncio
-
-        from cortex.install_parallel import run_parallel_install
-
-        def parallel_log_callback(message: str, level: str = "info"):
-            if level == "success":
-                cx_print(f"  ✅ {message}", "success")
-            elif level == "error":
-                cx_print(f"  ❌ {message}", "error")
-            else:
-                cx_print(f"  ℹ {message}", "info")
-
-        try:
-            success, parallel_tasks = asyncio.run(
-                run_parallel_install(
-                    commands=commands,
-                    descriptions=[f"Step {i + 1}" for i in range(len(commands))],
-                    timeout=300,
-                    stop_on_error=True,
-                    log_callback=parallel_log_callback,
-                )
-            )
-
-            if success:
-                total_duration = self._calculate_duration(parallel_tasks)
-                self._print_success(f"{software} installed successfully!")
-                print(f"\nCompleted in {total_duration:.2f} seconds (parallel mode)")
-                if install_id:
-                    history.update_installation(install_id, InstallationStatus.SUCCESS)
-                    print(f"\n📝 Installation recorded (ID: {install_id})")
-                    print(f"   To rollback: cortex rollback {install_id}")
-                return 0
-
-            error_msg = self._get_parallel_error_msg(parallel_tasks)
-            self._record_history_error(history, install_id, error_msg)
-            self._print_error(self.INSTALL_FAIL_MSG)
-            if error_msg:
-                print(f"  Error: {error_msg}", file=sys.stderr)
-            if install_id:
-                print(f"\n📝 Installation recorded (ID: {install_id})")
-                print(f"   View details: cortex history {install_id}")
-            return 1
-
-        except (ValueError, OSError) as e:
-            self._record_history_error(history, install_id, str(e))
-            self._print_error(f"Parallel execution failed: {str(e)}")
-            return 1
-        except Exception as e:
-            self._record_history_error(history, install_id, str(e))
-            self._print_error(f"Unexpected parallel execution error: {str(e)}")
-            if self.verbose:
-                import traceback
-
-                traceback.print_exc()
-            return 1
-
-    def _calculate_duration(self, parallel_tasks: list) -> float:
-        """Calculate total duration from parallel tasks."""
-        if not parallel_tasks:
-            return 0.0
-
-        max_end = max(
-            (t.end_time for t in parallel_tasks if t.end_time is not None),
-            default=None,
-        )
-        min_start = min(
-            (t.start_time for t in parallel_tasks if t.start_time is not None),
-            default=None,
-        )
-        if max_end is not None and min_start is not None:
-            return max_end - min_start
-        return 0.0
-
-    def _get_parallel_error_msg(self, parallel_tasks: list) -> str:
-        """Extract error message from failed parallel tasks."""
-        failed_tasks = [t for t in parallel_tasks if getattr(t.status, "value", "") == "failed"]
-        return failed_tasks[0].error if failed_tasks else self.INSTALL_FAIL_MSG
-
-    def _handle_sequential_execution(
-        self,
-        commands: list[str],
-        software: str,
-        install_id: str | None,
-        history: InstallationHistory,
-    ) -> int:
-        """Handle sequential installation execution."""
-
-        def progress_callback(current, total, step):
-            status_emoji = "⏳"
-            if step.status == StepStatus.SUCCESS:
-                status_emoji = "✅"
-            elif step.status == StepStatus.FAILED:
-                status_emoji = "❌"
-            print(f"\n[{current}/{total}] {status_emoji} {step.description}")
-            print(f"  Command: {step.command}")
-
-        coordinator = InstallationCoordinator(
-            commands=commands,
-            descriptions=[f"Step {i + 1}" for i in range(len(commands))],
-            timeout=300,
-            stop_on_error=True,
-            progress_callback=progress_callback,
-        )
-
-        result = coordinator.execute()
-
-        if result.success:
-            self._print_success(f"{software} installed successfully!")
-            print(f"\nCompleted in {result.total_duration:.2f} seconds")
-            if install_id:
-                history.update_installation(install_id, InstallationStatus.SUCCESS)
-                print(f"\n📝 Installation recorded (ID: {install_id})")
-                print(f"   To rollback: cortex rollback {install_id}")
-            return 0
-
-        # Handle failure
-        self._record_history_error(
-            history, install_id, result.error_message or self.INSTALL_FAIL_MSG
-        )
-        if result.failed_step is not None:
-            self._print_error(f"{self.INSTALL_FAIL_MSG} at step {result.failed_step + 1}")
-        else:
-            self._print_error(self.INSTALL_FAIL_MSG)
-        if result.error_message:
-            print(f"  Error: {result.error_message}", file=sys.stderr)
-        if install_id:
-            print(f"\n📝 Installation recorded (ID: {install_id})")
-            print(f"   View details: cortex history {install_id}")
-        return 1
-
-    def install(
-        self,
-        software: str,
-        execute: bool = False,
-        dry_run: bool = False,
-        parallel: bool = False,
-        json_output: bool = False,
-    ) -> int:
-        """Install software using the LLM-powered package manager."""
-        # Initialize installation history
-        history = InstallationHistory()
-        install_id = None
-        start_time = datetime.now()
-        # Validate input first
-        is_valid, error = validate_install_request(software)
-        if not is_valid:
-            if json_output:
-                print(json.dumps({"success": False, "error": error, "error_type": "ValueError"}))
-            else:
-                self._print_error(error)
-            return 1
-
-        software = self._normalize_software_name(software)
-
-        api_key = self._get_api_key()
-        if not api_key:
-            error_msg = "No API key found. Please configure an API provider."
-            # Record installation attempt before failing if we have packages
-            try:
-                packages = [software.split()[0]]  # Basic package extraction
-                install_id = history.record_installation(
-                    InstallationType.INSTALL, packages, [], start_time
-                )
-            except Exception:
-                pass  # If recording fails, continue with error reporting
-
-            if install_id:
-                history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
-
-            if json_output:
-                print(
-                    json.dumps({"success": False, "error": error_msg, "error_type": "RuntimeError"})
-                )
-            else:
-                self._print_error(error_msg)
-            return 1
-
-        provider = self._get_provider()
-        self._debug(f"Using provider: {provider}")
-        self._debug(f"API key: {api_key[:10]}...{api_key[-4:]}")
-
-        try:
-            if not json_output:
-                self._print_status("🧠", "Understanding request...")
-
-            interpreter = CommandInterpreter(api_key=api_key, provider=provider)
-
-            if not json_output:
-                self._print_status("📦", "Planning installation...")
-                for _ in range(10):
-                    self._animate_spinner("Analyzing system requirements...")
-                self._clear_line()
-
-            commands = interpreter.parse(f"install {software}")
-
-            if not commands:
-                self._print_error(t("install.no_commands"))
-                return 1
-
-            # Predictive Analysis
-            if not json_output:
-                self._print_status("🔮", t("predictive.analyzing"))
-            if not self.predict_manager:
-                self.predict_manager = PredictiveErrorManager(api_key=api_key, provider=provider)
-            prediction = self.predict_manager.analyze_installation(software, commands)
-            if not json_output:
-                self._clear_line()
-
-            if not json_output:
-                if prediction.risk_level != RiskLevel.NONE:
-                    self._display_prediction_warning(prediction)
-                    if execute and not self._confirm_risky_operation(prediction):
-                        cx_print(f"\n{t('ui.operation_cancelled')}", "warning")
-                        return 0
-                else:
-                    cx_print(t("predictive.no_issues_detected"), "success")
 
             # Extract packages from commands for tracking
             packages = history._extract_packages_from_commands(commands)
@@ -1534,30 +912,13 @@ class CortexCLI:
                     InstallationType.INSTALL, packages, commands, start_time
                 )
 
-            # If JSON output requested, return structured data and exit early
-            if json_output:
-                output = {
-                    "success": True,
-                    "commands": commands,
-                    "packages": packages,
-                    "install_id": install_id,
-                    "prediction": {
-                        "risk_level": prediction.risk_level.name,
-                        "reasons": prediction.reasons,
-                        "recommendations": prediction.recommendations,
-                        "predicted_errors": prediction.predicted_errors,
-                    },
-                }
-                print(json.dumps(output, indent=2))
-                return 0
-
             self._print_status("⚙️", f"Installing {software}...")
             print("\nGenerated commands:")
             for i, cmd in enumerate(commands, 1):
                 print(f"  {i}. {cmd}")
 
             if dry_run:
-                print(f"\n({t('install.dry_run_message')})")
+                print("\n(Dry run mode - commands not executed)")
                 if install_id:
                     history.update_installation(install_id, InstallationStatus.SUCCESS)
                 return 0
@@ -1573,7 +934,7 @@ class CortexCLI:
                     print(f"\n[{current}/{total}] {status_emoji} {step.description}")
                     print(f"  Command: {step.command}")
 
-                print(f"\n{t('install.executing')}")
+                print("\nExecuting commands...")
 
                 if parallel:
                     import asyncio
@@ -1613,10 +974,8 @@ class CortexCLI:
                                 total_duration = max_end - min_start
 
                         if success:
-                            self._print_success(t("install.package_installed", package=software))
-                            print(
-                                f"\n{t('progress.completed_in', seconds=f'{total_duration:.2f}')}"
-                            )
+                            self._print_success(f"{software} installed successfully!")
+                            print(f"\nCompleted in {total_duration:.2f} seconds (parallel mode)")
 
                             if install_id:
                                 history.update_installation(install_id, InstallationStatus.SUCCESS)
@@ -1637,9 +996,9 @@ class CortexCLI:
                                 error_msg,
                             )
 
-                        self._print_error(t("install.failed"))
+                        self._print_error("Installation failed")
                         if error_msg:
-                            print(f"  {t('common.error')}: {error_msg}", file=sys.stderr)
+                            print(f"  Error: {error_msg}", file=sys.stderr)
                         if install_id:
                             print(f"\n📝 Installation recorded (ID: {install_id})")
                             print(f"   View details: cortex history {install_id}")
@@ -1675,8 +1034,8 @@ class CortexCLI:
                 result = coordinator.execute()
 
                 if result.success:
-                    self._print_success(t("install.package_installed", package=software))
-                    print(f"\n{t('progress.completed_in', seconds=f'{result.total_duration:.2f}')}")
+                    self._print_success(f"{software} installed successfully!")
+                    print(f"\nCompleted in {result.total_duration:.2f} seconds")
 
                     # Record successful installation
                     if install_id:
@@ -1706,423 +1065,32 @@ class CortexCLI:
             else:
                 print("\nTo execute these commands, run with --execute flag")
                 print("Example: cortex install docker --execute")
-                return 0
 
-            print("\nExecuting commands...")
-            if parallel:
-                return self._handle_parallel_execution(commands, software, install_id, history)
-
-            return self._handle_sequential_execution(commands, software, install_id, history)
+            return 0
 
         except ValueError as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
-            if json_output:
-
-                print(json.dumps({"success": False, "error": str(e), "error_type": "ValueError"}))
-            else:
-                self._print_error(str(e))
+            self._print_error(str(e))
             return 1
         except RuntimeError as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
-            if json_output:
-
-                print(json.dumps({"success": False, "error": str(e), "error_type": "RuntimeError"}))
-            else:
-                self._print_error(f"API call failed: {str(e)}")
+            self._print_error(f"API call failed: {str(e)}")
             return 1
         except OSError as e:
             if install_id:
                 history.update_installation(install_id, InstallationStatus.FAILED, str(e))
-            if json_output:
-
-                print(json.dumps({"success": False, "error": str(e), "error_type": "OSError"}))
-            else:
-                self._print_error(f"System error: {str(e)}")
+            self._print_error(f"System error: {str(e)}")
             return 1
         except Exception as e:
-            self._record_history_error(history, install_id, str(e))
+            if install_id:
+                history.update_installation(install_id, InstallationStatus.FAILED, str(e))
             self._print_error(f"Unexpected error: {str(e)}")
             if self.verbose:
                 import traceback
 
                 traceback.print_exc()
-            return 1
-
-    def remove(self, args: argparse.Namespace) -> int:
-        """Handle package removal with impact analysis"""
-        package = args.package
-        dry_run = getattr(args, "dry_run", True)  # Default to dry-run for safety
-        purge = getattr(args, "purge", False)
-        force = getattr(args, "force", False)
-        json_output = getattr(args, "json", False)
-
-        # Initialize and analyze
-        result = self._analyze_package_removal(package)
-        if result is None:
-            return 1
-
-        # Check if package doesn't exist at all (not in repos)
-        if self._check_package_not_found(result):
-            return 1
-
-        # Output results
-        self._output_impact_result(result, json_output)
-
-        # Dry-run mode - stop here
-        if dry_run:
-            console.print()
-            cx_print("Dry run mode - no changes made", "info")
-            cx_print(f"To proceed with removal: cortex remove {package} --execute", "info")
-            return 0
-
-        # Safety check and confirmation
-        if not self._can_proceed_with_removal(result, force, args, package, purge):
-            return self._removal_blocked_or_cancelled(result, force)
-
-        return self._execute_removal(package, purge)
-
-    def _analyze_package_removal(self, package: str):
-        """Initialize analyzer and perform impact analysis. Returns None on failure."""
-        try:
-            analyzer = UninstallImpactAnalyzer()
-        except Exception as e:
-            self._print_error(f"Failed to initialize impact analyzer: {e}")
-            return None
-
-        cx_print(f"Analyzing impact of removing '{package}'...", "info")
-        try:
-            return analyzer.analyze(package)
-        except Exception as e:
-            self._print_error(f"Impact analysis failed: {e}")
-            if self.verbose:
-                import traceback
-
-                traceback.print_exc()
-            return None
-
-    def _check_package_not_found(self, result) -> bool:
-        """Check if package doesn't exist in repos and print warnings."""
-        if result.warnings and "not found in repositories" in str(result.warnings):
-            for warning in result.warnings:
-                cx_print(warning, "warning")
-            for rec in result.recommendations:
-                cx_print(rec, "info")
-            return True
-        return False
-
-    def _output_impact_result(self, result, json_output: bool) -> None:
-        """Output the impact result in JSON or rich format."""
-        if json_output:
-            import json as json_module
-
-            data = {
-                "target_package": result.target_package,
-                "direct_dependents": result.direct_dependents,
-                "transitive_dependents": result.transitive_dependents,
-                "affected_services": [
-                    {
-                        "name": s.name,
-                        "status": s.status.value,
-                        "package": s.package,
-                        "is_critical": s.is_critical,
-                    }
-                    for s in result.affected_services
-                ],
-                "orphaned_packages": result.orphaned_packages,
-                "cascade_packages": result.cascade_packages,
-                "severity": result.severity.value,
-                "total_affected": result.total_affected,
-                "cascade_depth": result.cascade_depth,
-                "recommendations": result.recommendations,
-                "warnings": result.warnings,
-                "safe_to_remove": result.safe_to_remove,
-            }
-            console.print(json_module.dumps(data, indent=2))
-        else:
-            self._display_impact_report(result)
-
-    def _can_proceed_with_removal(
-        self, result, force: bool, args, package: str, purge: bool
-    ) -> bool:
-        """Check safety and get user confirmation. Returns True if can proceed."""
-        if not result.safe_to_remove and not force:
-            return False
-
-        skip_confirm = getattr(args, "yes", False)
-        if skip_confirm:
-            return True
-
-        return self._confirm_removal(package, purge)
-
-    def _confirm_removal(self, package: str, purge: bool) -> bool:
-        """Prompt user for removal confirmation."""
-        console.print()
-        confirm_msg = f"Remove '{package}'"
-        if purge:
-            confirm_msg += " and purge configuration"
-        confirm_msg += "? [y/N]: "
-        try:
-            response = StdinHandler.get_input(confirm_msg).lower()
-            return response in ("y", "yes")
-        except (EOFError, KeyboardInterrupt):
-            console.print()
-            return False
-
-    def _removal_blocked_or_cancelled(self, result, force: bool) -> int:
-        """Handle blocked or cancelled removal."""
-        if not result.safe_to_remove and not force:
-            console.print()
-            self._print_error(
-                "Package removal has high impact. Use --force to proceed anyway, "
-                "or address the recommendations first."
-            )
-            return 1
-        cx_print("Removal cancelled", "info")
-        return 0
-
-    def _display_impact_report(self, result: ImpactResult) -> None:
-        """Display formatted impact analysis report"""
-
-        # Severity styling
-        severity_styles = {
-            ImpactSeverity.SAFE: ("green", "✅"),
-            ImpactSeverity.LOW: ("green", "💚"),
-            ImpactSeverity.MEDIUM: ("yellow", "🟡"),
-            ImpactSeverity.HIGH: ("orange1", "🟠"),
-            ImpactSeverity.CRITICAL: ("red", "🔴"),
-        }
-        style, icon = severity_styles.get(result.severity, ("white", "❓"))
-
-        # Header
-        console.print()
-        console.print(
-            Panel(f"[bold]{icon} Impact Analysis: {result.target_package}[/bold]", style=style)
-        )
-
-        # Display sections
-        self._display_warnings(result.warnings)
-        self._display_package_list(result.direct_dependents, "cyan", "📦 Direct dependents", 10)
-        self._display_services(result.affected_services)
-        self._display_summary_table(result, style, Table)
-        self._display_package_list(result.cascade_packages, "yellow", "🗑️  Cascade removal", 5)
-        self._display_package_list(result.orphaned_packages, "white", "👻 Would become orphaned", 5)
-        self._display_recommendations(result.recommendations)
-
-        # Final verdict
-        console.print()
-        if result.safe_to_remove:
-            console.print("[bold green]✅ Safe to remove[/bold green]")
-        else:
-            console.print("[bold yellow]⚠️  Review recommendations before proceeding[/bold yellow]")
-
-    def _display_warnings(self, warnings: list) -> None:
-        """Display warnings with appropriate styling."""
-        for warning in warnings:
-            if "not currently installed" in warning:
-                console.print(f"\n[bold yellow]ℹ️  {warning}[/bold yellow]")
-                console.print("[dim]   Showing potential impact analysis for this package.[/dim]")
-            else:
-                console.print(f"\n[bold red]⚠️  {warning}[/bold red]")
-
-    def _display_package_list(self, packages: list, color: str, title: str, limit: int) -> None:
-        """Display a list of packages with truncation."""
-        if packages:
-            console.print(f"\n[bold {color}]{title} ({len(packages)}):[/bold {color}]")
-            for pkg in packages[:limit]:
-                console.print(f"   • {pkg}")
-            if len(packages) > limit:
-                console.print(f"   [dim]... and {len(packages) - limit} more[/dim]")
-        elif "dependents" in title:
-            console.print(f"\n[bold {color}]{title}:[/bold {color}] None")
-
-    def _display_services(self, services: list) -> None:
-        """Display affected services."""
-        if services:
-            console.print(f"\n[bold magenta]🔧 Affected services ({len(services)}):[/bold magenta]")
-            for service in services:
-                status_icon = "🟢" if service.status == ServiceStatus.RUNNING else "⚪"
-                critical_marker = " [red][CRITICAL][/red]" if service.is_critical else ""
-                console.print(f"   {status_icon} {service.name}{critical_marker}")
-        else:
-            console.print("\n[bold magenta]🔧 Affected services:[/bold magenta] None")
-
-    def _display_summary_table(self, result, style: str, table_class) -> None:
-        """Display the impact summary table."""
-        summary_table = table_class(show_header=False, box=None, padding=(0, 2))
-        summary_table.add_column("Metric", style="dim")
-        summary_table.add_column("Value")
-        summary_table.add_row("Total packages affected", str(result.total_affected))
-        summary_table.add_row("Cascade depth", str(result.cascade_depth))
-        summary_table.add_row("Services at risk", str(len(result.affected_services)))
-        summary_table.add_row("Severity", f"[{style}]{result.severity.value.upper()}[/{style}]")
-        console.print("\n[bold]📊 Impact Summary:[/bold]")
-        console.print(summary_table)
-
-    def _display_recommendations(self, recommendations: list) -> None:
-        """Display recommendations."""
-        if recommendations:
-            console.print("\n[bold green]💡 Recommendations:[/bold green]")
-            for rec in recommendations:
-                console.print(f"   • {rec}")
-
-    def _execute_removal(self, package: str, purge: bool = False) -> int:
-        """Execute the actual package removal with audit logging"""
-        import datetime
-        import subprocess
-
-        cx_print(f"Removing '{package}'...", "info")
-
-        # Initialize history for audit logging
-        history = InstallationHistory()
-        start_time = datetime.datetime.now()
-        operation_type = InstallationType.PURGE if purge else InstallationType.REMOVE
-
-        # Build removal command (with -y since user already confirmed)
-        if purge:
-            cmd = ["sudo", "apt-get", "purge", "-y", package]
-        else:
-            cmd = ["sudo", "apt-get", "remove", "-y", package]
-
-        # Record the operation start
-        try:
-            install_id = history.record_installation(
-                operation_type=operation_type,
-                packages=[package],
-                commands=[" ".join(cmd)],
-                start_time=start_time,
-            )
-        except Exception as e:
-            self._debug(f"Failed to record installation start: {e}")
-            install_id = None
-
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-            if result.returncode == 0:
-                self._print_success(f"'{package}' removed successfully")
-
-                # Record successful removal
-                if install_id:
-                    try:
-                        history.update_installation(install_id, InstallationStatus.SUCCESS)
-                    except Exception as e:
-                        self._debug(f"Failed to update installation record: {e}")
-
-                # Run autoremove to clean up orphaned packages
-                console.print()
-                cx_print("Running autoremove to clean up orphaned packages...", "info")
-                autoremove_cmd = ["sudo", "apt-get", "autoremove", "-y"]
-                autoremove_start = datetime.datetime.now()
-
-                # Record autoremove operation start
-                autoremove_id = None
-                try:
-                    autoremove_id = history.record_installation(
-                        operation_type=InstallationType.REMOVE,
-                        packages=[f"{package}-autoremove"],
-                        commands=[" ".join(autoremove_cmd)],
-                        start_time=autoremove_start,
-                    )
-                except Exception as e:
-                    self._debug(f"Failed to record autoremove start: {e}")
-
-                try:
-                    autoremove_result = subprocess.run(
-                        autoremove_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=300,
-                    )
-
-                    if autoremove_result.returncode == 0:
-                        cx_print("Cleanup complete", "success")
-                        if autoremove_id:
-                            try:
-                                history.update_installation(
-                                    autoremove_id, InstallationStatus.SUCCESS
-                                )
-                            except Exception as e:
-                                self._debug(f"Failed to update autoremove record: {e}")
-                    else:
-                        cx_print("Autoremove completed with warnings", "warning")
-                        if autoremove_id:
-                            try:
-                                history.update_installation(
-                                    autoremove_id,
-                                    InstallationStatus.FAILED,
-                                    error_message=(
-                                        autoremove_result.stderr[:500]
-                                        if autoremove_result.stderr
-                                        else "Autoremove returned non-zero exit code"
-                                    ),
-                                )
-                            except Exception as e:
-                                self._debug(f"Failed to update autoremove record: {e}")
-                except subprocess.TimeoutExpired:
-                    cx_print("Autoremove timed out", "warning")
-                    if autoremove_id:
-                        try:
-                            history.update_installation(
-                                autoremove_id,
-                                InstallationStatus.FAILED,
-                                error_message="Autoremove timed out after 300 seconds",
-                            )
-                        except Exception:
-                            pass
-                except Exception as e:
-                    cx_print(f"Autoremove failed: {e}", "warning")
-                    if autoremove_id:
-                        try:
-                            history.update_installation(
-                                autoremove_id,
-                                InstallationStatus.FAILED,
-                                error_message=str(e)[:500],
-                            )
-                        except Exception:
-                            pass
-
-                return 0
-            else:
-                self._print_error(f"Removal failed: {result.stderr}")
-                # Record failed removal
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id,
-                            InstallationStatus.FAILED,
-                            error_message=result.stderr[:500],
-                        )
-                    except Exception as e:
-                        self._debug(f"Failed to update installation record: {e}")
-                return 1
-
-        except subprocess.TimeoutExpired:
-            self._print_error("Removal timed out")
-            # Record timeout failure
-            if install_id:
-                try:
-                    history.update_installation(
-                        install_id,
-                        InstallationStatus.FAILED,
-                        error_message="Operation timed out after 300 seconds",
-                    )
-                except Exception:
-                    pass
-            return 1
-        except Exception as e:
-            self._print_error(f"Removal failed: {e}")
-            # Record exception failure
-            if install_id:
-                try:
-                    history.update_installation(
-                        install_id,
-                        InstallationStatus.FAILED,
-                        error_message=str(e)[:500],
-                    )
-                except Exception:
-                    pass
             return 1
 
     def cache_stats(self) -> int:
@@ -2131,172 +1099,24 @@ class CortexCLI:
 
             cache = SemanticCache()
             stats = cache.stats()
-            hit_rate_value = f"{stats.hit_rate * 100:.1f}" if stats.total else "0.0"
+            hit_rate = f"{stats.hit_rate * 100:.1f}%" if stats.total else "0.0%"
 
-            cx_header(t("cache.stats_header"))
-            cx_print(f"{t('cache.hits')}: {stats.hits}", "info")
-            cx_print(f"{t('cache.misses')}: {stats.misses}", "info")
-            cx_print(t("cache.hit_rate", rate=hit_rate_value), "info")
-            cx_print(f"{t('cache.saved_calls')}: {stats.saved_calls}", "info")
+            cx_header("Cache Stats")
+            cx_print(f"Hits: {stats.hits}", "info")
+            cx_print(f"Misses: {stats.misses}", "info")
+            cx_print(f"Hit rate: {hit_rate}", "info")
+            cx_print(f"Saved calls (approx): {stats.hits}", "info")
             return 0
         except (ImportError, OSError) as e:
-            self._print_error(t("cache.read_error", error=str(e)))
+            self._print_error(f"Unable to read cache stats: {e}")
             return 1
         except Exception as e:
-            self._print_error(t("cache.unexpected_error", error=str(e)))
+            self._print_error(f"Unexpected error reading cache stats: {e}")
             if self.verbose:
                 import traceback
 
                 traceback.print_exc()
             return 1
-
-    def config(self, args: argparse.Namespace) -> int:
-        """Handle configuration commands including language settings."""
-        action = getattr(args, "config_action", None)
-
-        if not action:
-            cx_print(t("config.missing_subcommand"), "error")
-            return 1
-
-        if action == "language":
-            return self._config_language(args)
-        elif action == "show":
-            return self._config_show()
-        else:
-            self._print_error(t("config.unknown_action", action=action))
-            return 1
-
-    def _config_language(self, args: argparse.Namespace) -> int:
-        """Handle language configuration."""
-        lang_config = LanguageConfig()
-
-        # List available languages
-        if getattr(args, "list", False):
-            cx_header(t("language.available"))
-            for code, info in SUPPORTED_LANGUAGES.items():
-                current_marker = " ✓" if code == get_language() else ""
-                console.print(
-                    f"  [green]{code}[/green] - {info['name']} ({info['native']}){current_marker}"
-                )
-            return 0
-
-        # Show language info
-        if getattr(args, "info", False):
-            info = lang_config.get_language_info()
-            cx_header(t("language.current"))
-            console.print(f"  [bold]{info['name']}[/bold] ({info['native_name']})")
-            console.print(f"  [dim]{t('config.code_label')}: {info['language']}[/dim]")
-            # Translate the source value using proper key mapping
-            source_translation_keys = {
-                "environment": "language.set_from_env",
-                "config": "language.set_from_config",
-                "auto-detected": "language.auto_detected",
-                "default": "language.default",
-            }
-            source = info.get("source", "")
-            source_key = source_translation_keys.get(source)
-            source_display = t(source_key) if source_key else source
-            console.print(f"  [dim]{t('config.source_label')}: {source_display}[/dim]")
-
-            if info.get("env_override"):
-                console.print(f"  [dim]{t('language.set_from_env')}: {info['env_override']}[/dim]")
-            if info.get("detected_language"):
-                console.print(
-                    f"  [dim]{t('language.auto_detected')}: {info['detected_language']}[/dim]"
-                )
-            return 0
-
-        # Set language
-        code = getattr(args, "code", None)
-        if not code:
-            # No code provided, show current language and list
-            current = get_language()
-            current_info = SUPPORTED_LANGUAGES.get(current, {})
-            cx_print(
-                f"{t('language.current')}: {current_info.get('name', current)} "
-                f"({current_info.get('native', '')})",
-                "info",
-            )
-            console.print()
-            console.print(
-                f"[dim]{t('language.supported_codes')}: {', '.join(SUPPORTED_LANGUAGES.keys())}[/dim]"
-            )
-            console.print(f"[dim]{t('config.use_command_hint')}[/dim]")
-            console.print(f"[dim]{t('config.list_hint')}[/dim]")
-            return 0
-
-        # Handle 'auto' to clear saved preference
-        if code.lower() == "auto":
-            lang_config.clear_language()
-            from cortex.i18n.translator import reset_translator
-
-            reset_translator()
-            new_lang = get_language()
-            new_info = SUPPORTED_LANGUAGES.get(new_lang, {})
-            cx_print(t("language.changed", language=new_info.get("native", new_lang)), "success")
-            console.print(f"[dim]({t('language.auto_detected')})[/dim]")
-            return 0
-
-        # Validate and set language
-        code = code.lower()
-        if code not in SUPPORTED_LANGUAGES:
-            self._print_error(t("language.invalid_code", code=code))
-            console.print(
-                f"[dim]{t('language.supported_codes')}: {', '.join(SUPPORTED_LANGUAGES.keys())}[/dim]"
-            )
-            return 1
-
-        try:
-            lang_config.set_language(code)
-            # Reset the global translator to pick up the new language
-            from cortex.i18n.translator import reset_translator
-
-            reset_translator()
-            set_language(code)
-
-            lang_info = SUPPORTED_LANGUAGES[code]
-            cx_print(t("language.changed", language=lang_info["native"]), "success")
-            return 0
-        except (ValueError, RuntimeError) as e:
-            self._print_error(t("language.set_failed", error=str(e)))
-            return 1
-
-    def _config_show(self) -> int:
-        """Show all current configuration."""
-        cx_header(t("config.header"))
-
-        # Language
-        lang_config = LanguageConfig()
-        lang_info = lang_config.get_language_info()
-        console.print(f"[bold]{t('config.language_label')}:[/bold]")
-        console.print(
-            f"  {lang_info['name']} ({lang_info['native_name']}) "
-            f"[dim][{lang_info['language']}][/dim]"
-        )
-        # Translate the source identifier to user-friendly text
-        source_translations = {
-            "environment": t("language.set_from_env"),
-            "config": t("language.set_from_config"),
-            "auto-detected": t("language.auto_detected"),
-            "default": t("language.default"),
-        }
-        source_display = source_translations.get(lang_info["source"], lang_info["source"])
-        console.print(f"  [dim]{t('config.source_label')}: {source_display}[/dim]")
-        console.print()
-
-        # API Provider
-        provider = self._get_provider()
-        console.print(f"[bold]{t('config.llm_provider_label')}:[/bold]")
-        console.print(f"  {provider}")
-        console.print()
-
-        # Config paths
-        console.print(f"[bold]{t('config.config_paths_label')}:[/bold]")
-        console.print(f"  {t('config.preferences_path')}: ~/.cortex/preferences.yaml")
-        console.print(f"  {t('config.history_path')}: ~/.cortex/history.db")
-        console.print()
-
-        return 0
 
     def history(self, limit: int = 20, status: str | None = None, show_id: str | None = None):
         """Show installation history"""
@@ -2406,990 +1226,6 @@ class CortexCLI:
         doctor = SystemDoctor()
         return doctor.run_checks()
 
-    def update(self, args: argparse.Namespace) -> int:
-        """Handle the update command for self-updating Cortex."""
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-
-        # Parse channel
-        channel_str = getattr(args, "channel", "stable")
-        try:
-            channel = UpdateChannel(channel_str)
-        except ValueError:
-            channel = UpdateChannel.STABLE
-
-        updater = Updater(channel=channel)
-
-        # Handle subcommands
-        action = getattr(args, "update_action", None)
-
-        if action == "check" or (not action and getattr(args, "check", False)):
-            # Check for updates only
-            cx_print("Checking for updates...", "thinking")
-            result = updater.check_update_available(force=True)
-
-            if result.error:
-                self._print_error(f"Update check failed: {result.error}")
-                return 1
-
-            console.print()
-            cx_print(f"Current version: [cyan]{result.current_version}[/cyan]", "info")
-
-            if result.update_available and result.latest_release:
-                cx_print(
-                    f"Update available: [green]{result.latest_version}[/green]",
-                    "success",
-                )
-                console.print()
-                console.print("[bold]Release notes:[/bold]")
-                console.print(result.latest_release.release_notes_summary)
-                console.print()
-                cx_print(
-                    "Run [bold]cortex update install[/bold] to upgrade",
-                    "info",
-                )
-            else:
-                cx_print("Cortex is up to date!", "success")
-
-            return 0
-
-        elif action == "install":
-            # Install update
-            target = getattr(args, "version", None)
-            dry_run = getattr(args, "dry_run", False)
-
-            if dry_run:
-                cx_print("Dry run mode - no changes will be made", "warning")
-
-            cx_header("Cortex Self-Update")
-
-            def progress_callback(message: str, percent: float) -> None:
-                if percent >= 0:
-                    cx_print(f"{message} ({percent:.0f}%)", "info")
-                else:
-                    cx_print(message, "info")
-
-            updater.progress_callback = progress_callback
-
-            result = updater.update(target_version=target, dry_run=dry_run)
-
-            console.print()
-
-            if result.success:
-                if result.status == UpdateStatus.SUCCESS:
-                    if result.new_version == result.previous_version:
-                        cx_print("Already up to date!", "success")
-                    else:
-                        cx_print(
-                            f"Updated: {result.previous_version} → {result.new_version}",
-                            "success",
-                        )
-                        if result.duration_seconds:
-                            console.print(f"[dim]Completed in {result.duration_seconds:.1f}s[/dim]")
-                elif result.status == UpdateStatus.PENDING:
-                    # Dry run
-                    cx_print(
-                        f"Would update: {result.previous_version} → {result.new_version}",
-                        "info",
-                    )
-                return 0
-            else:
-                if result.status == UpdateStatus.ROLLED_BACK:
-                    cx_print("Update failed - rolled back to previous version", "warning")
-                else:
-                    self._print_error(f"Update failed: {result.error}")
-                return 1
-
-        elif action == "rollback":
-            # Rollback to previous version
-            backup_id = getattr(args, "backup_id", None)
-
-            backups = updater.list_backups()
-
-            if not backups:
-                self._print_error("No backups available for rollback")
-                return 1
-
-            if backup_id:
-                # Find specific backup
-                target_backup = None
-                for b in backups:
-                    if b.version == backup_id or str(b.path).endswith(backup_id):
-                        target_backup = b
-                        break
-
-                if not target_backup:
-                    self._print_error(f"Backup '{backup_id}' not found")
-                    return 1
-
-                backup_path = target_backup.path
-            else:
-                # Use most recent backup
-                backup_path = backups[0].path
-
-            cx_print(f"Rolling back to backup: {backup_path.name}", "info")
-            result = updater.rollback_to_backup(backup_path)
-
-            if result.success:
-                cx_print(
-                    f"Rolled back: {result.previous_version} → {result.new_version}",
-                    "success",
-                )
-                return 0
-            else:
-                self._print_error(f"Rollback failed: {result.error}")
-                return 1
-
-        elif action == "list" or getattr(args, "list_releases", False):
-            # List available versions
-            from cortex.update_checker import UpdateChecker
-
-            checker = UpdateChecker(channel=channel)
-            releases = checker.get_all_releases(limit=10)
-
-            if not releases:
-                cx_print("No releases found", "warning")
-                return 1
-
-            cx_header(f"Available Releases ({channel.value} channel)")
-
-            table = Table(show_header=True, header_style="bold cyan", box=None)
-            table.add_column("Version", style="green")
-            table.add_column("Date")
-            table.add_column("Channel")
-            table.add_column("Notes")
-
-            current = get_version_string()
-
-            for release in releases:
-                version_str = str(release.version)
-                if version_str == current:
-                    version_str = f"{version_str} [dim](current)[/dim]"
-
-                # Truncate notes
-                notes = release.name or release.body[:50] if release.body else ""
-                if len(notes) > 50:
-                    notes = notes[:47] + "..."
-
-                table.add_row(
-                    version_str,
-                    release.formatted_date,
-                    release.version.channel.value,
-                    notes,
-                )
-
-            console.print(table)
-            return 0
-
-        elif action == "backups":
-            # List backups
-            backups = updater.list_backups()
-
-            if not backups:
-                cx_print("No backups available", "info")
-                return 0
-
-            cx_header("Available Backups")
-
-            table = Table(show_header=True, header_style="bold cyan", box=None)
-            table.add_column("Version", style="green")
-            table.add_column("Date")
-            table.add_column("Size")
-            table.add_column("Path")
-
-            for backup in backups:
-                # Format size
-                size_mb = backup.size_bytes / (1024 * 1024)
-                size_str = f"{size_mb:.1f} MB"
-
-                # Format date
-                try:
-                    dt = datetime.fromisoformat(backup.timestamp)
-                    date_str = dt.strftime("%Y-%m-%d %H:%M")
-                except ValueError:
-                    date_str = backup.timestamp[:16]
-
-                table.add_row(
-                    backup.version,
-                    date_str,
-                    size_str,
-                    str(backup.path.name),
-                )
-
-            console.print(table)
-            console.print()
-            cx_print(
-                "Use [bold]cortex update rollback <version>[/bold] to restore",
-                "info",
-            )
-            return 0
-
-        else:
-            # Default: show current version and check for updates
-            cx_print(f"Current version: [cyan]{get_version_string()}[/cyan]", "info")
-            cx_print("Checking for updates...", "thinking")
-
-            result = updater.check_update_available()
-
-            if result.update_available and result.latest_release:
-                console.print()
-                cx_print(
-                    f"Update available: [green]{result.latest_version}[/green]",
-                    "success",
-                )
-                console.print()
-                console.print("[bold]What's new:[/bold]")
-                console.print(result.latest_release.release_notes_summary)
-                console.print()
-                cx_print(
-                    "Run [bold]cortex update install[/bold] to upgrade",
-                    "info",
-                )
-            else:
-                cx_print("Cortex is up to date!", "success")
-
-            return 0
-
-    # Daemon Commands
-    # --------------------------
-
-    def daemon(self, args: argparse.Namespace) -> int:
-        """Handle daemon commands: install, uninstall, config, reload-config, version, ping, shutdown.
-
-        Available commands:
-        - install/uninstall: Manage systemd service files (Python-side)
-        - config: Get daemon configuration via IPC
-        - reload-config: Reload daemon configuration via IPC
-        - version: Get daemon version via IPC
-        - ping: Test daemon connectivity via IPC
-        - shutdown: Request daemon shutdown via IPC
-        - run-tests: Run daemon test suite
-        """
-        action = getattr(args, "daemon_action", None)
-
-        if action == "install":
-            return self._daemon_install(args)
-        elif action == "uninstall":
-            return self._daemon_uninstall(args)
-        elif action == "config":
-            return self._daemon_config()
-        elif action == "reload-config":
-            return self._daemon_reload_config()
-        elif action == "version":
-            return self._daemon_version()
-        elif action == "ping":
-            return self._daemon_ping()
-        elif action == "shutdown":
-            return self._daemon_shutdown()
-        elif action == "run-tests":
-            return self._daemon_run_tests(args)
-        else:
-            cx_print("Usage: cortex daemon <command>", "info")
-            cx_print("", "info")
-            cx_print("Available commands:", "info")
-            cx_print("  install        Install and enable the daemon service", "info")
-            cx_print("  uninstall      Remove the daemon service", "info")
-            cx_print("  config         Show daemon configuration", "info")
-            cx_print("  reload-config  Reload daemon configuration", "info")
-            cx_print("  version        Show daemon version", "info")
-            cx_print("  ping           Test daemon connectivity", "info")
-            cx_print("  shutdown       Request daemon shutdown", "info")
-            cx_print("  run-tests      Run daemon test suite", "info")
-            return 0
-
-    def _update_history_on_failure(
-        self, history: InstallationHistory, install_id: str | None, error_msg: str
-    ) -> None:
-        """
-        Helper method to update installation history on failure.
-
-        Args:
-            history: InstallationHistory instance.
-            install_id: Installation ID to update, or None if not available.
-            error_msg: Error message to record.
-        """
-        if install_id:
-            try:
-                history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
-            except Exception:
-                # Continue even if audit logging fails - don't break the main flow
-                pass
-
-    def _daemon_ipc_call(
-        self,
-        operation_name: str,
-        ipc_func: "Callable[[DaemonClient], DaemonResponse]",
-    ) -> tuple[bool, "DaemonResponse | None"]:
-        """
-        Helper method for daemon IPC calls with centralized error handling.
-
-        Args:
-            operation_name: Human-readable name of the operation for error messages.
-            ipc_func: A callable that takes a DaemonClient and returns a DaemonResponse.
-
-        Returns:
-            Tuple of (success: bool, response: DaemonResponse | None)
-            On error, response is None and an error message is printed.
-        """
-        # Initialize audit logging
-        history = InstallationHistory()
-        start_time = datetime.now(timezone.utc)
-        install_id = None
-
-        try:
-            # Record operation start
-            install_id = history.record_installation(
-                InstallationType.CONFIG,
-                ["cortexd"],
-                [f"daemon.{operation_name}"],
-                start_time,
-            )
-        except Exception:
-            # Continue even if audit logging fails - don't break the main flow
-            pass
-
-        try:
-            from cortex.daemon_client import (
-                DaemonClient,
-                DaemonConnectionError,
-                DaemonNotInstalledError,
-                DaemonResponse,
-            )
-
-            client = DaemonClient()
-            response = ipc_func(client)
-
-            # Update history with success/failure
-            if install_id:
-                try:
-                    if response and response.success:
-                        history.update_installation(install_id, InstallationStatus.SUCCESS)
-                    else:
-                        error_msg = (
-                            response.error if response and response.error else "IPC call failed"
-                        )
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                except Exception:
-                    # Continue even if audit logging fails - don't break the main flow
-                    pass
-
-            return True, response
-
-        except DaemonNotInstalledError as e:
-            error_msg = str(e)
-            cx_print(f"{error_msg}", "error")
-            self._update_history_on_failure(history, install_id, error_msg)
-            return False, None
-        except DaemonConnectionError as e:
-            error_msg = str(e)
-            cx_print(f"{error_msg}", "error")
-            self._update_history_on_failure(history, install_id, error_msg)
-            return False, None
-        except ImportError:
-            error_msg = "Daemon client not available."
-            cx_print(error_msg, "error")
-            self._update_history_on_failure(history, install_id, error_msg)
-            return False, None
-        except Exception as e:
-            error_msg = f"Unexpected error during {operation_name}: {e}"
-            cx_print(error_msg, "error")
-            self._update_history_on_failure(history, install_id, error_msg)
-            return False, None
-
-    def _daemon_install(self, args: argparse.Namespace) -> int:
-        """Install the cortexd daemon using setup_daemon.py."""
-        import subprocess
-        from pathlib import Path
-
-        cx_header("Installing Cortex Daemon")
-
-        # Find setup_daemon.py
-        daemon_dir = Path(__file__).parent.parent / "daemon"
-        setup_script = daemon_dir / "scripts" / "setup_daemon.py"
-
-        if not setup_script.exists():
-            error_msg = f"Setup script not found at {setup_script}"
-            cx_print(error_msg, "error")
-            cx_print("Please ensure the daemon directory is present.", "error")
-            return 1
-
-        execute = getattr(args, "execute", False)
-
-        if not execute:
-            cx_print("This will build and install the cortexd daemon.", "info")
-            cx_print("", "info")
-            cx_print("The setup wizard will:", "info")
-            cx_print("  1. Check and install build dependencies", "info")
-            cx_print("  2. Build the daemon from source", "info")
-            cx_print("  3. Install systemd service files", "info")
-            cx_print("  4. Enable and start the service", "info")
-            cx_print("", "info")
-            cx_print("Run with --execute to proceed:", "info")
-            cx_print("  cortex daemon install --execute", "dim")
-            # Don't record dry-runs in audit history
-            return 0
-
-        # Initialize audit logging only when execution will actually run
-        history = InstallationHistory()
-        start_time = datetime.now(timezone.utc)
-        install_id = None
-
-        try:
-            # Record operation start
-            install_id = history.record_installation(
-                InstallationType.CONFIG,
-                ["cortexd"],
-                ["cortex daemon install"],
-                start_time,
-            )
-        except Exception as e:
-            cx_print(f"Warning: Could not initialize audit logging: {e}", "warning")
-
-        # Run setup_daemon.py
-        cx_print("Running daemon setup wizard...", "info")
-        try:
-            result = subprocess.run(
-                [sys.executable, str(setup_script)],
-                check=False,
-            )
-
-            # Record completion
-            if install_id:
-                try:
-                    if result.returncode == 0:
-                        history.update_installation(install_id, InstallationStatus.SUCCESS)
-                    else:
-                        error_msg = f"Setup script returned exit code {result.returncode}"
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                except Exception:
-                    # Continue even if audit logging fails - don't break the main flow
-                    pass
-
-            return result.returncode
-        except subprocess.SubprocessError as e:
-            error_msg = f"Subprocess error during daemon install: {str(e)}"
-            cx_print(error_msg, "error")
-            if install_id:
-                try:
-                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
-                except Exception:
-                    # Continue even if audit logging fails - don't break the main flow
-                    pass
-            return 1
-        except Exception as e:
-            error_msg = f"Unexpected error during daemon install: {str(e)}"
-            cx_print(error_msg, "error")
-            if install_id:
-                try:
-                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
-                except Exception:
-                    # Continue even if audit logging fails - don't break the main flow
-                    pass
-            return 1
-
-    def _daemon_uninstall(self, args: argparse.Namespace) -> int:
-        """Uninstall the cortexd daemon."""
-        import subprocess
-        from pathlib import Path
-
-        cx_header("Uninstalling Cortex Daemon")
-
-        execute = getattr(args, "execute", False)
-
-        if not execute:
-            cx_print("This will stop and remove the cortexd daemon.", "warning")
-            cx_print("", "info")
-            cx_print("This will:", "info")
-            cx_print("  1. Stop the cortexd service", "info")
-            cx_print("  2. Disable the service", "info")
-            cx_print("  3. Remove systemd unit files", "info")
-            cx_print("  4. Remove the daemon binary", "info")
-            cx_print("", "info")
-            cx_print("Run with --execute to proceed:", "info")
-            cx_print("  cortex daemon uninstall --execute", "dim")
-            # Don't record dry-runs in audit history
-            return 0
-
-        # Initialize audit logging only when execution will actually run
-        history = InstallationHistory()
-        start_time = datetime.now(timezone.utc)
-        install_id = None
-
-        try:
-            # Record operation start
-            install_id = history.record_installation(
-                InstallationType.CONFIG,
-                ["cortexd"],
-                ["cortex daemon uninstall"],
-                start_time,
-            )
-        except Exception as e:
-            cx_print(f"Warning: Could not initialize audit logging: {e}", "warning")
-
-        # Find uninstall script
-        daemon_dir = Path(__file__).parent.parent / "daemon"
-        uninstall_script = daemon_dir / "scripts" / "uninstall.sh"
-
-        if uninstall_script.exists():
-            cx_print("Running uninstall script...", "info")
-            try:
-                # Security: Lock down script permissions before execution
-                # Set read-only permissions for non-root users to prevent tampering
-                import stat
-
-                script_stat = uninstall_script.stat()
-                # Remove write permissions for group and others, keep owner read/execute
-                uninstall_script.chmod(stat.S_IRUSR | stat.S_IXUSR)
-
-                result = subprocess.run(
-                    ["sudo", "bash", str(uninstall_script)],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-
-                # Record completion
-                if install_id:
-                    try:
-                        if result.returncode == 0:
-                            history.update_installation(install_id, InstallationStatus.SUCCESS)
-                        else:
-                            error_msg = f"Uninstall script returned exit code {result.returncode}"
-                            if result.stderr:
-                                error_msg += f": {result.stderr[:500]}"
-                            history.update_installation(
-                                install_id, InstallationStatus.FAILED, error_msg
-                            )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-
-                return result.returncode
-            except subprocess.SubprocessError as e:
-                error_msg = f"Subprocess error during daemon uninstall: {str(e)}"
-                cx_print(error_msg, "error")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-            except Exception as e:
-                error_msg = f"Unexpected error during daemon uninstall: {str(e)}"
-                cx_print(error_msg, "error")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-        else:
-            # Manual uninstall
-            cx_print("Running manual uninstall...", "info")
-            commands = [
-                ["sudo", "systemctl", "stop", "cortexd"],
-                ["sudo", "systemctl", "disable", "cortexd"],
-                ["sudo", "rm", "-f", "/etc/systemd/system/cortexd.service"],
-                ["sudo", "rm", "-f", "/etc/systemd/system/cortexd.socket"],
-                ["sudo", "rm", "-f", "/usr/local/bin/cortexd"],
-                ["sudo", "systemctl", "daemon-reload"],
-            ]
-
-            try:
-                any_failed = False
-                error_messages = []
-
-                for cmd in commands:
-                    cmd_str = " ".join(cmd)
-                    cx_print(f"  Running: {cmd_str}", "dim")
-
-                    # Update installation history with command info (append to existing record)
-                    if install_id:
-                        try:
-                            # Append command info to existing installation record
-                            # instead of creating orphan records
-                            history.update_installation(
-                                install_id,
-                                InstallationStatus.IN_PROGRESS,
-                                f"Executing: {cmd_str}",
-                            )
-                        except Exception:
-                            # Continue even if audit logging fails - don't break the main flow
-                            pass
-
-                    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-
-                    # Track failures
-                    if result.returncode != 0:
-                        any_failed = True
-                        error_msg = (
-                            f"Command '{cmd_str}' failed with return code {result.returncode}"
-                        )
-                        if result.stderr:
-                            error_msg += f": {result.stderr[:500]}"
-                        error_messages.append(error_msg)
-                        cx_print(f"  Failed: {error_msg}", "error")
-
-                # Update history and return based on overall success
-                if any_failed:
-                    combined_error = "; ".join(error_messages)
-                    cx_print("Daemon uninstall failed.", "error")
-                    if install_id:
-                        try:
-                            history.update_installation(
-                                install_id, InstallationStatus.FAILED, combined_error
-                            )
-                        except Exception:
-                            # Continue even if audit logging fails - don't break the main flow
-                            pass
-                    return 1
-                else:
-                    cx_print("Daemon uninstalled.", "success")
-                    # Record success
-                    if install_id:
-                        try:
-                            history.update_installation(install_id, InstallationStatus.SUCCESS)
-                        except Exception:
-                            # Continue even if audit logging fails - don't break the main flow
-                            pass
-                    return 0
-            except subprocess.SubprocessError as e:
-                error_msg = f"Subprocess error during manual uninstall: {str(e)}"
-                cx_print(error_msg, "error")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-            except Exception as e:
-                error_msg = f"Unexpected error during manual uninstall: {str(e)}"
-                cx_print(error_msg, "error")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-
-    def _daemon_config(self) -> int:
-        """Get daemon configuration via IPC."""
-        from rich.table import Table
-
-        cx_header("Daemon Configuration")
-
-        success, response = self._daemon_ipc_call("config.get", lambda c: c.config_get())
-        if not success:
-            return 1
-
-        if response.success and response.result:
-            table = Table(title="Current Configuration", show_header=True)
-            table.add_column("Setting", style="cyan")
-            table.add_column("Value", style="green")
-
-            for key, value in response.result.items():
-                table.add_row(key, str(value))
-
-            console.print(table)
-            return 0
-        else:
-            cx_print(f"Failed to get config: {response.error}", "error")
-            return 1
-
-    def _daemon_reload_config(self) -> int:
-        """Reload daemon configuration via IPC."""
-        cx_header("Reloading Daemon Configuration")
-
-        success, response = self._daemon_ipc_call("config.reload", lambda c: c.config_reload())
-        if not success:
-            return 1
-
-        if response.success:
-            cx_print("Configuration reloaded successfully!", "success")
-            return 0
-        else:
-            cx_print(f"Failed to reload config: {response.error}", "error")
-            return 1
-
-    def _daemon_version(self) -> int:
-        """Get daemon version via IPC."""
-        cx_header("Daemon Version")
-
-        success, response = self._daemon_ipc_call("version", lambda c: c.version())
-        if not success:
-            return 1
-
-        if response.success and response.result:
-            name = response.result.get("name", "cortexd")
-            version = response.result.get("version", "unknown")
-            cx_print(f"{name} version {version}", "success")
-            return 0
-        else:
-            cx_print(f"Failed to get version: {response.error}", "error")
-            return 1
-
-    def _daemon_ping(self) -> int:
-        """Test daemon connectivity via IPC."""
-        import time
-
-        cx_header("Daemon Ping")
-
-        start = time.time()
-        success, response = self._daemon_ipc_call("ping", lambda c: c.ping())
-        elapsed = (time.time() - start) * 1000  # ms
-
-        if not success:
-            return 1
-
-        if response.success:
-            cx_print(f"Pong! Response time: {elapsed:.1f}ms", "success")
-            return 0
-        else:
-            cx_print(f"Ping failed: {response.error}", "error")
-            return 1
-
-    def _daemon_shutdown(self) -> int:
-        """Request daemon shutdown via IPC."""
-        cx_header("Requesting Daemon Shutdown")
-
-        success, response = self._daemon_ipc_call("shutdown", lambda c: c.shutdown())
-        if not success:
-            return 1
-
-        if response.success:
-            cx_print("Daemon shutdown requested successfully!", "success")
-            return 0
-        cx_print(f"Failed to request shutdown: {response.error}", "error")
-        return 1
-
-    def _daemon_run_tests(self, args: argparse.Namespace) -> int:
-        """Run the daemon test suite."""
-        import subprocess
-
-        cx_header("Daemon Tests")
-
-        # Initialize audit logging
-        history = InstallationHistory()
-        start_time = datetime.now(timezone.utc)
-        install_id = None
-
-        try:
-            # Record operation start
-            install_id = history.record_installation(
-                InstallationType.CONFIG,
-                ["cortexd"],
-                ["daemon.run-tests"],
-                start_time,
-            )
-        except Exception:
-            # Continue even if audit logging fails
-            pass
-
-        # Find daemon directory
-        daemon_dir = Path(__file__).parent.parent / "daemon"
-        build_dir = daemon_dir / "build"
-        tests_dir = build_dir / "tests"  # Test binaries are in build/tests/
-
-        # Define test binaries
-        unit_tests = [
-            "test_config",
-            "test_protocol",
-            "test_rate_limiter",
-            "test_logger",
-            "test_common",
-        ]
-        integration_tests = ["test_ipc_server", "test_handlers", "test_daemon"]
-        all_tests = unit_tests + integration_tests
-
-        # Check if tests are built
-        def check_tests_built() -> tuple[bool, list[str]]:
-            """Check which test binaries exist."""
-            existing = []
-            for test in all_tests:
-                if (tests_dir / test).exists():
-                    existing.append(test)
-            return len(existing) > 0, existing
-
-        tests_built, existing_tests = check_tests_built()
-
-        if not tests_built:
-            error_msg = "Tests are not built."
-            cx_print(error_msg, "warning")
-            cx_print("", "info")
-            cx_print("To build tests, run the setup wizard with test building enabled:", "info")
-            cx_print("", "info")
-            cx_print("  [bold]python daemon/scripts/setup_daemon.py[/bold]", "info")
-            cx_print("", "info")
-            cx_print("When prompted, answer 'yes' to build the test suite.", "info")
-            cx_print("", "info")
-            cx_print("Or build manually:", "info")
-            cx_print("  cd daemon && ./scripts/build.sh Release --with-tests", "dim")
-            if install_id:
-                try:
-                    history.update_installation(install_id, InstallationStatus.FAILED, error_msg)
-                except Exception:
-                    # Continue even if audit logging fails - don't break the main flow
-                    pass
-            return 1
-
-        # Determine which tests to run
-        test_filter = getattr(args, "test", None)
-        run_unit = getattr(args, "unit", False)
-        run_integration = getattr(args, "integration", False)
-        verbose = getattr(args, "verbose", False)
-
-        tests_to_run = []
-
-        if test_filter:
-            # Run a specific test
-            # Allow partial matching (e.g., "config" matches "test_config")
-            test_name = test_filter if test_filter.startswith("test_") else f"test_{test_filter}"
-            if test_name in existing_tests:
-                tests_to_run = [test_name]
-            else:
-                error_msg = f"Test '{test_filter}' not found or not built."
-                cx_print(error_msg, "error")
-                cx_print("", "info")
-                cx_print("Available tests:", "info")
-                for t in existing_tests:
-                    cx_print(f"  • {t}", "info")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-        elif run_unit and not run_integration:
-            tests_to_run = [t for t in unit_tests if t in existing_tests]
-            if not tests_to_run:
-                error_msg = "No unit tests built."
-                cx_print(error_msg, "warning")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-        elif run_integration and not run_unit:
-            tests_to_run = [t for t in integration_tests if t in existing_tests]
-            if not tests_to_run:
-                error_msg = "No integration tests built."
-                cx_print(error_msg, "warning")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-        else:
-            # Run all available tests
-            tests_to_run = existing_tests
-
-        # Show what we're running
-        cx_print(f"Running {len(tests_to_run)} test(s)...", "info")
-        cx_print("", "info")
-
-        # Use ctest for running tests
-        ctest_args = ["ctest", "--output-on-failure"]
-
-        if verbose:
-            ctest_args.append("-V")
-
-        # Filter specific tests if not running all
-        if test_filter or run_unit or run_integration:
-            # ctest uses -R for regex filtering
-            test_regex = "|".join(tests_to_run)
-            ctest_args.extend(["-R", test_regex])
-
-        try:
-            result = subprocess.run(
-                ctest_args,
-                cwd=str(build_dir),
-                check=False,
-            )
-
-            if result.returncode == 0:
-                cx_print("", "info")
-                cx_print("All tests passed!", "success")
-                if install_id:
-                    try:
-                        history.update_installation(install_id, InstallationStatus.SUCCESS)
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 0
-            else:
-                error_msg = f"Test execution failed with return code {result.returncode}"
-                cx_print("", "info")
-                cx_print("Some tests failed.", "error")
-                if install_id:
-                    try:
-                        history.update_installation(
-                            install_id, InstallationStatus.FAILED, error_msg
-                        )
-                    except Exception:
-                        # Continue even if audit logging fails - don't break the main flow
-                        pass
-                return 1
-        except subprocess.SubprocessError as e:
-            error_msg = f"Subprocess error during test execution: {str(e)}"
-            cx_print(error_msg, "error")
-            self._update_history_on_failure(history, install_id, error_msg)
-            return 1
-        except Exception as e:
-            error_msg = f"Unexpected error during test execution: {str(e)}"
-            cx_print(error_msg, "error")
-            self._update_history_on_failure(history, install_id, error_msg)
-            return 1
-
-    def benchmark(self, verbose: bool = False):
-        """Run AI performance benchmark and display scores"""
-        from cortex.benchmark import run_benchmark
-
-        return run_benchmark(verbose=verbose)
-
-    def systemd(self, service: str, action: str = "status", verbose: bool = False):
-        """Systemd service helper with plain English explanations"""
-        from cortex.systemd_helper import run_systemd_helper
-
-        return run_systemd_helper(service, action, verbose)
-
-    def gpu(self, action: str = "status", mode: str = None, verbose: bool = False):
-        """Hybrid GPU (Optimus) manager"""
-        from cortex.gpu_manager import run_gpu_manager
-
-        return run_gpu_manager(action, mode, verbose)
-
-    def printer(self, action: str = "status", verbose: bool = False):
-        """Printer/Scanner auto-setup"""
-        from cortex.printer_setup import run_printer_setup
-
-        return run_printer_setup(action, verbose)
-
     def wizard(self):
         """Interactive setup wizard for API key configuration"""
         show_banner()
@@ -3409,7 +1245,7 @@ class CortexCLI:
 
         if not action:
             self._print_error(
-                "Please specify a subcommand (set/get/list/delete/export/import/clear/template/audit/check/path)"
+                "Please specify a subcommand (set/get/list/delete/export/import/clear/template)"
             )
             return 1
 
@@ -3434,13 +1270,6 @@ class CortexCLI:
                 return self._env_list_apps(env_mgr, args)
             elif action == "load":
                 return self._env_load(env_mgr, args)
-            # Shell environment analyzer commands
-            elif action == "audit":
-                return self._env_audit(args)
-            elif action == "check":
-                return self._env_check(args)
-            elif action == "path":
-                return self._env_path(args)
             else:
                 self._print_error(f"Unknown env subcommand: {action}")
                 return 1
@@ -3634,9 +1463,7 @@ class CortexCLI:
 
         # Confirm unless --force is used
         if not force:
-            confirm = StdinHandler.get_input(
-                f"⚠️  Clear ALL environment variables for '{app}'? (y/n): "
-            )
+            confirm = input(f"⚠️  Clear ALL environment variables for '{app}'? (y/n): ")
             if confirm.lower() != "y":
                 cx_print("Operation cancelled", "info")
                 return 0
@@ -3767,382 +1594,612 @@ class CortexCLI:
 
         return 0
 
-    # --- Shell Environment Analyzer Commands ---
-    def _env_audit(self, args: argparse.Namespace) -> int:
-        """Audit shell environment variables and show their sources."""
-        from cortex.shell_env_analyzer import Shell, ShellEnvironmentAnalyzer
-
-        shell = None
-        if hasattr(args, "shell") and args.shell:
-            shell = Shell(args.shell)
-
-        analyzer = ShellEnvironmentAnalyzer(shell=shell)
-        include_system = not getattr(args, "no_system", False)
-        as_json = getattr(args, "json", False)
-
-        audit = analyzer.audit(include_system=include_system)
-
-        if as_json:
-            import json
-
-            print(json.dumps(audit.to_dict(), indent=2))
+    # --- Do Command (manage do-mode runs) ---
+    def do_cmd(self, args: argparse.Namespace) -> int:
+        """Handle `cortex do` commands for managing do-mode runs."""
+        from cortex.do_runner import DoHandler, ProtectedPathsManager, CortexUserManager
+        
+        action = getattr(args, "do_action", None)
+        
+        if not action:
+            cx_print("\n🔧 Do Mode - Execute commands to solve problems\n", "info")
+            console.print("Usage: cortex ask --do <question>")
+            console.print("       cortex do <command> [options]")
+            console.print("\nCommands:")
+            console.print("  history [run_id]        View do-mode run history")
+            console.print("  setup                   Setup cortex user for privilege management")
+            console.print("  protected               Manage protected paths")
+            console.print("\nExample:")
+            console.print("  cortex ask --do 'Fix my nginx configuration'")
+            console.print("  cortex do history")
             return 0
-
-        # Display audit results
-        cx_header(f"Environment Audit ({audit.shell.value} shell)")
-
-        console.print("\n[bold]Config Files Scanned:[/bold]")
-        for f in audit.config_files_scanned:
-            console.print(f"  • {f}")
-
-        if audit.variables:
-            console.print("\n[bold]Variables with Definitions:[/bold]")
-            # Sort by number of sources (most definitions first)
-            sorted_vars = sorted(audit.variables.items(), key=lambda x: len(x[1]), reverse=True)
-            for var_name, sources in sorted_vars[:20]:  # Limit to top 20
-                console.print(f"\n  [cyan]{var_name}[/cyan] ({len(sources)} definition(s))")
-                for src in sources:
-                    console.print(f"    [dim]{src.file}:{src.line_number}[/dim]")
-                    # Show truncated value
-                    val_preview = src.value[:50] + "..." if len(src.value) > 50 else src.value
-                    console.print(f"      → {val_preview}")
-
-            if len(audit.variables) > 20:
-                console.print(f"\n  [dim]... and {len(audit.variables) - 20} more variables[/dim]")
-
-        if audit.conflicts:
-            console.print("\n[bold]⚠️  Conflicts Detected:[/bold]")
-            for conflict in audit.conflicts:
-                severity_color = {
-                    "info": "blue",
-                    "warning": "yellow",
-                    "error": "red",
-                }.get(conflict.severity.value, "white")
-                console.print(
-                    f"  [{severity_color}]{conflict.severity.value.upper()}[/{severity_color}]: {conflict.description}"
-                )
-
-        console.print(f"\n[dim]Total: {len(audit.variables)} variable(s) found[/dim]")
-        return 0
-
-    def _env_check(self, args: argparse.Namespace) -> int:
-        """Check for environment variable conflicts and issues."""
-        from cortex.shell_env_analyzer import Shell, ShellEnvironmentAnalyzer
-
-        shell = None
-        if hasattr(args, "shell") and args.shell:
-            shell = Shell(args.shell)
-
-        analyzer = ShellEnvironmentAnalyzer(shell=shell)
-        audit = analyzer.audit()
-
-        cx_header(f"Environment Health Check ({audit.shell.value})")
-
-        issues_found = 0
-
-        # Check for conflicts
-        if audit.conflicts:
-            console.print("\n[bold]Variable Conflicts:[/bold]")
-            for conflict in audit.conflicts:
-                issues_found += 1
-                severity_color = {
-                    "info": "blue",
-                    "warning": "yellow",
-                    "error": "red",
-                }.get(conflict.severity.value, "white")
-                console.print(
-                    f"  [{severity_color}]●[/{severity_color}] {conflict.variable_name}: {conflict.description}"
-                )
-                for src in conflict.sources:
-                    console.print(f"      [dim]• {src.file}:{src.line_number}[/dim]")
-
-        # Check PATH
-        duplicates = analyzer.get_path_duplicates()
-        missing = analyzer.get_missing_paths()
-
-        if duplicates:
-            console.print("\n[bold]PATH Duplicates:[/bold]")
-            for dup in duplicates:
-                issues_found += 1
-                console.print(f"  [yellow]●[/yellow] {dup}")
-
-        if missing:
-            console.print("\n[bold]Missing PATH Entries:[/bold]")
-            for m in missing:
-                issues_found += 1
-                console.print(f"  [red]●[/red] {m}")
-
-        if issues_found == 0:
-            cx_print("\n✓ No issues found! Environment looks healthy.", "success")
-            return 0
+        
+        if action == "history":
+            return self._do_history(args)
+        elif action == "setup":
+            return self._do_setup()
+        elif action == "protected":
+            return self._do_protected(args)
         else:
-            console.print(f"\n[yellow]Found {issues_found} issue(s)[/yellow]")
-            cx_print("Run 'cortex env path dedupe' to fix PATH duplicates", "info")
+            self._print_error(f"Unknown do action: {action}")
             return 1
-
-    def _env_path(self, args: argparse.Namespace) -> int:
-        """Handle PATH management subcommands."""
-        from cortex.shell_env_analyzer import Shell, ShellEnvironmentAnalyzer
-
-        path_action = getattr(args, "path_action", None)
-
-        if not path_action:
-            self._print_error("Please specify a path action (list/add/remove/dedupe/clean)")
-            return 1
-
-        shell = None
-        if hasattr(args, "shell") and args.shell:
-            shell = Shell(args.shell)
-
-        analyzer = ShellEnvironmentAnalyzer(shell=shell)
-
-        if path_action == "list":
-            return self._env_path_list(analyzer, args)
-        elif path_action == "add":
-            return self._env_path_add(analyzer, args)
-        elif path_action == "remove":
-            return self._env_path_remove(analyzer, args)
-        elif path_action == "dedupe":
-            return self._env_path_dedupe(analyzer, args)
-        elif path_action == "clean":
-            return self._env_path_clean(analyzer, args)
-        else:
-            self._print_error(f"Unknown path action: {path_action}")
-            return 1
-
-    def _env_path_list(self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace) -> int:
-        """List PATH entries with status."""
-        as_json = getattr(args, "json", False)
-
-        current_path = os.environ.get("PATH", "")
-        entries = current_path.split(os.pathsep)
-
-        # Get analysis
-        audit = analyzer.audit()
-
-        if as_json:
-            import json
-
-            print(json.dumps([e.to_dict() for e in audit.path_entries], indent=2))
-            return 0
-
-        cx_header("PATH Entries")
-
-        seen: set = set()
-        for i, entry in enumerate(entries, 1):
-            if not entry:
-                continue
-
-            status_icons = []
-
-            # Check if exists
-            if not Path(entry).exists():
-                status_icons.append("[red]✗ missing[/red]")
-
-            # Check if duplicate
-            if entry in seen:
-                status_icons.append("[yellow]⚠ duplicate[/yellow]")
-            seen.add(entry)
-
-            status = " ".join(status_icons) if status_icons else "[green]✓[/green]"
-            console.print(f"  {i:2d}. {entry}  {status}")
-
-        duplicates = analyzer.get_path_duplicates()
-        missing = analyzer.get_missing_paths()
-
-        console.print()
-        console.print(
-            f"[dim]Total: {len(entries)} entries, {len(duplicates)} duplicates, {len(missing)} missing[/dim]"
-        )
-
-        return 0
-
-    def _env_path_add(self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace) -> int:
-        """Add a path entry."""
-        import os
-        from pathlib import Path
-
-        new_path = args.path
-        prepend = not getattr(args, "append", False)
-        persist = getattr(args, "persist", False)
-
-        # Resolve to absolute path
-        new_path = str(Path(new_path).expanduser().resolve())
-
-        if persist:
-            # When persisting, check the config file, not current PATH
-            try:
-                config_path = analyzer.get_shell_config_path()
-                # Check if already in config
-                config_content = ""
-                if os.path.exists(config_path):
-                    with open(config_path) as f:
-                        config_content = f.read()
-
-                # Check if path is in a cortex-managed block
-                if (
-                    f'export PATH="{new_path}:$PATH"' in config_content
-                    or f'export PATH="$PATH:{new_path}"' in config_content
-                ):
-                    cx_print(f"'{new_path}' is already in {config_path}", "info")
-                    return 0
-
-                analyzer.add_path_to_config(new_path, prepend=prepend)
-                cx_print(f"✓ Added '{new_path}' to {config_path}", "success")
-                console.print(f"[dim]To use in current shell: source {config_path}[/dim]")
-            except Exception as e:
-                self._print_error(f"Failed to persist: {e}")
+    
+    def _do_history(self, args: argparse.Namespace) -> int:
+        """Show do-mode run history."""
+        from cortex.do_runner import DoHandler
+        
+        handler = DoHandler()
+        run_id = getattr(args, "run_id", None)
+        
+        if run_id:
+            # Show specific run details
+            run = handler.get_run(run_id)
+            if not run:
+                self._print_error(f"Run {run_id} not found")
                 return 1
+            
+            # Get statistics from database
+            stats = handler.db.get_run_stats(run_id)
+            
+            console.print(f"\n[bold]Do Run: {run.run_id}[/bold]")
+            console.print("=" * 70)
+            
+            # Show session ID if available
+            session_id = getattr(run, "session_id", None)
+            if session_id:
+                console.print(f"[bold]Session:[/bold] [magenta]{session_id}[/magenta]")
+            
+            console.print(f"[bold]Query:[/bold] {run.user_query}")
+            console.print(f"[bold]Mode:[/bold] {run.mode.value}")
+            console.print(f"[bold]Started:[/bold] {run.started_at}")
+            console.print(f"[bold]Completed:[/bold] {run.completed_at}")
+            console.print(f"\n[bold]Summary:[/bold] {run.summary}")
+            
+            # Show statistics
+            if stats:
+                console.print(f"\n[bold cyan]📊 Command Statistics:[/bold cyan]")
+                total = stats.get("total_commands", 0)
+                success = stats.get("successful_commands", 0)
+                failed = stats.get("failed_commands", 0)
+                skipped = stats.get("skipped_commands", 0)
+                console.print(f"   Total: {total} | [green]✓ Success: {success}[/green] | [red]✗ Failed: {failed}[/red] | [yellow]○ Skipped: {skipped}[/yellow]")
+            
+            if run.files_accessed:
+                console.print(f"\n[bold]Files Accessed:[/bold] {', '.join(run.files_accessed)}")
+            
+            # Get detailed commands from database
+            commands_detail = handler.db.get_run_commands(run_id)
+            
+            console.print(f"\n[bold cyan]📋 Commands Executed:[/bold cyan]")
+            console.print("-" * 70)
+            
+            if commands_detail:
+                for cmd in commands_detail:
+                    status = cmd["status"]
+                    if status == "success":
+                        status_icon = "[green]✓[/green]"
+                    elif status == "failed":
+                        status_icon = "[red]✗[/red]"
+                    elif status == "skipped":
+                        status_icon = "[yellow]○[/yellow]"
+                    else:
+                        status_icon = "[dim]?[/dim]"
+                    
+                    console.print(f"\n{status_icon} [bold]Command {cmd['index'] + 1}:[/bold] {cmd['command']}")
+                    console.print(f"   [dim]Purpose:[/dim] {cmd['purpose']}")
+                    console.print(f"   [dim]Status:[/dim] {status} | [dim]Duration:[/dim] {cmd['duration']:.2f}s")
+                    
+                    if cmd["output"]:
+                        console.print(f"   [dim]Output:[/dim] {cmd['output']}")
+                    if cmd["error"]:
+                        console.print(f"   [red]Error:[/red] {cmd['error']}")
+            else:
+                # Fallback to run.commands if database commands not available
+                for i, cmd in enumerate(run.commands):
+                    status_icon = "[green]✓[/green]" if cmd.status.value == "success" else "[red]✗[/red]"
+                    console.print(f"\n{status_icon} [bold]Command {i + 1}:[/bold] {cmd.command}")
+                    console.print(f"   [dim]Purpose:[/dim] {cmd.purpose}")
+                    console.print(f"   [dim]Status:[/dim] {cmd.status.value} | [dim]Duration:[/dim] {cmd.duration_seconds:.2f}s")
+                    if cmd.output:
+                        output_truncated = cmd.output[:250] + "..." if len(cmd.output) > 250 else cmd.output
+                        console.print(f"   [dim]Output:[/dim] {output_truncated}")
+                    if cmd.error:
+                        console.print(f"   [red]Error:[/red] {cmd.error}")
+            
+            return 0
+        
+        # List recent runs
+        limit = getattr(args, "limit", 20)
+        runs = handler.get_run_history(limit)
+        
+        if not runs:
+            cx_print("No do-mode runs found", "info")
+            return 0
+        
+        # Group runs by session
+        sessions = {}
+        standalone_runs = []
+        
+        for run in runs:
+            session_id = getattr(run, "session_id", None)
+            if session_id:
+                if session_id not in sessions:
+                    sessions[session_id] = []
+                sessions[session_id].append(run)
+            else:
+                standalone_runs.append(run)
+        
+        console.print(f"\n[bold]📜 Recent Do Runs:[/bold]")
+        console.print(f"[dim]Sessions: {len(sessions)} | Standalone runs: {len(standalone_runs)}[/dim]\n")
+        
+        import json as json_module
+        
+        # Show sessions first
+        for session_id, session_runs in sessions.items():
+            console.print(f"[bold magenta]╭{'─' * 68}╮[/bold magenta]")
+            console.print(f"[bold magenta]│ 📂 Session: {session_id[:40]}...{' ' * 15}│[/bold magenta]")
+            console.print(f"[bold magenta]│    Runs: {len(session_runs)}{' ' * 57}│[/bold magenta]")
+            console.print(f"[bold magenta]╰{'─' * 68}╯[/bold magenta]")
+            
+            for run in session_runs:
+                self._display_run_summary(handler, run, indent="   ")
+            console.print()
+        
+        # Show standalone runs
+        if standalone_runs:
+            if sessions:
+                console.print(f"[bold cyan]{'─' * 70}[/bold cyan]")
+                console.print("[bold]📋 Standalone Runs (no session):[/bold]")
+            
+            for run in standalone_runs:
+                self._display_run_summary(handler, run)
+        
+        console.print(f"[dim]Use 'cortex do history <run_id>' for full details[/dim]")
+        return 0
+    
+    def _display_run_summary(self, handler, run, indent: str = "") -> None:
+        """Display a single run summary."""
+        stats = handler.db.get_run_stats(run.run_id)
+        if stats:
+            total = stats.get("total_commands", 0)
+            success = stats.get("successful_commands", 0)
+            failed = stats.get("failed_commands", 0)
+            status_str = f"[green]✓{success}[/green]/[red]✗{failed}[/red]/{total}"
         else:
-            # Check if already in current PATH (for non-persist mode)
-            current_path = os.environ.get("PATH", "")
-            if new_path in current_path.split(os.pathsep):
-                cx_print(f"'{new_path}' is already in PATH", "info")
-                return 0
-
-            # Only modify current process env (won't persist across commands)
-            updated = analyzer.safe_add_path(new_path, prepend=prepend)
-            os.environ["PATH"] = updated
-            position = "prepended to" if prepend else "appended to"
-            cx_print(f"✓ '{new_path}' {position} PATH (this process only)", "success")
-            cx_print("Note: Add --persist to make this permanent", "info")
-
-        return 0
-
-    def _env_path_remove(
-        self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace
-    ) -> int:
-        """Remove a path entry."""
-        import os
-
-        target_path = args.path
-        persist = getattr(args, "persist", False)
-
-        if persist:
-            # When persisting, remove from config file
-            try:
-                config_path = analyzer.get_shell_config_path()
-                result = analyzer.remove_path_from_config(target_path)
-                if result:
-                    cx_print(f"✓ Removed '{target_path}' from {config_path}", "success")
-                    console.print(f"[dim]To update current shell: source {config_path}[/dim]")
-                else:
-                    cx_print(f"'{target_path}' was not in cortex-managed config block", "info")
-            except Exception as e:
-                self._print_error(f"Failed to persist removal: {e}")
-                return 1
+            cmd_count = len(run.commands)
+            success_count = sum(1 for c in run.commands if c.status.value == "success")
+            failed_count = sum(1 for c in run.commands if c.status.value == "failed")
+            status_str = f"[green]✓{success_count}[/green]/[red]✗{failed_count}[/red]/{cmd_count}"
+        
+        commands_list = handler.db.get_commands_list(run.run_id)
+        
+        console.print(f"{indent}[bold cyan]{'─' * 60}[/bold cyan]")
+        console.print(f"{indent}[bold]Run ID:[/bold] {run.run_id}")
+        console.print(f"{indent}[bold]Query:[/bold] {run.user_query[:60]}{'...' if len(run.user_query) > 60 else ''}")
+        console.print(f"{indent}[bold]Status:[/bold] {status_str} | [bold]Started:[/bold] {run.started_at[:19] if run.started_at else '-'}")
+        
+        if commands_list and len(commands_list) <= 3:
+            console.print(f"{indent}[bold]Commands:[/bold] {', '.join(cmd[:30] for cmd in commands_list)}")
+        elif commands_list:
+            console.print(f"{indent}[bold]Commands:[/bold] {len(commands_list)} commands")
+    
+    def _do_setup(self) -> int:
+        """Setup cortex user for privilege management."""
+        from cortex.do_runner import CortexUserManager
+        
+        cx_print("Setting up Cortex user for privilege management...", "info")
+        
+        if CortexUserManager.user_exists():
+            cx_print("✓ Cortex user already exists", "success")
+            return 0
+        
+        success, message = CortexUserManager.create_user()
+        if success:
+            cx_print(f"✓ {message}", "success")
+            return 0
         else:
-            # Only modify current process env (won't persist across commands)
-            current_path = os.environ.get("PATH", "")
-            if target_path not in current_path.split(os.pathsep):
-                cx_print(f"'{target_path}' is not in current PATH", "info")
-                return 0
-
-            updated = analyzer.safe_remove_path(target_path)
-            os.environ["PATH"] = updated
-            cx_print(f"✓ Removed '{target_path}' from PATH (this process only)", "success")
-            cx_print("Note: Add --persist to make this permanent", "info")
-
+            self._print_error(message)
+            return 1
+    
+    def _do_protected(self, args: argparse.Namespace) -> int:
+        """Manage protected paths."""
+        from cortex.do_runner import ProtectedPathsManager
+        
+        manager = ProtectedPathsManager()
+        
+        add_path = getattr(args, "add", None)
+        remove_path = getattr(args, "remove", None)
+        list_paths = getattr(args, "list", False)
+        
+        if add_path:
+            manager.add_protected_path(add_path)
+            cx_print(f"✓ Added '{add_path}' to protected paths", "success")
+            return 0
+        
+        if remove_path:
+            if manager.remove_protected_path(remove_path):
+                cx_print(f"✓ Removed '{remove_path}' from protected paths", "success")
+            else:
+                self._print_error(f"Path '{remove_path}' not found in user-defined protected paths")
+            return 0
+        
+        # Default: list all protected paths
+        paths = manager.get_all_protected()
+        console.print("\n[bold]Protected Paths:[/bold]")
+        console.print("[dim](These paths require user confirmation for access)[/dim]\n")
+        
+        for path in paths:
+            is_system = path in manager.SYSTEM_PROTECTED_PATHS
+            tag = "[system]" if is_system else "[user]"
+            console.print(f"  {path} [dim]{tag}[/dim]")
+        
+        console.print(f"\n[dim]Total: {len(paths)} paths[/dim]")
+        console.print("[dim]Use --add <path> to add custom paths[/dim]")
         return 0
 
-    def _env_path_dedupe(
-        self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace
-    ) -> int:
-        """Remove duplicate PATH entries."""
-        import os
-
-        dry_run = getattr(args, "dry_run", False)
-        persist = getattr(args, "persist", False)
-
-        duplicates = analyzer.get_path_duplicates()
-
-        if not duplicates:
-            cx_print("✓ No duplicate PATH entries found", "success")
-            return 0
-
-        cx_header("PATH Deduplication")
-        console.print(f"[yellow]Found {len(duplicates)} duplicate(s):[/yellow]")
-        for dup in duplicates:
-            console.print(f"  • {dup}")
-
-        if dry_run:
-            console.print("\n[dim]Dry run - no changes made[/dim]")
-            clean_path = analyzer.dedupe_path()
-            console.print("\n[bold]Cleaned PATH would be:[/bold]")
-            for entry in clean_path.split(os.pathsep)[:10]:
-                console.print(f"  {entry}")
-            if len(clean_path.split(os.pathsep)) > 10:
-                console.print("  [dim]... and more[/dim]")
-            return 0
-
-        # Apply deduplication
-        clean_path = analyzer.dedupe_path()
-        os.environ["PATH"] = clean_path
-        cx_print(f"✓ Removed {len(duplicates)} duplicate(s) from PATH (current session)", "success")
-
-        if persist:
-            script = analyzer.generate_path_fix_script()
-            console.print("\n[bold]Add this to your shell config for persistence:[/bold]")
-            console.print(f"[dim]{script}[/dim]")
-
-        return 0
-
-    def _env_path_clean(
-        self, analyzer: "ShellEnvironmentAnalyzer", args: argparse.Namespace
-    ) -> int:
-        """Clean PATH by removing duplicates and optionally missing paths."""
-        import os
-
-        remove_missing = getattr(args, "remove_missing", False)
-        dry_run = getattr(args, "dry_run", False)
-
-        duplicates = analyzer.get_path_duplicates()
-        missing = analyzer.get_missing_paths() if remove_missing else []
-
-        total_issues = len(duplicates) + len(missing)
-
-        if total_issues == 0:
-            cx_print("✓ PATH is already clean", "success")
-            return 0
-
-        cx_header("PATH Cleanup")
-
-        if duplicates:
-            console.print(f"[yellow]Duplicates ({len(duplicates)}):[/yellow]")
-            for d in duplicates[:5]:
-                console.print(f"  • {d}")
-            if len(duplicates) > 5:
-                console.print(f"  [dim]... and {len(duplicates) - 5} more[/dim]")
-
-        if missing:
-            console.print(f"\n[red]Missing paths ({len(missing)}):[/red]")
-            for m in missing[:5]:
-                console.print(f"  • {m}")
-            if len(missing) > 5:
-                console.print(f"  [dim]... and {len(missing) - 5} more[/dim]")
-
-        if dry_run:
-            clean_path = analyzer.clean_path(remove_missing=remove_missing)
-            console.print("\n[dim]Dry run - no changes made[/dim]")
-            console.print(
-                f"[bold]Would reduce PATH from {len(os.environ.get('PATH', '').split(os.pathsep))} to {len(clean_path.split(os.pathsep))} entries[/bold]"
+    # --- Info Command ---
+    def info_cmd(self, args: argparse.Namespace) -> int:
+        """Get system and application information using read-only commands."""
+        from rich.panel import Panel
+        from rich.table import Table
+        
+        try:
+            from cortex.system_info_generator import (
+                SystemInfoGenerator, 
+                get_system_info_generator,
+                COMMON_INFO_COMMANDS,
+                APP_INFO_TEMPLATES,
             )
+        except ImportError as e:
+            self._print_error(f"System info generator not available: {e}")
+            return 1
+        
+        debug = getattr(args, "debug", False)
+        
+        # Handle --list
+        if getattr(args, "list", False):
+            console.print("\n[bold]📊 Available Information Types[/bold]\n")
+            
+            console.print("[bold cyan]Quick Info Types (--quick):[/bold cyan]")
+            for name in sorted(COMMON_INFO_COMMANDS.keys()):
+                console.print(f"  • {name}")
+            
+            console.print("\n[bold cyan]Application Templates (--app):[/bold cyan]")
+            for name in sorted(APP_INFO_TEMPLATES.keys()):
+                aspects = ", ".join(APP_INFO_TEMPLATES[name].keys())
+                console.print(f"  • {name}: [dim]{aspects}[/dim]")
+            
+            console.print("\n[bold cyan]Categories (--category):[/bold cyan]")
+            console.print("  hardware, software, network, services, security, storage, performance, configuration")
+            
+            console.print("\n[dim]Examples:[/dim]")
+            console.print("  cortex info --quick cpu")
+            console.print("  cortex info --app nginx")
+            console.print("  cortex info --category hardware")
+            console.print("  cortex info What version of Python is installed?")
             return 0
+        
+        # Handle --quick
+        quick_type = getattr(args, "quick", None)
+        if quick_type:
+            console.print(f"\n[bold]🔍 Quick Info: {quick_type.upper()}[/bold]\n")
+            
+            if quick_type in COMMON_INFO_COMMANDS:
+                for cmd_info in COMMON_INFO_COMMANDS[quick_type]:
+                    from cortex.ask import CommandValidator
+                    success, stdout, stderr = CommandValidator.execute_command(cmd_info.command)
+                    
+                    if success and stdout:
+                        console.print(Panel(
+                            stdout[:1000] + ("..." if len(stdout) > 1000 else ""),
+                            title=f"[cyan]{cmd_info.purpose}[/cyan]",
+                            subtitle=f"[dim]{cmd_info.command[:60]}...[/dim]" if len(cmd_info.command) > 60 else f"[dim]{cmd_info.command}[/dim]",
+                        ))
+                    elif stderr:
+                        console.print(f"[yellow]⚠ {cmd_info.purpose}: {stderr[:100]}[/yellow]")
+            else:
+                self._print_error(f"Unknown quick info type: {quick_type}")
+                return 1
+            return 0
+        
+        # Handle --app
+        app_name = getattr(args, "app", None)
+        if app_name:
+            console.print(f"\n[bold]📦 Application Info: {app_name.upper()}[/bold]\n")
+            
+            if app_name.lower() in APP_INFO_TEMPLATES:
+                templates = APP_INFO_TEMPLATES[app_name.lower()]
+                for aspect, commands in templates.items():
+                    console.print(f"[bold cyan]─── {aspect.upper()} ───[/bold cyan]")
+                    for cmd_info in commands:
+                        from cortex.ask import CommandValidator
+                        success, stdout, stderr = CommandValidator.execute_command(cmd_info.command, timeout=15)
+                        
+                        if success and stdout:
+                            output = stdout[:500] + ("..." if len(stdout) > 500 else "")
+                            console.print(f"[dim]{cmd_info.purpose}:[/dim]")
+                            console.print(output)
+                        elif stderr:
+                            console.print(f"[yellow]{cmd_info.purpose}: {stderr[:100]}[/yellow]")
+                        console.print()
+            else:
+                # Try using LLM for unknown apps
+                api_key = self._get_api_key()
+                if api_key:
+                    try:
+                        generator = SystemInfoGenerator(
+                            api_key=api_key,
+                            provider=self._get_provider(),
+                            debug=debug,
+                        )
+                        result = generator.get_app_info(app_name)
+                        console.print(result.answer)
+                    except Exception as e:
+                        self._print_error(f"Could not get info for {app_name}: {e}")
+                        return 1
+                else:
+                    self._print_error(f"Unknown app '{app_name}' and no API key for LLM lookup")
+                    return 1
+            return 0
+        
+        # Handle --category
+        category = getattr(args, "category", None)
+        if category:
+            console.print(f"\n[bold]📊 Category Info: {category.upper()}[/bold]\n")
+            
+            api_key = self._get_api_key()
+            if not api_key:
+                # Fall back to running common commands without LLM
+                category_mapping = {
+                    "hardware": ["cpu", "memory", "disk", "gpu"],
+                    "software": ["os", "kernel"],
+                    "network": ["network", "dns"],
+                    "services": ["services"],
+                    "security": ["security"],
+                    "storage": ["disk"],
+                    "performance": ["cpu", "memory", "processes"],
+                    "configuration": ["environment"],
+                }
+                aspects = category_mapping.get(category, [])
+                for aspect in aspects:
+                    if aspect in COMMON_INFO_COMMANDS:
+                        console.print(f"[bold cyan]─── {aspect.upper()} ───[/bold cyan]")
+                        for cmd_info in COMMON_INFO_COMMANDS[aspect]:
+                            from cortex.ask import CommandValidator
+                            success, stdout, _ = CommandValidator.execute_command(cmd_info.command)
+                            if success and stdout:
+                                console.print(stdout[:400])
+                        console.print()
+                return 0
+            
+            try:
+                generator = SystemInfoGenerator(
+                    api_key=api_key,
+                    provider=self._get_provider(),
+                    debug=debug,
+                )
+                result = generator.get_structured_info(category)
+                console.print(result.answer)
+            except Exception as e:
+                self._print_error(f"Could not get category info: {e}")
+                return 1
+            return 0
+        
+        # Handle natural language query
+        query_parts = getattr(args, "query", [])
+        if query_parts:
+            query = " ".join(query_parts)
+            console.print(f"\n[bold]🔍 System Info Query[/bold]\n")
+            console.print(f"[dim]Query: {query}[/dim]\n")
+            
+            api_key = self._get_api_key()
+            if not api_key:
+                self._print_error("Natural language queries require an API key. Use --quick or --app instead.")
+                return 1
+            
+            try:
+                generator = SystemInfoGenerator(
+                    api_key=api_key,
+                    provider=self._get_provider(),
+                    debug=debug,
+                )
+                result = generator.get_info(query)
+                
+                console.print(Panel(result.answer, title="[bold green]Answer[/bold green]"))
+                
+                if debug and result.commands_executed:
+                    table = Table(title="Commands Executed")
+                    table.add_column("Command", style="cyan", max_width=50)
+                    table.add_column("Status", style="green")
+                    table.add_column("Time", style="dim")
+                    for cmd in result.commands_executed:
+                        status = "✓" if cmd.success else "✗"
+                        table.add_row(
+                            cmd.command[:50] + "..." if len(cmd.command) > 50 else cmd.command,
+                            status,
+                            f"{cmd.execution_time:.2f}s"
+                        )
+                    console.print(table)
+                    
+            except Exception as e:
+                self._print_error(f"Query failed: {e}")
+                if debug:
+                    import traceback
+                    traceback.print_exc()
+                return 1
+            return 0
+        
+        # No arguments - show help
+        console.print("\n[bold]📊 Cortex Info - System Information Generator[/bold]\n")
+        console.print("Get system and application information using read-only commands.\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  cortex info --list                    List available info types")
+        console.print("  cortex info --quick <type>            Quick lookup (cpu, memory, etc.)")
+        console.print("  cortex info --app <name>              Application info (nginx, docker, etc.)")
+        console.print("  cortex info --category <cat>          Category info (hardware, network, etc.)")
+        console.print("  cortex info <query>                   Natural language query (requires API key)")
+        console.print("\n[bold cyan]Examples:[/bold cyan]")
+        console.print("  cortex info --quick memory")
+        console.print("  cortex info --app nginx")
+        console.print("  cortex info --category hardware")
+        console.print("  cortex info What Python packages are installed?")
+        return 0
 
-        # Apply cleanup
-        clean_path = analyzer.clean_path(remove_missing=remove_missing)
-        old_count = len(os.environ.get("PATH", "").split(os.pathsep))
-        new_count = len(clean_path.split(os.pathsep))
-        os.environ["PATH"] = clean_path
-
-        cx_print(f"✓ Cleaned PATH: {old_count} → {new_count} entries", "success")
-
-        # Show fix script
-        script = analyzer.generate_path_fix_script()
-        if "no fixes needed" not in script:
-            console.print("\n[bold]To make permanent, add to your shell config:[/bold]")
-            console.print(f"[dim]{script}[/dim]")
-
+    # --- Watch Command ---
+    def watch_cmd(self, args: argparse.Namespace) -> int:
+        """Manage terminal watching for manual intervention mode."""
+        from rich.panel import Panel
+        from cortex.do_runner.terminal import TerminalMonitor
+        
+        monitor = TerminalMonitor(use_llm=False)
+        system_wide = getattr(args, "system", False)
+        as_service = getattr(args, "service", False)
+        
+        if getattr(args, "install", False):
+            if as_service:
+                # Install as systemd service
+                console.print("\n[bold cyan]🔧 Installing Cortex Watch Service[/bold cyan]")
+                console.print("[dim]This will create a systemd user service that runs automatically[/dim]\n")
+                
+                from cortex.watch_service import install_service
+                success, msg = install_service()
+                console.print(msg)
+                return 0 if success else 1
+            elif system_wide:
+                console.print("\n[bold cyan]🔧 Installing System-Wide Terminal Watch Hook[/bold cyan]")
+                console.print("[dim]This will install to /etc/profile.d/ (requires sudo)[/dim]\n")
+                success, msg = monitor.setup_system_wide_watch()
+                if success:
+                    console.print(f"[green]{msg}[/green]")
+                    console.print("\n[bold green]✓ All new terminals will automatically have Cortex watching![/bold green]")
+                else:
+                    console.print(f"[red]✗ {msg}[/red]")
+                    return 1
+            else:
+                console.print("\n[bold cyan]🔧 Installing Terminal Watch Hook[/bold cyan]\n")
+                success, msg = monitor.setup_auto_watch(permanent=True)
+                if success:
+                    console.print(f"[green]✓ {msg}[/green]")
+                    console.print("\n[yellow]Note: New terminals will have the hook automatically.[/yellow]")
+                    console.print("[yellow]For existing terminals, run:[/yellow]")
+                    console.print(f"[green]source ~/.cortex/watch_hook.sh[/green]")
+                    console.print("\n[dim]Tip: For automatic activation in ALL terminals, run:[/dim]")
+                    console.print("[cyan]cortex watch --install --system[/cyan]")
+                else:
+                    console.print(f"[red]✗ {msg}[/red]")
+                    return 1
+            return 0
+        
+        if getattr(args, "uninstall", False):
+            if as_service:
+                console.print("\n[bold cyan]🔧 Removing Cortex Watch Service[/bold cyan]\n")
+                from cortex.watch_service import uninstall_service
+                success, msg = uninstall_service()
+            elif system_wide:
+                console.print("\n[bold cyan]🔧 Removing System-Wide Terminal Watch Hook[/bold cyan]\n")
+                success, msg = monitor.uninstall_system_wide_watch()
+            else:
+                console.print("\n[bold cyan]🔧 Removing Terminal Watch Hook[/bold cyan]\n")
+                success, msg = monitor.remove_auto_watch()
+            if success:
+                console.print(f"[green]{msg}[/green]")
+            else:
+                console.print(f"[red]✗ {msg}[/red]")
+                return 1
+            return 0
+        
+        if getattr(args, "test", False):
+            console.print("\n[bold cyan]🧪 Testing Terminal Monitoring[/bold cyan]\n")
+            monitor.test_monitoring()
+            return 0
+        
+        if getattr(args, "status", False):
+            console.print("\n[bold cyan]📊 Terminal Watch Status[/bold cyan]\n")
+            
+            from pathlib import Path
+            bashrc = Path.home() / ".bashrc"
+            zshrc = Path.home() / ".zshrc"
+            source_file = Path.home() / ".cortex" / "watch_hook.sh"
+            watch_log = Path.home() / ".cortex" / "terminal_watch.log"
+            system_hook = Path("/etc/profile.d/cortex-watch.sh")
+            service_file = Path.home() / ".config" / "systemd" / "user" / "cortex-watch.service"
+            
+            console.print("[bold]Service Status:[/bold]")
+            
+            # Check systemd service
+            if service_file.exists():
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "--user", "is-active", "cortex-watch.service"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    is_active = result.stdout.strip() == "active"
+                    if is_active:
+                        console.print("  [bold green]✓ SYSTEMD SERVICE RUNNING[/bold green]")
+                        console.print("    [dim]Automatic terminal monitoring active[/dim]")
+                    else:
+                        console.print("  [yellow]○ Systemd service installed but not running[/yellow]")
+                        console.print("    [dim]Run: systemctl --user start cortex-watch[/dim]")
+                except Exception:
+                    console.print("  [yellow]○ Systemd service installed (status unknown)[/yellow]")
+            else:
+                console.print("  [dim]○ Systemd service not installed[/dim]")
+                console.print("    [dim]Run: cortex watch --install --service (recommended)[/dim]")
+            
+            console.print()
+            console.print("[bold]Hook Status:[/bold]")
+            
+            # System-wide check
+            if system_hook.exists():
+                console.print("  [green]✓ System-wide hook installed[/green]")
+            else:
+                console.print("  [dim]○ System-wide hook not installed[/dim]")
+            
+            # User-level checks
+            if bashrc.exists() and "Cortex Terminal Watch Hook" in bashrc.read_text():
+                console.print("  [green]✓ Hook installed in .bashrc[/green]")
+            else:
+                console.print("  [dim]○ Not installed in .bashrc[/dim]")
+            
+            if zshrc.exists() and "Cortex Terminal Watch Hook" in zshrc.read_text():
+                console.print("  [green]✓ Hook installed in .zshrc[/green]")
+            else:
+                console.print("  [dim]○ Not installed in .zshrc[/dim]")
+            
+            console.print("\n[bold]Watch Log:[/bold]")
+            if watch_log.exists():
+                size = watch_log.stat().st_size
+                lines = len(watch_log.read_text().strip().split('\n')) if size > 0 else 0
+                console.print(f"  [green]✓ Log file exists: {watch_log}[/green]")
+                console.print(f"  [dim]  Size: {size} bytes, {lines} commands logged[/dim]")
+            else:
+                console.print(f"  [dim]○ No log file yet (created when commands are run)[/dim]")
+            
+            return 0
+        
+        # Default: show help
+        console.print()
+        console.print(Panel(
+            "[bold cyan]Terminal Watch[/bold cyan] - Real-time monitoring for manual intervention mode\n\n"
+            "When Cortex enters manual intervention mode, it watches your other terminals\n"
+            "to provide real-time feedback and AI-powered suggestions.\n\n"
+            "[bold]Commands:[/bold]\n"
+            "  [cyan]cortex watch --install --service[/cyan] Install as systemd service (RECOMMENDED)\n"
+            "  [cyan]cortex watch --install --system[/cyan]  Install system-wide hook (requires sudo)\n"
+            "  [cyan]cortex watch --install[/cyan]           Install hook to .bashrc/.zshrc\n"
+            "  [cyan]cortex watch --uninstall --service[/cyan] Remove systemd service\n"
+            "  [cyan]cortex watch --status[/cyan]            Show installation status\n"
+            "  [cyan]cortex watch --test[/cyan]              Test monitoring setup\n\n"
+            "[bold green]Recommended Setup:[/bold green]\n"
+            "  Run [green]cortex watch --install --service[/green]\n\n"
+            "  This creates a background service that:\n"
+            "  • Starts automatically on login\n"
+            "  • Restarts if it crashes\n"
+            "  • Monitors ALL terminal activity\n"
+            "  • No manual setup in each terminal!",
+            title="[green]🔍 Cortex Watch[/green]",
+            border_style="cyan",
+        ))
         return 0
 
     # --- Import Dependencies Command ---
@@ -4257,7 +2314,7 @@ class CortexCLI:
 
         # Execute mode - confirm before installing
         total = total_packages + total_dev_packages
-        confirm = StdinHandler.get_input(f"\nInstall all {total} packages? [Y/n]: ")
+        confirm = input(f"\nInstall all {total} packages? [Y/n]: ")
         if confirm.lower() not in ["", "y", "yes"]:
             cx_print("Installation cancelled", "info")
             return 0
@@ -4276,6 +2333,7 @@ class CortexCLI:
         }
 
         ecosystem_name = ecosystem_names.get(result.ecosystem, "Unknown")
+        filename = os.path.basename(result.file_path)
 
         cx_print(f"\n📋 Found {result.prod_count} {ecosystem_name} packages", "info")
 
@@ -4336,7 +2394,7 @@ class CortexCLI:
             console.print(f"Completed in {result.total_duration:.2f} seconds")
             return 0
         else:
-            self._print_error(self.INSTALL_FAIL_MSG)
+            self._print_error("Installation failed")
             if result.error_message:
                 console.print(f"Error: {result.error_message}", style="red")
             return 1
@@ -4372,198 +2430,19 @@ class CortexCLI:
             return 0
         else:
             if result.failed_step is not None:
-                self._print_error(f"\n{self.INSTALL_FAIL_MSG} at step {result.failed_step + 1}")
+                self._print_error(f"\nInstallation failed at step {result.failed_step + 1}")
             else:
-                self._print_error(f"\n{self.INSTALL_FAIL_MSG}")
+                self._print_error("\nInstallation failed")
             if result.error_message:
                 console.print(f"Error: {result.error_message}", style="red")
             return 1
 
-    def doctor(self) -> int:
-        """Run system health checks."""
-        from cortex.doctor import SystemDoctor
-
-        doc = SystemDoctor()
-        return doc.run_checks()
-
-    def troubleshoot(self, no_execute: bool = False) -> int:
-        """Run interactive troubleshooter."""
-        from cortex.troubleshoot import Troubleshooter
-
-        troubleshooter = Troubleshooter(no_execute=no_execute)
-        return troubleshooter.start()
-
     # --------------------------
 
 
-def _is_ascii(s: str) -> bool:
-    """Check if a string contains only ASCII characters."""
-    try:
-        s.encode("ascii")
-        return True
-    except UnicodeEncodeError:
-        return False
-
-
-def _normalize_for_lookup(s: str) -> str:
-    """
-    Normalize a string for lookup, handling Latin and non-Latin scripts differently.
-
-    For ASCII/Latin text: casefold for case-insensitive matching (handles accented chars)
-    For non-Latin text (e.g., 中文): keep unchanged to preserve meaning
-
-    Uses casefold() instead of lower() because:
-    - casefold() handles accented Latin characters better (e.g., "Español", "Français")
-    - casefold() is more aggressive and handles edge cases like German ß -> ss
-
-    This prevents issues like:
-    - "中文".lower() producing the same string but creating duplicate keys
-    - Meaningless normalization of non-Latin scripts
-    """
-    if _is_ascii(s):
-        return s.casefold()
-    # For non-ASCII Latin scripts (accented chars like é, ñ, ü), use casefold
-    # Only keep unchanged for truly non-Latin scripts (CJK, Arabic, etc.)
-    try:
-        # Check if string contains any Latin characters (a-z, A-Z, or accented)
-        # If it does, it's likely a Latin-based language name
-        import unicodedata
-
-        has_latin = any(unicodedata.category(c).startswith("L") and ord(c) < 0x3000 for c in s)
-        if has_latin:
-            return s.casefold()
-    except Exception:
-        pass
-    return s
-
-
-def _resolve_language_name(name: str) -> str | None:
-    """
-    Resolve a language name or code to a supported language code.
-
-    Accepts:
-    - Language codes: en, es, fr, de, zh
-    - English names: English, Spanish, French, German, Chinese
-    - Native names: Español, Français, Deutsch, 中文
-
-    Args:
-        name: Language name or code (case-insensitive for Latin scripts)
-
-    Returns:
-        Language code if found, None otherwise
-
-    Note:
-        Non-Latin scripts (e.g., Chinese 中文) are matched exactly without
-        case normalization, since .lower() is meaningless for these scripts
-        and could create key collisions.
-    """
-    name = name.strip()
-    name_normalized = _normalize_for_lookup(name)
-
-    # Direct code match (codes are always ASCII/lowercase)
-    if name_normalized in SUPPORTED_LANGUAGES:
-        return name_normalized
-
-    # Build lookup tables for names
-    # Using a list of tuples to handle potential key collisions properly
-    name_to_code: dict[str, str] = {}
-
-    for code, info in SUPPORTED_LANGUAGES.items():
-        english_name = info["name"]
-        native_name = info["native"]
-
-        # English names are always ASCII, use casefold for case-insensitive matching
-        name_to_code[english_name.casefold()] = code
-
-        # Native names: normalize using _normalize_for_lookup
-        # - Latin scripts (Español, Français): casefold for case-insensitive matching
-        # - Non-Latin scripts (中文): store as-is only
-        native_normalized = _normalize_for_lookup(native_name)
-        name_to_code[native_normalized] = code
-
-        # Also store original native name for exact match
-        # (handles case where user types exactly "Español" with correct accent)
-        if native_name != native_normalized:
-            name_to_code[native_name] = code
-
-    # Try to find a match using normalized input
-    if name_normalized in name_to_code:
-        return name_to_code[name_normalized]
-
-    # Try exact match for non-ASCII input
-    if name in name_to_code:
-        return name_to_code[name]
-
-    return None
-
-
-def _handle_set_language(language_input: str) -> int:
-    """
-    Handle the --set-language global flag.
-
-    Args:
-        language_input: Language name or code from user
-
-    Returns:
-        Exit code (0 for success, 1 for error)
-    """
-    # Resolve the language name to a code
-    lang_code = _resolve_language_name(language_input)
-
-    if not lang_code:
-        # Show error with available options
-        cx_print(t("language.invalid_code", code=language_input), "error")
-        console.print()
-        console.print(f"[bold]{t('language.supported_languages_header')}[/bold]")
-        for code, info in SUPPORTED_LANGUAGES.items():
-            console.print(f"  • {info['name']} ({info['native']}) - code: [green]{code}[/green]")
-        return 1
-
-    # Set the language
-    try:
-        lang_config = LanguageConfig()
-        lang_config.set_language(lang_code)
-
-        # Reset and update global translator
-        from cortex.i18n.translator import reset_translator
-
-        reset_translator()
-        set_language(lang_code)
-
-        lang_info = SUPPORTED_LANGUAGES[lang_code]
-        cx_print(t("language.changed", language=lang_info["native"]), "success")
-        return 0
-    except Exception as e:
-        cx_print(t("language.set_failed", error=str(e)), "error")
-        return 1
-
-    def dashboard(self) -> int:
-        """Launch the real-time system monitoring dashboard"""
-        try:
-            from cortex.dashboard import DashboardApp
-
-            app = DashboardApp()
-            rc = app.run()
-            return rc if isinstance(rc, int) else 0
-        except ImportError as e:
-            self._print_error(f"Dashboard dependencies not available: {e}")
-            cx_print("Install required packages with:", "info")
-            cx_print("  pip install psutil>=5.9.0 nvidia-ml-py>=12.0.0", "info")
-            return 1
-        except KeyboardInterrupt:
-            return 0
-        except Exception as e:
-            self._print_error(f"Dashboard error: {e}")
-            return 1
-
-
 def show_rich_help():
-    """Display a beautifully formatted help table using the Rich library.
-
-    This function outputs the primary command menu, providing descriptions
-    for all core Cortex utilities including installation, environment
-    management, and container tools.
-    """
+    """Display beautifully formatted help using Rich"""
+    from rich.table import Table
 
     show_banner(show_version=True)
     console.print()
@@ -4572,35 +2451,27 @@ def show_rich_help():
     console.print("[dim]Just tell Cortex what you want to install.[/dim]")
     console.print()
 
-    # Initialize a table to display commands with specific column styling
+    # Commands table
     table = Table(show_header=True, header_style="bold cyan", box=None)
     table.add_column("Command", style="green")
     table.add_column("Description")
 
-    # Command Rows
     table.add_row("ask <question>", "Ask about your system")
-    table.add_row("voice", "Voice input mode (F9 to speak)")
+    table.add_row("ask --do <question>", "Solve problems (can write/execute)")
+    table.add_row("do history", "View do-mode run history")
     table.add_row("demo", "See Cortex in action")
     table.add_row("wizard", "Configure API key")
     table.add_row("status", "System status")
     table.add_row("install <pkg>", "Install software")
-    table.add_row("remove <pkg>", "Remove packages with impact analysis")
-    table.add_row("install --mic", "Install via voice input")
     table.add_row("import <file>", "Import deps from package files")
     table.add_row("history", "View history")
     table.add_row("rollback <id>", "Undo installation")
-    table.add_row("role", "AI-driven system role detection")
-    table.add_row("stack <name>", "Install the stack")
-    table.add_row("dashboard", "Real-time system monitoring dashboard")
     table.add_row("notify", "Manage desktop notifications")
     table.add_row("env", "Manage environment variables")
     table.add_row("cache stats", "Show LLM cache statistics")
-    table.add_row("docker permissions", "Fix Docker bind-mount permissions")
+    table.add_row("stack <name>", "Install the stack")
     table.add_row("sandbox <cmd>", "Test packages in Docker sandbox")
-    table.add_row("update", "Check for and install updates")
-    table.add_row("daemon <cmd>", "Manage the cortexd background daemon")
     table.add_row("doctor", "System health check")
-    table.add_row("troubleshoot", "Interactive system troubleshooter")
 
     console.print(table)
     console.print()
@@ -4653,21 +2524,6 @@ def main():
         # Network config is optional - don't block execution if it fails
         console.print(f"[yellow]⚠️  Network auto-config failed: {e}[/yellow]")
 
-    # Check for updates on startup (cached, non-blocking)
-    # Only show notification for commands that aren't 'update' itself
-    try:
-        if temp_args.command not in ["update", None] and "--json" not in sys.argv:
-            update_release = should_notify_update()
-            if update_release:
-                console.print(
-                    f"[cyan]🔔 Cortex update available:[/cyan] "
-                    f"[green]{update_release.version}[/green]"
-                )
-                console.print("   [dim]Run 'cortex update' to upgrade[/dim]")
-                console.print()
-    except Exception:
-        pass  # Don't block CLI on update check failures
-
     parser = argparse.ArgumentParser(
         prog="cortex",
         description="AI-powered Linux command interpreter",
@@ -4677,188 +2533,37 @@ def main():
     # Global flags
     parser.add_argument("--version", "-V", action="version", version=f"cortex {VERSION}")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output")
-    parser.add_argument(
-        "--set-language",
-        "--language",
-        dest="set_language",
-        metavar="LANG",
-        help="Set display language (e.g., English, Spanish, Español, es, zh)",
-    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Define the docker command and its associated sub-actions
-    docker_parser = subparsers.add_parser("docker", help="Docker and container utilities")
-    docker_subs = docker_parser.add_subparsers(dest="docker_action", help="Docker actions")
-
-    # Add the permissions action to allow fixing file ownership issues
-    perm_parser = docker_subs.add_parser(
-        "permissions", help="Fix file permissions from bind mounts"
-    )
-
-    # Provide an option to skip the manual confirmation prompt
-    perm_parser.add_argument("--yes", "-y", action="store_true", help=HELP_SKIP_CONFIRM)
-
-    perm_parser.add_argument(
-        "--execute", "-e", action="store_true", help="Apply ownership changes (default: dry-run)"
-    )
-
     # Demo command
-    subparsers.add_parser("demo", help="See Cortex in action")
-
-    # Dashboard command
-    dashboard_parser = subparsers.add_parser(
-        "dashboard", help="Real-time system monitoring dashboard"
-    )
+    demo_parser = subparsers.add_parser("demo", help="See Cortex in action")
 
     # Wizard command
-    subparsers.add_parser("wizard", help="Configure API key interactively")
+    wizard_parser = subparsers.add_parser("wizard", help="Configure API key interactively")
 
     # Status command (includes comprehensive health checks)
     subparsers.add_parser("status", help="Show comprehensive system status and health checks")
 
-    # Benchmark command
-    benchmark_parser = subparsers.add_parser("benchmark", help="Run AI performance benchmark")
-    benchmark_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-
-    # Systemd helper command
-    systemd_parser = subparsers.add_parser("systemd", help="Systemd service helper (plain English)")
-    systemd_parser.add_argument("service", help="Service name")
-    systemd_parser.add_argument(
-        "action",
-        nargs="?",
-        default="status",
-        choices=["status", "diagnose", "deps"],
-        help="Action: status (default), diagnose, deps",
-    )
-    systemd_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-
-    # GPU manager command
-    gpu_parser = subparsers.add_parser("gpu", help="Hybrid GPU (Optimus) manager")
-    gpu_parser.add_argument(
-        "action",
-        nargs="?",
-        default="status",
-        choices=["status", "modes", "switch", "apps"],
-        help="Action: status (default), modes, switch, apps",
-    )
-    gpu_parser.add_argument(
-        "mode", nargs="?", help="Mode for switch action (integrated/hybrid/nvidia)"
-    )
-    gpu_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-
-    # Printer/Scanner setup command
-    printer_parser = subparsers.add_parser("printer", help="Printer/Scanner auto-setup")
-    printer_parser.add_argument(
-        "action",
-        nargs="?",
-        default="status",
-        choices=["status", "detect"],
-        help="Action: status (default), detect",
-    )
-    printer_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-
     # Ask command
     ask_parser = subparsers.add_parser("ask", help="Ask a question about your system")
-    ask_parser.add_argument("question", nargs="?", type=str, help="Natural language question")
+    ask_parser.add_argument("question", type=str, nargs="?", default=None, help="Natural language question (optional with --do)")
+    ask_parser.add_argument("--debug", action="store_true", help="Show debug output for agentic loop")
     ask_parser.add_argument(
-        "--mic",
-        action="store_true",
-        help="Use voice input (press F9 to record)",
-    )
-
-    # Voice command - continuous voice mode
-    voice_parser = subparsers.add_parser(
-        "voice", help="Voice input mode (F9 to speak, Ctrl+C to exit)"
-    )
-    voice_parser.add_argument(
-        "--single",
-        "-s",
-        action="store_true",
-        help="Record single input and exit (default: continuous mode)",
-    )
-    voice_parser.add_argument(
-        "--model",
-        "-m",
-        type=str,
-        default=None,
-        metavar="MODEL",
-        choices=[
-            "tiny.en",
-            "base.en",
-            "small.en",
-            "medium.en",
-            "tiny",
-            "base",
-            "small",
-            "medium",
-            "large",
-        ],
-        help="Whisper model to use (default: base.en or CORTEX_WHISPER_MODEL env var). "
-        "Available models: tiny.en (39MB), base.en (140MB), small.en (466MB), "
-        "medium.en (1.5GB), tiny/base/small/medium (multilingual), large (6GB).",
+        "--do", 
+        action="store_true", 
+        help="Enable do mode - Cortex can write, read, and execute commands to solve problems. If no question is provided, starts interactive session."
     )
 
     # Install command
     install_parser = subparsers.add_parser("install", help="Install software")
-    install_parser.add_argument("software", nargs="?", type=str, help="Software to install")
+    install_parser.add_argument("software", type=str, help="Software to install")
     install_parser.add_argument("--execute", action="store_true", help="Execute commands")
     install_parser.add_argument("--dry-run", action="store_true", help="Show commands only")
     install_parser.add_argument(
         "--parallel",
         action="store_true",
         help="Enable parallel execution for multi-step installs",
-    )
-    install_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
-    install_parser.add_argument(
-        "--mic",
-        action="store_true",
-        help="Use voice input for software name (press F9 to record)",
-    )
-
-    # Remove command - uninstall with impact analysis
-    remove_parser = subparsers.add_parser(
-        "remove",
-        help="Remove packages with impact analysis",
-        description="Analyze and remove packages safely with dependency impact analysis.",
-    )
-    remove_parser.add_argument("package", type=str, help="Package to remove")
-    remove_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=True,
-        help="Show impact analysis without removing (default)",
-    )
-    remove_parser.add_argument(
-        "--execute",
-        action="store_true",
-        help="Actually remove the package after analysis",
-    )
-    remove_parser.add_argument(
-        "--purge",
-        action="store_true",
-        help="Also remove configuration files",
-    )
-    remove_parser.add_argument(
-        "--force",
-        "-f",
-        action="store_true",
-        help="Force removal even if impact is high",
-    )
-    remove_parser.add_argument(
-        "-y",
-        "--yes",
-        action="store_true",
-        help=HELP_SKIP_CONFIRM,
-    )
-    remove_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output impact analysis as JSON",
     )
 
     # Import command - import dependencies from package manager files
@@ -4920,29 +2625,6 @@ def main():
     send_parser.add_argument("--actions", nargs="*", help="Action buttons")
     # --------------------------
 
-    # Role Management Commands
-    # This parser defines the primary interface for system personality and contextual sensing.
-    role_parser = subparsers.add_parser(
-        "role", help="AI-driven system personality and context management"
-    )
-    role_subs = role_parser.add_subparsers(dest="role_action", help="Role actions")
-
-    # Subcommand: role detect
-    # Dynamically triggers the sensing layer to analyze system context and suggest roles.
-    role_subs.add_parser(
-        "detect", help="Dynamically sense system context and shell patterns to suggest an AI role"
-    )
-
-    # Subcommand: role set <slug>
-    # Allows manual override for role persistence and provides tailored recommendations.
-    role_set_parser = role_subs.add_parser(
-        "set", help="Manually override the system role and receive tailored recommendations"
-    )
-    role_set_parser.add_argument(
-        "role_slug",
-        help="The role identifier (e.g., 'data-scientist', 'web-server', 'ml-workstation')",
-    )
-
     # Stack command
     stack_parser = subparsers.add_parser("stack", help="Manage pre-built package stacks")
     stack_parser.add_argument(
@@ -4958,83 +2640,6 @@ def main():
     cache_parser = subparsers.add_parser("cache", help="Cache operations")
     cache_subs = cache_parser.add_subparsers(dest="cache_action", help="Cache actions")
     cache_subs.add_parser("stats", help="Show cache statistics")
-
-    # --- Config commands (including language settings) ---
-    config_parser = subparsers.add_parser("config", help="Configure Cortex settings")
-    config_subs = config_parser.add_subparsers(dest="config_action", help="Configuration actions")
-
-    # config language <code> - set language
-    config_lang_parser = config_subs.add_parser("language", help="Set display language")
-    config_lang_parser.add_argument(
-        "code",
-        nargs="?",
-        help="Language code (en, es, fr, de, zh) or 'auto' for auto-detection",
-    )
-    config_lang_parser.add_argument(
-        "--list", "-l", action="store_true", help="List available languages"
-    )
-    config_lang_parser.add_argument(
-        "--info", "-i", action="store_true", help="Show current language configuration"
-    )
-
-    # config show - show all configuration
-    config_subs.add_parser("show", help="Show all current configuration")
-
-    # --- Daemon Commands ---
-    daemon_parser = subparsers.add_parser("daemon", help="Manage the cortexd background daemon")
-    daemon_subs = daemon_parser.add_subparsers(dest="daemon_action", help="Daemon actions")
-
-    # daemon install [--execute]
-    daemon_install_parser = daemon_subs.add_parser(
-        "install", help="Install and enable the daemon service"
-    )
-    daemon_install_parser.add_argument(
-        "--execute", action="store_true", help="Actually run the installation"
-    )
-
-    # daemon uninstall [--execute]
-    daemon_uninstall_parser = daemon_subs.add_parser(
-        "uninstall", help="Stop and remove the daemon service"
-    )
-    daemon_uninstall_parser.add_argument(
-        "--execute", action="store_true", help="Actually run the uninstallation"
-    )
-
-    # daemon config - uses config.get IPC handler
-    daemon_subs.add_parser("config", help="Show current daemon configuration")
-
-    # daemon reload-config - uses config.reload IPC handler
-    daemon_subs.add_parser("reload-config", help="Reload daemon configuration from disk")
-
-    # daemon version - uses version IPC handler
-    daemon_subs.add_parser("version", help="Show daemon version")
-
-    # daemon ping - uses ping IPC handler
-    daemon_subs.add_parser("ping", help="Test daemon connectivity")
-
-    # daemon shutdown - uses shutdown IPC handler
-    daemon_subs.add_parser("shutdown", help="Request daemon shutdown")
-
-    # daemon run-tests - run daemon test suite
-    daemon_run_tests_parser = daemon_subs.add_parser(
-        "run-tests",
-        help="Run daemon test suite (runs all tests by default when no filters are provided)",
-    )
-    daemon_run_tests_parser.add_argument("--unit", action="store_true", help="Run only unit tests")
-    daemon_run_tests_parser.add_argument(
-        "--integration", action="store_true", help="Run only integration tests"
-    )
-    daemon_run_tests_parser.add_argument(
-        "--test",
-        "-t",
-        type=str,
-        metavar="NAME",
-        help="Run a specific test (e.g., test_config, test_daemon)",
-    )
-    daemon_run_tests_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show verbose test output"
-    )
-    # --------------------------
 
     # --- Sandbox Commands (Docker-based package testing) ---
     sandbox_parser = subparsers.add_parser(
@@ -5068,7 +2673,9 @@ def main():
     sandbox_promote_parser.add_argument(
         "--dry-run", action="store_true", help="Show command without executing"
     )
-    sandbox_promote_parser.add_argument("-y", "--yes", action="store_true", help=HELP_SKIP_CONFIRM)
+    sandbox_promote_parser.add_argument(
+        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
+    )
 
     # sandbox cleanup <name> [--force]
     sandbox_cleanup_parser = sandbox_subs.add_parser("cleanup", help="Remove a sandbox environment")
@@ -5081,7 +2688,7 @@ def main():
     # sandbox exec <name> <command...>
     sandbox_exec_parser = sandbox_subs.add_parser("exec", help="Execute command in sandbox")
     sandbox_exec_parser.add_argument("name", help="Sandbox name")
-    sandbox_exec_parser.add_argument("cmd", nargs="+", help="Command to execute")
+    sandbox_exec_parser.add_argument("command", nargs="+", help="Command to execute")
     # --------------------------
 
     # --- Environment Variable Management Commands ---
@@ -5174,408 +2781,103 @@ def main():
     env_template_apply_parser.add_argument(
         "--encrypt-keys", help="Comma-separated list of keys to encrypt"
     )
-
-    # --- Shell Environment Analyzer Commands ---
-    # env audit - show all shell variables with sources
-    env_audit_parser = env_subs.add_parser(
-        "audit", help="Audit shell environment variables and show their sources"
+    # --- Info Command (system information queries) ---
+    info_parser = subparsers.add_parser("info", help="Get system and application information")
+    info_parser.add_argument("query", nargs="*", help="Information query (natural language)")
+    info_parser.add_argument(
+        "--app", "-a", 
+        type=str, 
+        help="Get info about a specific application (nginx, docker, etc.)"
     )
-    env_audit_parser.add_argument(
-        "--shell",
-        choices=["bash", "zsh", "fish"],
-        help="Shell to analyze (default: auto-detect)",
+    info_parser.add_argument(
+        "--quick", "-q",
+        type=str,
+        choices=["cpu", "memory", "disk", "gpu", "os", "kernel", "network", "dns", 
+                 "services", "security", "processes", "environment"],
+        help="Quick lookup for common info types"
     )
-    env_audit_parser.add_argument(
-        "--no-system",
+    info_parser.add_argument(
+        "--category", "-c",
+        type=str,
+        choices=["hardware", "software", "network", "services", "security", 
+                 "storage", "performance", "configuration"],
+        help="Get structured info for a category"
+    )
+    info_parser.add_argument(
+        "--list", "-l",
         action="store_true",
-        help="Exclude system-wide config files",
+        help="List available info types and applications"
     )
-    env_audit_parser.add_argument(
-        "--json",
+    info_parser.add_argument(
+        "--debug",
         action="store_true",
-        help="Output as JSON",
-    )
-
-    # env check - detect conflicts and issues
-    env_check_parser = env_subs.add_parser(
-        "check", help="Check for environment variable conflicts and issues"
-    )
-    env_check_parser.add_argument(
-        "--shell",
-        choices=["bash", "zsh", "fish"],
-        help="Shell to check (default: auto-detect)",
-    )
-
-    # env path subcommands
-    env_path_parser = env_subs.add_parser("path", help="Manage PATH entries")
-    env_path_subs = env_path_parser.add_subparsers(dest="path_action", help="PATH actions")
-
-    # env path list
-    env_path_list_parser = env_path_subs.add_parser("list", help="List PATH entries with status")
-    env_path_list_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
+        help="Show debug output"
     )
 
-    # env path add <path> [--prepend|--append] [--persist]
-    env_path_add_parser = env_path_subs.add_parser("add", help="Add a path entry (idempotent)")
-    env_path_add_parser.add_argument("path", help="Path to add")
-    env_path_add_parser.add_argument(
-        "--append",
-        action="store_true",
-        help="Append to end of PATH (default: prepend)",
-    )
-    env_path_add_parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Add to shell config file for persistence",
-    )
-    env_path_add_parser.add_argument(
-        "--shell",
-        choices=["bash", "zsh", "fish"],
-        help="Shell config to modify (default: auto-detect)",
-    )
+    # --- Do Command (manage do-mode runs) ---
+    do_parser = subparsers.add_parser("do", help="Manage do-mode execution runs")
+    do_subs = do_parser.add_subparsers(dest="do_action", help="Do actions")
 
-    # env path remove <path> [--persist]
-    env_path_remove_parser = env_path_subs.add_parser("remove", help="Remove a path entry")
-    env_path_remove_parser.add_argument("path", help="Path to remove")
-    env_path_remove_parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Remove from shell config file",
-    )
-    env_path_remove_parser.add_argument(
-        "--shell",
-        choices=["bash", "zsh", "fish"],
-        help="Shell config to modify (default: auto-detect)",
-    )
+    # do history [--limit N]
+    do_history_parser = do_subs.add_parser("history", help="View do-mode run history")
+    do_history_parser.add_argument("--limit", "-n", type=int, default=20, help="Number of runs to show")
+    do_history_parser.add_argument("run_id", nargs="?", help="Show details for specific run ID")
 
-    # env path dedupe [--dry-run] [--persist]
-    env_path_dedupe_parser = env_path_subs.add_parser(
-        "dedupe", help="Remove duplicate PATH entries"
-    )
-    env_path_dedupe_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be removed without making changes",
-    )
-    env_path_dedupe_parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Generate shell config to persist deduplication",
-    )
-    env_path_dedupe_parser.add_argument(
-        "--shell",
-        choices=["bash", "zsh", "fish"],
-        help="Shell for generated config (default: auto-detect)",
-    )
+    # do setup - setup cortex user
+    do_subs.add_parser("setup", help="Setup cortex user for privilege management")
 
-    # env path clean [--remove-missing] [--dry-run]
-    env_path_clean_parser = env_path_subs.add_parser(
-        "clean", help="Clean PATH (remove duplicates and optionally missing paths)"
-    )
-    env_path_clean_parser.add_argument(
-        "--remove-missing",
-        action="store_true",
-        help="Also remove paths that don't exist",
-    )
-    env_path_clean_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be cleaned without making changes",
-    )
-    env_path_clean_parser.add_argument(
-        "--shell",
-        choices=["bash", "zsh", "fish"],
-        help="Shell for generated fix script (default: auto-detect)",
-    )
+    # do protected - manage protected paths
+    do_protected_parser = do_subs.add_parser("protected", help="Manage protected paths")
+    do_protected_parser.add_argument("--add", help="Add a path to protected list")
+    do_protected_parser.add_argument("--remove", help="Remove a path from protected list")
+    do_protected_parser.add_argument("--list", action="store_true", help="List all protected paths")
     # --------------------------
 
-    # Doctor command
-    doctor_parser = subparsers.add_parser("doctor", help="System health check")
-
-    # Troubleshoot command
-    troubleshoot_parser = subparsers.add_parser(
-        "troubleshoot", help="Interactive system troubleshooter"
-    )
-    troubleshoot_parser.add_argument(
-        "--no-execute",
-        action="store_true",
-        help="Disable automatic command execution (read-only mode)",
-    )
-    # License and upgrade commands
-    subparsers.add_parser("upgrade", help="Upgrade to Cortex Pro")
-    subparsers.add_parser("license", help="Show license status")
-
-    activate_parser = subparsers.add_parser("activate", help="Activate a license key")
-    activate_parser.add_argument("license_key", help="Your license key")
-
-    # --- Update Command ---
-    update_parser = subparsers.add_parser("update", help="Check for and install Cortex updates")
-    update_parser.add_argument(
-        "--channel",
-        "-c",
-        choices=["stable", "beta", "dev"],
-        default="stable",
-        help="Update channel (default: stable)",
-    )
-    update_subs = update_parser.add_subparsers(dest="update_action", help="Update actions")
-
-    # update check
-    update_check_parser = update_subs.add_parser("check", help="Check for available updates")
-
-    # update install [version] [--dry-run]
-    update_install_parser = update_subs.add_parser("install", help="Install available update")
-    update_install_parser.add_argument(
-        "version", nargs="?", help="Specific version to install (default: latest)"
-    )
-    update_install_parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be updated without installing"
-    )
-
-    # update rollback [backup_id]
-    update_rollback_parser = update_subs.add_parser("rollback", help="Rollback to previous version")
-    update_rollback_parser.add_argument(
-        "backup_id", nargs="?", help="Backup ID or version to restore (default: most recent)"
-    )
-
-    # update list
-    update_subs.add_parser("list", help="List available versions")
-
-    # update backups
-    update_subs.add_parser("backups", help="List available backups for rollback")
+    # --- Watch Command (terminal monitoring setup) ---
+    watch_parser = subparsers.add_parser("watch", help="Manage terminal watching for manual intervention mode")
+    watch_parser.add_argument("--install", action="store_true", help="Install terminal watch hook to .bashrc/.zshrc")
+    watch_parser.add_argument("--uninstall", action="store_true", help="Remove terminal watch hook from shell configs")
+    watch_parser.add_argument("--system", action="store_true", help="Install/uninstall system-wide (requires sudo)")
+    watch_parser.add_argument("--service", action="store_true", help="Install/uninstall as systemd service (recommended)")
+    watch_parser.add_argument("--status", action="store_true", help="Show terminal watch status")
+    watch_parser.add_argument("--test", action="store_true", help="Test terminal monitoring")
     # --------------------------
-
-    # WiFi/Bluetooth Driver Matcher
-    wifi_parser = subparsers.add_parser("wifi", help="WiFi/Bluetooth driver auto-matcher")
-    wifi_parser.add_argument(
-        "action",
-        nargs="?",
-        default="status",
-        choices=["status", "detect", "recommend", "install", "connectivity"],
-        help="Action to perform (default: status)",
-    )
-    wifi_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output",
-    )
-
-    # Stdin Piping Support
-    stdin_parser = subparsers.add_parser("stdin", help="Process piped stdin data")
-    stdin_parser.add_argument(
-        "action",
-        nargs="?",
-        default="info",
-        choices=["info", "analyze", "passthrough", "stats"],
-        help="Action to perform (default: info)",
-    )
-    stdin_parser.add_argument(
-        "--max-lines",
-        type=int,
-        default=1000,
-        help="Maximum lines to process (default: 1000)",
-    )
-    stdin_parser.add_argument(
-        "--truncation",
-        choices=["head", "tail", "middle", "sample"],
-        default="middle",
-        help="Truncation mode for large input (default: middle)",
-    )
-    stdin_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output",
-    )
-
-    # Semantic Version Resolver
-    deps_parser = subparsers.add_parser("deps", help="Dependency version resolver")
-    deps_parser.add_argument(
-        "action",
-        nargs="?",
-        default="analyze",
-        choices=["analyze", "parse", "check", "compare"],
-        help="Action to perform (default: analyze)",
-    )
-    deps_parser.add_argument(
-        "packages",
-        nargs="*",
-        help="Package constraints (format: pkg:constraint:source)",
-    )
-    deps_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output",
-    )
-
-    # System Health Score
-    health_parser = subparsers.add_parser("health", help="System health score and recommendations")
-    health_parser.add_argument(
-        "action",
-        nargs="?",
-        default="check",
-        choices=["check", "history", "factors", "quick"],
-        help="Action to perform (default: check)",
-    )
-    health_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output",
-    )
 
     args = parser.parse_args()
 
-    # Configure logging based on parsed arguments
-    if getattr(args, "json", False):
-        logging.getLogger("cortex").setLevel(logging.ERROR)
-        # Also suppress common SDK loggers
-        logging.getLogger("anthropic").setLevel(logging.ERROR)
-        logging.getLogger("openai").setLevel(logging.ERROR)
-        logging.getLogger("httpcore").setLevel(logging.ERROR)
-
-    # Handle --set-language global flag first (before any command)
-    if getattr(args, "set_language", None):
-        result = _handle_set_language(args.set_language)
-        # Only return early if no command is specified
-        # This allows: cortex --set-language es install nginx
-        if not args.command:
-            return result
-        # If language setting failed, still return the error
-        if result != 0:
-            return result
-        # Otherwise continue with the command execution
-
-    # The Guard: Check for empty commands before starting the CLI
     if not args.command:
         show_rich_help()
         return 0
 
-    # Initialize the CLI handler
     cli = CortexCLI(verbose=args.verbose)
 
     try:
-        # Route the command to the appropriate method inside the cli object
-        if args.command == "docker":
-            if args.docker_action == "permissions":
-                return cli.docker_permissions(args)
-            parser.print_help()
-            return 1
-
         if args.command == "demo":
             return cli.demo()
-        elif args.command == "dashboard":
-            return cli.dashboard()
         elif args.command == "wizard":
             return cli.wizard()
         elif args.command == "status":
             return cli.status()
-        elif args.command == "benchmark":
-            return cli.benchmark(verbose=getattr(args, "verbose", False))
-        elif args.command == "systemd":
-            return cli.systemd(
-                args.service,
-                action=getattr(args, "action", "status"),
-                verbose=getattr(args, "verbose", False),
-            )
-        elif args.command == "gpu":
-            return cli.gpu(
-                action=getattr(args, "action", "status"),
-                mode=getattr(args, "mode", None),
-                verbose=getattr(args, "verbose", False),
-            )
-        elif args.command == "printer":
-            return cli.printer(
-                action=getattr(args, "action", "status"), verbose=getattr(args, "verbose", False)
-            )
-        elif args.command == "voice":
-            model = getattr(args, "model", None)
-            return cli.voice(continuous=not getattr(args, "single", False), model=model)
         elif args.command == "ask":
-            # Handle --mic flag for voice input
-            if getattr(args, "mic", False):
-                try:
-                    from cortex.voice import VoiceInputError, VoiceInputHandler
-
-                    handler = VoiceInputHandler()
-                    cx_print("Press F9 to speak your question...", "info")
-                    transcript = handler.record_single()
-
-                    if not transcript:
-                        cli._print_error("No speech detected")
-                        return 1
-
-                    cx_print(f"Question: {transcript}", "info")
-                    return cli.ask(transcript)
-                except ImportError:
-                    cli._print_error("Voice dependencies not installed.")
-                    cx_print("Install with: pip install cortex-linux[voice]", "info")
-                    return 1
-                except VoiceInputError as e:
-                    cli._print_error(f"Voice input error: {e}")
-                    return 1
-            if not args.question:
-                cli._print_error("Please provide a question or use --mic for voice input")
-                return 1
-            return cli.ask(args.question)
+            return cli.ask(
+                getattr(args, "question", None), 
+                debug=args.debug, 
+                do_mode=getattr(args, "do", False)
+            )
         elif args.command == "install":
-            # Handle --mic flag for voice input
-            if getattr(args, "mic", False):
-                handler = None
-                try:
-                    from cortex.voice import VoiceInputError, VoiceInputHandler
-
-                    handler = VoiceInputHandler()
-                    cx_print("Press F9 to speak what you want to install...", "info")
-                    software = handler.record_single()
-                    if not software:
-                        cx_print("No speech detected.", "warning")
-                        return 1
-                    cx_print(f"Installing: {software}", "info")
-                except ImportError:
-                    cli._print_error("Voice dependencies not installed.")
-                    cx_print("Install with: pip install cortex-linux[voice]", "info")
-                    return 1
-                except VoiceInputError as e:
-                    cli._print_error(f"Voice input error: {e}")
-                    return 1
-                finally:
-                    # Always clean up resources
-                    if handler is not None:
-                        try:
-                            handler.stop()
-                        except Exception as e:
-                            # Log cleanup errors but don't raise
-                            logging.debug("Error during voice handler cleanup: %s", e)
-            else:
-                software = args.software
-                if not software:
-                    cli._print_error("Please provide software name or use --mic for voice input")
-                    return 1
             return cli.install(
-                software,
+                args.software,
                 execute=args.execute,
                 dry_run=args.dry_run,
                 parallel=args.parallel,
-                json_output=args.json,
             )
-        elif args.command == "remove":
-            # Handle --execute flag to override default dry-run
-            if args.execute:
-                args.dry_run = False
-            return cli.remove(args)
         elif args.command == "import":
             return cli.import_deps(args)
         elif args.command == "history":
             return cli.history(limit=args.limit, status=args.status, show_id=args.show_id)
         elif args.command == "rollback":
             return cli.rollback(args.id, dry_run=args.dry_run)
-        elif args.command == "role":
-            return cli.role(args)
+        # Handle the new notify command
         elif args.command == "notify":
             return cli.notify(args)
         elif args.command == "stack":
@@ -5589,63 +2891,12 @@ def main():
             return 1
         elif args.command == "env":
             return cli.env(args)
-        elif args.command == "doctor":
-            return cli.doctor()
-        elif args.command == "troubleshoot":
-            return cli.troubleshoot(
-                no_execute=getattr(args, "no_execute", False),
-            )
-        elif args.command == "config":
-            return cli.config(args)
-        elif args.command == "upgrade":
-            from cortex.licensing import open_upgrade_page
-
-            open_upgrade_page()
-            return 0
-        elif args.command == "license":
-            from cortex.licensing import show_license_status
-
-            show_license_status()
-            return 0
-        elif args.command == "activate":
-            from cortex.licensing import activate_license
-
-            return 0 if activate_license(args.license_key) else 1
-        elif args.command == "update":
-            return cli.update(args)
-        elif args.command == "daemon":
-            return cli.daemon(args)
-        elif args.command == "wifi":
-            from cortex.wifi_driver import run_wifi_driver
-
-            return run_wifi_driver(
-                action=getattr(args, "action", "status"),
-                verbose=getattr(args, "verbose", False),
-            )
-        elif args.command == "stdin":
-            from cortex.stdin_handler import run_stdin_handler
-
-            return run_stdin_handler(
-                action=getattr(args, "action", "info"),
-                max_lines=getattr(args, "max_lines", 1000),
-                truncation=getattr(args, "truncation", "middle"),
-                verbose=getattr(args, "verbose", False),
-            )
-        elif args.command == "deps":
-            from cortex.semver_resolver import run_semver_resolver
-
-            return run_semver_resolver(
-                action=getattr(args, "action", "analyze"),
-                packages=getattr(args, "packages", None),
-                verbose=getattr(args, "verbose", False),
-            )
-        elif args.command == "health":
-            from cortex.health_score import run_health_check
-
-            return run_health_check(
-                action=getattr(args, "action", "check"),
-                verbose=getattr(args, "verbose", False),
-            )
+        elif args.command == "do":
+            return cli.do_cmd(args)
+        elif args.command == "info":
+            return cli.info_cmd(args)
+        elif args.command == "watch":
+            return cli.watch_cmd(args)
         else:
             parser.print_help()
             return 1
@@ -5654,6 +2905,13 @@ def main():
         return 130
     except (ValueError, ImportError, OSError) as e:
         print(f"❌ Error: {e}", file=sys.stderr)
+        return 1
+    except AttributeError as e:
+        # Internal errors - show friendly message
+        print("❌ Something went wrong. Please try again.", file=sys.stderr)
+        if "--verbose" in sys.argv or "-v" in sys.argv:
+            import traceback
+            traceback.print_exc()
         return 1
     except Exception as e:
         print(f"❌ Unexpected error: {e}", file=sys.stderr)
