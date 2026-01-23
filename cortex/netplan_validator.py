@@ -97,7 +97,7 @@ class NetplanValidator:
         # Also check for .yml extension
         yml_files = list(self.NETPLAN_DIR.glob("*.yml"))
         all_files = yaml_files + yml_files
-        
+
         if not all_files:
             raise FileNotFoundError(f"No .yaml or .yml files found in {self.NETPLAN_DIR}")
 
@@ -276,7 +276,7 @@ class NetplanValidator:
                 f"Interface '{iface_name}' config must be a mapping/dictionary, got {type(iface_config).__name__}"
             )
             return
-        
+
         # Validate interface name format
         if not re.match(r"^[a-zA-Z0-9_-]+$", iface_name):
             errors.append(
@@ -499,7 +499,7 @@ class NetplanValidator:
                 backup_files = sorted(self.backup_dir.glob("*.yaml"))
                 if backup_files:
                     backup_path = backup_files[-1]  # Most recent backup
-            
+
             # Copy new config to netplan directory
             shutil.copy2(new_path, self.config_file)
 
@@ -673,7 +673,7 @@ class NetplanValidator:
                         confirmed.set()
                 finally:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            except (IOError, AttributeError, OSError) as e:
+            except (AttributeError, OSError) as e:
                 # Fallback for non-Unix systems or no TTY
                 # IOError/OSError: stdin issues, AttributeError: termios missing
                 response = input().strip().lower()
