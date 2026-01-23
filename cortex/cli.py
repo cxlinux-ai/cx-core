@@ -2632,22 +2632,31 @@ class CortexCLI:
             output_json = getattr(args, "json", False)
 
             if output_json:
-                llm_router = None
-                if use_llm:
-                    try:
-                        from cortex.llm_router import LLMRouter
+                try:
+                    llm_router = None
+                    if use_llm:
+                        try:
+                            from cortex.llm_router import LLMRouter
 
-                        llm_router = LLMRouter()
-                    except ImportError:
-                        pass
-                    except (RuntimeError, ConnectionError) as e:
-                        logger.debug(f"LLM router initialization failed: {e}")
+                            llm_router = LLMRouter()
+                        except ImportError:
+                            pass
+                        except (RuntimeError, ConnectionError) as e:
+                            logger.debug(f"LLM router initialization failed: {e}")
 
-                recommender = UpdateRecommender(llm_router=llm_router, verbose=self.verbose)
-                recommendation = recommender.get_recommendations(use_llm=use_llm)
+                    recommender = UpdateRecommender(llm_router=llm_router, verbose=self.verbose)
+                    recommendation = recommender.get_recommendations(use_llm=use_llm)
 
-                print(json.dumps(recommendation.to_dict(), indent=2))
-                return 0
+                    print(json.dumps(recommendation.to_dict(), indent=2))
+                    return 0
+                except Exception as e:
+                    error_payload = {
+                        "success": False,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                    print(json.dumps(error_payload))
+                    return 1
             else:
                 cx_print(t("update_recommend.checking"), "thinking")
                 return recommend_updates(use_llm=use_llm, verbose=self.verbose)
