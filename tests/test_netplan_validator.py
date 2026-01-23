@@ -621,7 +621,10 @@ class TestEdgeCases:
             "network": {
                 "version": 2,
                 "wifis": {
-                    "wlan0": {"dhcp4": True, "access-points": {"MySSID": {"password": "<redacted>"}}}
+                    "wlan0": {
+                        "dhcp4": True,
+                        "access-points": {"MySSID": {"password": "<redacted>"}},
+                    }
                 },
             }
         }
