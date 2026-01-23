@@ -862,8 +862,13 @@ class CortexCLI:
 
     # --- End Sandbox Commands ---
 
-    def ask(self, question: str) -> int:
-        """Answer a natural language question about the system."""
+    def ask(self, question: str, do_mode: bool = False) -> int:
+        """Answer a natural language question about the system.
+
+        Args:
+            question: The natural language question to answer
+            do_mode: If True, enable execution mode where AI can run commands
+        """
         api_key = self._get_api_key()
         if not api_key:
             return 1
@@ -875,11 +880,18 @@ class CortexCLI:
             handler = AskHandler(
                 api_key=api_key,
                 provider=provider,
+                do_mode=do_mode,
             )
-            answer = handler.ask(question)
-            # Render as markdown for proper formatting in terminal
-            console.print(Markdown(answer))
-            return 0
+
+            if do_mode:
+                # Interactive execution mode
+                return self._run_interactive_do_session(handler, question)
+            else:
+                # Standard ask mode
+                answer = handler.ask(question)
+                # Render as markdown for proper formatting in terminal
+                console.print(Markdown(answer))
+                return 0
         except ImportError as e:
             # Provide a helpful message if provider SDK is missing
             self._print_error(str(e))
@@ -893,6 +905,83 @@ class CortexCLI:
         except RuntimeError as e:
             self._print_error(str(e))
             return 1
+
+    def _run_interactive_do_session(self, handler: AskHandler, initial_question: str | None) -> int:
+        """Run an interactive session with execution capabilities.
+
+        Args:
+            handler: The AskHandler configured for do_mode
+            initial_question: Optional initial question to start with
+        """
+        from rich.prompt import Prompt
+
+        # Import and apply Cortex terminal theme at session start
+        from cortex.ask import _print_cortex_banner, _restore_terminal_theme, _set_terminal_theme
+
+        try:
+            _set_terminal_theme()
+            _print_cortex_banner()
+        except Exception:
+            pass  # Silently continue if theming fails
+
+        question = initial_question
+
+        # Dracula theme colors for prompt
+        PURPLE_LIGHT = "#ff79c6"  # Dracula pink
+        GRAY = "#6272a4"  # Dracula comment
+        INDENT = "   "  # Fixed 3-space indent
+
+        try:
+            while True:
+                try:
+                    if not question:
+                        question = Prompt.ask(
+                            f"{INDENT}[bold {PURPLE_LIGHT}]What would you like to do?[/bold {PURPLE_LIGHT}]"
+                        )
+
+                    if not question or question.lower() in ["exit", "quit", "q"]:
+                        console.print(f"{INDENT}[{GRAY}]Goodbye![/{GRAY}]")
+                        return 0
+
+                    # Handle /theme command
+                    if question.strip().lower() == "/theme":
+                        from cortex.ask import get_current_theme, set_theme, show_theme_selector
+
+                        selected = show_theme_selector()
+                        if selected:
+                            set_theme(selected)
+                            theme = get_current_theme()
+                            console.print(
+                                f"{INDENT}[{theme['success']}]● Theme changed to {theme['name']}[/{theme['success']}]"
+                            )
+                        else:
+                            console.print(f"{INDENT}[{GRAY}]Theme selection cancelled[/{GRAY}]")
+
+                        # Re-print banner with new theme
+                        _print_cortex_banner()
+                        question = None
+                        continue
+
+                    # Process the question
+                    result = handler.ask(question)
+                    if result:
+                        console.print(Markdown(result))
+
+                    # Reset for next iteration
+                    question = None
+
+                except KeyboardInterrupt:
+                    console.print(f"\n{INDENT}[{GRAY}]Session ended.[/{GRAY}]")
+                    return 0
+                except Exception as e:
+                    self._print_error(f"Error: {e}")
+                    question = None
+        finally:
+            # Always restore terminal theme when session ends
+            try:
+                _restore_terminal_theme()
+            except Exception:
+                pass
 
     def _ask_with_session_key(self, question: str, api_key: str, provider: str) -> int:
         """Answer a question using provided session API key without re-prompting.
@@ -4776,6 +4865,11 @@ def main():
         action="store_true",
         help="Use voice input (press F9 to record)",
     )
+    ask_parser.add_argument(
+        "--do",
+        action="store_true",
+        help="Enable execution mode - AI can execute commands with your approval",
+    )
 
     # Voice command - continuous voice mode
     voice_parser = subparsers.add_parser(
@@ -5506,6 +5600,7 @@ def main():
             model = getattr(args, "model", None)
             return cli.voice(continuous=not getattr(args, "single", False), model=model)
         elif args.command == "ask":
+            do_mode = getattr(args, "do", False)
             # Handle --mic flag for voice input
             if getattr(args, "mic", False):
                 try:
@@ -5520,7 +5615,7 @@ def main():
                         return 1
 
                     cx_print(f"Question: {transcript}", "info")
-                    return cli.ask(transcript)
+                    return cli.ask(transcript, do_mode=do_mode)
                 except ImportError:
                     cli._print_error("Voice dependencies not installed.")
                     cx_print("Install with: pip install cortex-linux[voice]", "info")
@@ -5528,10 +5623,11 @@ def main():
                 except VoiceInputError as e:
                     cli._print_error(f"Voice input error: {e}")
                     return 1
-            if not args.question:
+            # In do_mode, question is optional (interactive mode)
+            if not args.question and not do_mode:
                 cli._print_error("Please provide a question or use --mic for voice input")
                 return 1
-            return cli.ask(args.question)
+            return cli.ask(args.question, do_mode=do_mode)
         elif args.command == "install":
             # Handle --mic flag for voice input
             if getattr(args, "mic", False):

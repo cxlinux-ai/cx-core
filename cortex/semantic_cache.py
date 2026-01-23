@@ -80,10 +80,10 @@ class SemanticCache:
         db_dir = Path(self.db_path).parent
         try:
             db_dir.mkdir(parents=True, exist_ok=True)
-            # Also check if we can actually write to this directory
+            # Also check if directory is writable
             if not os.access(db_dir, os.W_OK):
-                raise PermissionError(f"No write permission to {db_dir}")
-        except PermissionError:
+                raise PermissionError(f"Directory {db_dir} is not writable")
+        except (PermissionError, OSError):
             user_dir = Path.home() / ".cortex"
             user_dir.mkdir(parents=True, exist_ok=True)
             self.db_path = str(user_dir / "cache.db")
