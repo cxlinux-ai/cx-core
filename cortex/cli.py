@@ -3197,6 +3197,14 @@ class CortexCLI:
 
         result = response.result
         if not result:
+            cx_print(
+                "Health check returned empty payload",
+                "error",
+            )
+            cx_print(
+                f"Service: health check, Response status: {'success' if response.success else 'failed'}",
+                "error",
+            )
             return 1
 
         # Display health metrics in a box
@@ -3321,8 +3329,21 @@ class CortexCLI:
 
     def _daemon_alerts(self, args: argparse.Namespace) -> int:
         """Manage alerts via IPC."""
+        severity = getattr(args, "severity", None)
+        category = getattr(args, "category", None)
+
         # Handle acknowledge-all
         if getattr(args, "acknowledge_all", False):
+            if severity or category:
+                cx_print(
+                    "Error: --severity and --category filters cannot be used with --acknowledge-all",
+                    "error",
+                )
+                cx_print(
+                    "The acknowledge-all operation applies to all alerts and does not support filtering.",
+                    "error",
+                )
+                return 1
             cx_header("Acknowledging All Alerts")
             success, response = self._daemon_ipc_call(
                 "alerts_acknowledge_all", lambda c: c.alerts_acknowledge_all()
@@ -3338,6 +3359,16 @@ class CortexCLI:
 
         # Handle dismiss-all
         if getattr(args, "dismiss_all", False):
+            if severity or category:
+                cx_print(
+                    "Error: --severity and --category filters cannot be used with --dismiss-all",
+                    "error",
+                )
+                cx_print(
+                    "The dismiss-all operation applies to all alerts and does not support filtering.",
+                    "error",
+                )
+                return 1
             cx_header("Dismissing All Alerts")
             success, response = self._daemon_ipc_call(
                 "alerts_dismiss_all", lambda c: c.alerts_dismiss_all()
@@ -3354,6 +3385,16 @@ class CortexCLI:
         # Handle dismiss
         dismiss_uuid = getattr(args, "dismiss", None)
         if dismiss_uuid:
+            if severity or category:
+                cx_print(
+                    "Error: --severity and --category filters cannot be used with --dismiss",
+                    "error",
+                )
+                cx_print(
+                    "The dismiss operation targets a specific alert by UUID and does not support filtering.",
+                    "error",
+                )
+                return 1
             cx_header("Dismissing Alert")
             success, response = self._daemon_ipc_call(
                 "alerts_dismiss", lambda c: c.alerts_dismiss(dismiss_uuid)
@@ -3368,9 +3409,6 @@ class CortexCLI:
 
         # List alerts
         cx_header("Alerts")
-
-        severity = getattr(args, "severity", None)
-        category = getattr(args, "category", None)
 
         success, response = self._daemon_ipc_call(
             "alerts_get",
