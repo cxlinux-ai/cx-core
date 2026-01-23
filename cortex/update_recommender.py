@@ -108,6 +108,7 @@ class PackageVersion:
         try:
             return int(parts[0]), parts[1]
         except (ValueError, IndexError):
+            logger.warning("Failed to parse epoch from version string: '%s'. Defaulting to 0.", raw)
             return 0, raw
 
     @staticmethod
@@ -274,12 +275,46 @@ class UpdateRecommender:
         "urgent",
     ]
 
+    # Breaking change indicators for changelog scanning
+    BREAKING_CHANGE_INDICATORS = [
+        "breaking change",
+        "backwards incompatible",
+        "deprecated",
+        "removed",
+        "migration required",
+        "manual action",
+    ]
+
+    # Timeouts for external commands (in seconds)
+    DEFAULT_TIMEOUT = 30
+    CHECK_UPDATE_TIMEOUT = 120
+
+    # Risk score thresholds
+    RISK_THRESHOLD_HIGH = 35
+    RISK_THRESHOLD_MEDIUM = 15
+
+    # Risk score penalties
+    PENALTY_HIGH_IMPACT_PKG = 30
+    PENALTY_MAJOR_VERSION = 40
+    PENALTY_MINOR_VERSION = 15
+    PENALTY_PATCH_VERSION = 5
+    PENALTY_PRERELEASE = 25
+    PENALTY_CHANGELOG_KEYWORD = 15
+    PENALTY_HISTORY_FAILURE = 25
+    PENALTY_MEMORY_ISSUE = 10
+
+    # UI and LLM limits
+    MAX_LLM_UPDATES = 10
+    MAX_DISPLAY_UPDATES = 10
+
     def __init__(
         self,
         llm_router: Any | None = None,
         history: InstallationHistory | None = None,
         memory: ContextMemory | None = None,
         verbose: bool = False,
+        timeout: int | None = None,
+        check_timeout: int | None = None,
     ) -> None:
         """
         Initialize the Update Recommender.
@@ -289,9 +324,13 @@ class UpdateRecommender:
             history: Optional installation history for learning
             memory: Optional context memory for pattern recognition
             verbose: Enable verbose output
+            timeout: Timeout for external commands
+            check_timeout: Timeout for update check commands
         """
         self.llm_router = llm_router
         self.verbose = verbose
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
+        self.check_timeout = check_timeout or self.CHECK_UPDATE_TIMEOUT
 
         # Graceful initialization of subsystems
         try:
@@ -310,7 +349,7 @@ class UpdateRecommender:
     def _run_pkg_cmd(self, cmd: list[str]) -> str | None:
         """Internal helper to run package manager commands."""
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout)
             return result.stdout.strip() if result.returncode == 0 else None
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return None
@@ -337,6 +376,8 @@ class UpdateRecommender:
                         break
             if desc_lines:
                 description = " ".join(desc_lines).strip()
+            else:
+                description = t("update_recommend.no_description")
 
             # Fetch changelog (best-effort, trimmed)
             changelog_out = self._run_pkg_cmd(["apt-get", "changelog", package_name])
@@ -360,9 +401,9 @@ class UpdateRecommender:
                 if changelog_out:
                     changelog = "\n".join(changelog_out.splitlines()[:200])
 
-                return description, changelog
+                return description or t("update_recommend.no_description"), changelog
 
-        return description, changelog
+        return description or t("update_recommend.no_description"), changelog
 
     def get_installed_packages(self) -> dict[str, PackageVersion]:
         """Get all installed packages with their versions."""
@@ -424,7 +465,10 @@ class UpdateRecommender:
         for pm in ("dnf", "yum"):
             try:
                 result = subprocess.run(
-                    [pm, "check-update", "-q"], capture_output=True, text=True, timeout=120
+                    [pm, "check-update", "-q"],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.check_timeout,
                 )
                 if result.returncode in (0, 100) and result.stdout:
                     installed = self.get_installed_packages()
@@ -498,32 +542,29 @@ class UpdateRecommender:
         # Score penalty for known high-impact system packages
         for pkg, reason in self.HIGH_RISK_PACKAGES.items():
             if pkg in package_name.lower():
-                score += 30
+                score += self.PENALTY_HIGH_IMPACT_PKG
                 warnings.append(reason)
                 break
 
         # Score penalty based on Semantic Versioning delta severity
         ctype = self.analyze_change_type(current, new)
-        score += {ChangeType.MAJOR: 40, ChangeType.MINOR: 15, ChangeType.PATCH: 5}.get(ctype, 0)
+        score += {
+            ChangeType.MAJOR: self.PENALTY_MAJOR_VERSION,
+            ChangeType.MINOR: self.PENALTY_MINOR_VERSION,
+            ChangeType.PATCH: self.PENALTY_PATCH_VERSION,
+        }.get(ctype, 0)
         if ctype == ChangeType.MAJOR:
             warnings.append(f"Major version change ({current.major} → {new.major})")
 
         # Additional penalty for unstable pre-release versions
         if new.prerelease:
-            score += 25
+            score += self.PENALTY_PRERELEASE
             warnings.append(f"Pre-release version: {new.prerelease}")
 
         # Scan changelogs for keyword indicators of breaking changes
-        for ind in [
-            "breaking change",
-            "backwards incompatible",
-            "deprecated",
-            "removed",
-            "migration required",
-            "manual action",
-        ]:
+        for ind in self.BREAKING_CHANGE_INDICATORS:
             if ind in changelog.lower():
-                score += 15
+                score += self.PENALTY_CHANGELOG_KEYWORD
                 warnings.append(f"Changelog mentions: {ind}")
 
         # Map aggregate score to RiskLevel enum
@@ -541,9 +582,9 @@ class UpdateRecommender:
 
     def _map_score_to_risk(self, score: int) -> RiskLevel:
         """Map aggregate risk score to RiskLevel enum."""
-        if score >= 35:
+        if score >= self.RISK_THRESHOLD_HIGH:
             return RiskLevel.HIGH
-        if score >= 15:
+        if score >= self.RISK_THRESHOLD_MEDIUM:
             return RiskLevel.MEDIUM
         return RiskLevel.LOW
 
@@ -560,8 +601,7 @@ class UpdateRecommender:
             adj += m_adj
             notes.extend(m_notes)
         except (OSError, AttributeError) as e:
-            if self.verbose:
-                logger.debug("Historical risk lookup failed: %s", e)
+            logger.debug("Historical risk lookup failed: %s", e)
 
         return adj, notes
 
@@ -576,7 +616,9 @@ class UpdateRecommender:
                 continue
 
             if record.status in (InstallationStatus.FAILED, InstallationStatus.ROLLED_BACK):
-                return 25, ["Historical instability: previous updates failed or were rolled back"]
+                return self.PENALTY_HISTORY_FAILURE, [
+                    "Historical instability: previous updates failed or were rolled back"
+                ]
 
         return 0, []
 
@@ -588,7 +630,9 @@ class UpdateRecommender:
         memories = self.memory.get_similar_interactions(package_name, limit=5)
         for m in memories:
             if not m.success:
-                return 10, [f"Memory: Previously caused issues during {m.action}"]
+                return self.PENALTY_MEMORY_ISSUE, [
+                    f"Memory: Previously caused issues during {m.action}"
+                ]
 
         return 0, []
 
@@ -728,7 +772,7 @@ class UpdateRecommender:
         try:
             # Build a summary for the LLM
             update_summary = []
-            for u in updates[:10]:  # Limit to first 10 for context length
+            for u in updates[: self.MAX_LLM_UPDATES]:  # Limit for context length
                 update_summary.append(
                     f"- {u.package_name}: {u.current_version} → {u.new_version} "
                     f"({u.change_type.value}, {u.risk_level.value} risk)"
@@ -938,7 +982,7 @@ Keep response concise (under 150 words)."""
         table.add_column("Risk")
         table.add_column("Notes")
 
-        for update in updates[:10]:  # Limit display
+        for update in updates[: self.MAX_DISPLAY_UPDATES]:  # Limit display
             risk_color = self.RISK_COLORS.get(update.risk_level, "white")
             risk_display = t(f"update_recommend.risks.{update.risk_level.value_str}")
             type_str = update.change_type.value
@@ -962,9 +1006,9 @@ Keep response concise (under 150 words)."""
                 " | ".join(notes) if notes else "-",
             )
 
-        if len(updates) > 10:
+        if len(updates) > self.MAX_DISPLAY_UPDATES:
             table.add_row(
-                t("update_recommend.more_updates", count=len(updates) - 10),
+                t("update_recommend.more_updates", count=len(updates) - self.MAX_DISPLAY_UPDATES),
                 "",
                 "",
                 "",

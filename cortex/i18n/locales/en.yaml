@@ -510,6 +510,7 @@ update_recommend:
 
   ai_analysis: "AI Analysis"
   more_updates: "... and {count} more"
+  no_description: "No description available"
 
   recommendations:
     security_urgent: "Security update - prioritize installation"

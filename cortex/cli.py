@@ -2641,8 +2641,7 @@ class CortexCLI:
                     except ImportError:
                         pass
                     except (RuntimeError, ConnectionError) as e:
-                        if self.verbose:
-                            logger.debug(f"LLM router initialization failed: {e}")
+                        logger.debug(f"LLM router initialization failed: {e}")
 
                 recommender = UpdateRecommender(llm_router=llm_router, verbose=self.verbose)
                 recommendation = recommender.get_recommendations(use_llm=use_llm)
