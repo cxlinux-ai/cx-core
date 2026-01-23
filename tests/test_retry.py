@@ -56,6 +56,7 @@ class TestLoadStrategiesFromEnv(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {"CORTEX_RETRY_NETWORK_MAX": "10", "CORTEX_RETRY_NETWORK_BACKOFF": "0.5"},
+            clear=True,
         ):
             strategies = load_strategies_from_env()
             self.assertEqual(strategies[ErrorCategory.NETWORK_ERROR].max_retries, 10)
@@ -65,6 +66,7 @@ class TestLoadStrategiesFromEnv(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {"CORTEX_RETRY_LOCK_MAX": "6", "CORTEX_RETRY_LOCK_BACKOFF": "10.0"},
+            clear=True,
         ):
             strategies = load_strategies_from_env()
             self.assertEqual(strategies[ErrorCategory.LOCK_ERROR].max_retries, 6)

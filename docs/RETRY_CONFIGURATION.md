@@ -27,7 +27,7 @@ Each error type has its own retry strategy:
 
 The wait time before each retry uses exponential backoff:
 
-```
+```text
 wait_time = backoff_factor × 2^(attempt - 1)
 ```
 
@@ -101,7 +101,7 @@ cortex install package --execute
 
 During retries, Cortex displays messages like:
 
-```
+```text
 ⚠️ NETWORK_ERROR detected. Retrying in 2.0s... (Attempt 2/5)
 ```
 

@@ -12,6 +12,7 @@ from typing import Any
 from cortex.utils.retry import (
     DEFAULT_MAX_RETRIES,
     ErrorCategory,
+    RetryStrategy,
     SmartRetry,
     load_strategies_from_env,
 )
@@ -201,7 +202,13 @@ class InstallationCoordinator:
         # Load strategies and apply CLI override for network errors
         strategies = load_strategies_from_env()
         if ErrorCategory.NETWORK_ERROR in strategies:
-            strategies[ErrorCategory.NETWORK_ERROR].max_retries = self.max_retries
+            # Create a new instance to avoid mutating the shared default object
+            original_strategy = strategies[ErrorCategory.NETWORK_ERROR]
+            strategies[ErrorCategory.NETWORK_ERROR] = RetryStrategy(
+                max_retries=self.max_retries,
+                backoff_factor=original_strategy.backoff_factor,
+                description=original_strategy.description,
+            )
 
         retry_handler = SmartRetry(
             strategies=strategies,
