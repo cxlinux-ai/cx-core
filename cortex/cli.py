@@ -3423,6 +3423,10 @@ class CortexCLI:
 
         result = response.result
         if not result:
+            cx_print(
+                "No alert data returned from daemon.",
+                "error",
+            )
             return 1
 
         alerts = result.get("alerts", [])
