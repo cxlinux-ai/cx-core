@@ -20,7 +20,6 @@ from cortex.api_key_detector import auto_detect_api_key, setup_api_key
 from cortex.ask import AskHandler
 from cortex.branding import VERSION, console, cx_header, cx_print, show_banner
 from cortex.coordinator import InstallationCoordinator, InstallationStep, StepStatus
-from cortex.utils.retry import DEFAULT_MAX_RETRIES
 from cortex.demo import run_demo
 from cortex.dependency_importer import DependencyImporter, PackageEcosystem, ParseResult
 from cortex.env_manager import EnvironmentManager, get_env_manager
@@ -41,6 +40,7 @@ from cortex.uninstall_impact import (
 )
 from cortex.update_checker import UpdateChannel, should_notify_update
 from cortex.updater import Updater, UpdateStatus
+from cortex.utils.retry import DEFAULT_MAX_RETRIES
 from cortex.validators import validate_api_key, validate_install_request
 from cortex.version_manager import get_version_string
 

@@ -50,9 +50,7 @@ class TestLoadStrategiesFromEnv(unittest.TestCase):
     def test_default_strategies_when_no_env_vars(self):
         with patch.dict("os.environ", {}, clear=True):
             strategies = load_strategies_from_env()
-            self.assertEqual(
-                strategies[ErrorCategory.NETWORK_ERROR].max_retries, 5
-            )
+            self.assertEqual(strategies[ErrorCategory.NETWORK_ERROR].max_retries, 5)
 
     def test_network_override_from_env(self):
         with patch.dict(
