@@ -277,6 +277,15 @@
       ],
       "signed_date": "2026-01-22",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Karan Shailesh Palan",
+      "github_username": "karan-palan",
+      "emails": [
+        "karanpalan007@gmail.com"
+      ],
+      "signed_date": "2026-01-23",
+      "cla_version": "1.0"
     }
   ],
   "corporations": {
