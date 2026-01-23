@@ -210,8 +210,10 @@ class TestUpdateRecommender:
         )
         assert "part of python" in r.generate_recommendation_text(u).lower()
 
+    @patch("cortex.update_recommender.shutil.which")
     @patch("cortex.update_recommender.subprocess.run")
-    def test_pkg_manager_interactions(self, mock_run, r):
+    def test_pkg_manager_interactions(self, mock_run, mock_which, r):
+        mock_which.return_value = True  # Default to APT present
         # Verify DPKG version parsing (Debian/Ubuntu)
         mock_run.return_value = MagicMock(returncode=0, stdout="pkg1 1.0\npkg2 2.0")
         pkgs = r.get_installed_packages()
@@ -235,8 +237,8 @@ class TestUpdateRecommender:
         assert "jammy" in updates[0]["repo"]
 
         # Simulate DNF check-update (exit 100 indicates available updates)
+        mock_which.return_value = False  # Simulate APT not present
         mock_run.side_effect = [
-            MagicMock(returncode=1),  # apt update fail
             MagicMock(
                 returncode=100,
                 stdout="Last metadata expiration check: 1:00:00 ago\ncurl.x86_64 8.5.0 updates",

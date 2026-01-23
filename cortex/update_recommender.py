@@ -11,6 +11,7 @@ Issue: #91 - Smart Update Recommendations
 
 import logging
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -431,9 +432,8 @@ class UpdateRecommender:
 
     def get_available_updates(self) -> list[dict[str, Any]]:
         """Get list of packages with available updates."""
-        updates = self._get_apt_updates()
-        if updates:
-            return updates
+        if shutil.which("apt-get") and shutil.which("apt"):
+            return self._get_apt_updates()
 
         return self._get_rpm_updates()
 
