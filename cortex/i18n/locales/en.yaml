@@ -480,6 +480,46 @@ progress:
   cleaning_up: "Cleaning up..."
   # {seconds} - duration
   completed_in: "Completed in {seconds} seconds"
+# =============================================================================
+# Update Recommendations
+# =============================================================================
+update_recommend:
+  checking: "Analyzing system for update recommendations..."
+  no_updates: "All packages are up to date! Your system is healthy."
+  overall_risk: "Overall risk: {risk}"
+  total_updates: "Total updates available: {count}"
+  header: "Update Analysis"
+
+  categories:
+    security: "Security Updates (Apply ASAP)"
+    immediate: "Safe to Update Now (Low Risk)"
+    scheduled: "Recommended for Maintenance Window"
+    deferred: "Hold for Now"
+    groups: "Related Update Groups"
+
+  risks:
+    low: "LOW"
+    medium: "MEDIUM"
+    high: "HIGH"
+    critical: "CRITICAL"
+
+  notes:
+    security: "security"
+    warnings: "{count} warnings"
+    group: "group: {name}"
+
+  ai_analysis: "AI Analysis"
+  more_updates: "... and {count} more"
+  no_description: "No description available"
+
+  recommendations:
+    security_urgent: "Security update - prioritize installation"
+    safe_immediate: "Safe to update immediately"
+    maintenance_window: "Schedule for maintenance window"
+    consider_deferring: "Consider deferring this update"
+    major_upgrade: "Major version upgrade: {current} → {new}"
+    potential_breaking: "Potential breaking changes:"
+    part_of_group: "Part of {group} update group"
 
 # =============================================================================
 # Predictive Error Prevention

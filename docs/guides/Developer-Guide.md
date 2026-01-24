@@ -35,6 +35,7 @@ cortex/
 │   ├── config_templates.py  # Config generation
 │   ├── logging_system.py    # Logging & diagnostics
 │   ├── context_memory.py    # AI memory system
+│   └── update_recommender.py # AI-powered update recommendations
 │   └── predictive_prevention.py # Pre-install risk analysis
 ├── tests/
 │   └── test_*.py            # Unit tests
@@ -86,6 +87,12 @@ Context Memory (learns patterns)
 - GPU/CPU detection
 - Optimization recommendations
 - Driver compatibility
+
+**Update Recommender (`update_recommender.py`)**
+- AI-powered update analysis
+- Risk assessment per update
+- Timing recommendations (Immediate vs. Deferred)
+- Related update grouping
 
 ## Contributing
 

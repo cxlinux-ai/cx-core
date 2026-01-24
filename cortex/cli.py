@@ -55,6 +55,7 @@ if TYPE_CHECKING:
 # Suppress noisy log messages in normal operation
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("cortex.installation_history").setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -2724,6 +2725,43 @@ class CortexCLI:
                 "info",
             )
             return 0
+
+        elif action == "recommend":
+            # Smart Update Recommendations (Issue #91)
+            from cortex.update_recommender import UpdateRecommender, recommend_updates
+
+            use_llm = not getattr(args, "no_llm", False)
+            output_json = getattr(args, "json", False)
+
+            if output_json:
+                try:
+                    llm_router = None
+                    if use_llm:
+                        try:
+                            from cortex.llm_router import LLMRouter
+
+                            llm_router = LLMRouter()
+                        except ImportError:
+                            pass
+                        except (RuntimeError, ConnectionError) as e:
+                            logger.debug(f"LLM router initialization failed: {e}")
+
+                    recommender = UpdateRecommender(llm_router=llm_router, verbose=self.verbose)
+                    recommendation = recommender.get_recommendations(use_llm=use_llm)
+
+                    print(json.dumps(recommendation.to_dict(), indent=2))
+                    return 0
+                except Exception as e:
+                    error_payload = {
+                        "success": False,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                    print(json.dumps(error_payload))
+                    return 1
+            else:
+                cx_print(t("update_recommend.checking"), "thinking")
+                return recommend_updates(use_llm=use_llm, verbose=self.verbose)
 
         else:
             # Default: show current version and check for updates
@@ -5452,6 +5490,21 @@ def main():
 
     # update backups
     update_subs.add_parser("backups", help="List available backups for rollback")
+
+    # update recommend - Smart Update Recommendations (Issue #91)
+    update_recommend_parser = update_subs.add_parser(
+        "recommend", help="AI-powered update recommendations"
+    )
+    update_recommend_parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Disable LLM analysis for recommendations",
+    )
+    update_recommend_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output recommendations in JSON format",
+    )
     # --------------------------
 
     # WiFi/Bluetooth Driver Matcher

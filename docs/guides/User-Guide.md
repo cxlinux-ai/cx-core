@@ -30,7 +30,21 @@ cortex rollback
 
 # Rollback to specific point
 cortex rollback --to <timestamp>
+
+# Get smart update recommendations
+cortex update recommend
+
+# Get recommendations in JSON format (for scripts)
+cortex update recommend --json
 ```
+
+### Update Recommendations
+
+Cortex uses AI to analyze available updates and categorize them by risk:
+- **Security Updates**: Critical fixes that should be applied immediately.
+- **Safe to Update**: Low-risk updates (patches/minor) safe for now.
+- **Maintenance Window**: Medium-risk updates that may need a restart.
+- **Hold for Now**: High-risk or major updates that need careful planning.
 
 ### Simulation Mode
 

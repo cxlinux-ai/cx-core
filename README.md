@@ -69,6 +69,8 @@ cortex install "tools for video compression"
 | **Full Rollback** | Undo any installation with `cortex rollback` |
 | **Audit Trail** | Complete history in `~/.cortex/history.db` |
 | **Hardware-Aware** | Detects GPU, CPU, memory for optimized packages |
+| **Smart Update Recommendations** | AI-powered update recommendations and risk assessment |
+| **Predictive Error Prevention** | AI-driven checks for potential installation failures |
 | **Multi-LLM Support** | Works with Claude, GPT-4, or local Ollama models |
 
 ---
@@ -191,6 +193,9 @@ cortex history
 
 # Rollback an installation
 cortex rollback <installation-id>
+
+# Get smart update recommendations
+cortex update recommend
 ```
 
 ### Command Reference
@@ -205,6 +210,7 @@ cortex rollback <installation-id>
 | `cortex sandbox <cmd>` | Test packages in Docker sandbox |
 | `cortex history` | View all past installations |
 | `cortex rollback <id>` | Undo a specific installation |
+| `cortex update recommend` | Get AI-powered update recommendations |
 | `cortex watch --install --service` | Install terminal monitoring service |
 | `cortex watch --status` | Check terminal monitoring status |
 | `cortex --version` | Show version information |
