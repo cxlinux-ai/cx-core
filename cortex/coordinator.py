@@ -9,6 +9,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from cortex.utils.retry import (
+    DEFAULT_MAX_RETRIES,
+    ErrorCategory,
+    RetryStrategy,
+    SmartRetry,
+    load_strategies_from_env,
+)
 from cortex.validators import DANGEROUS_PATTERNS
 
 logger = logging.getLogger(__name__)
@@ -60,6 +67,7 @@ class InstallationCoordinator:
         enable_rollback: bool = False,
         log_file: str | None = None,
         progress_callback: Callable[[int, int, InstallationStep], None] | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ):
         """Initialize an installation run with optional logging and rollback."""
         self.timeout = timeout
@@ -67,6 +75,7 @@ class InstallationCoordinator:
         self.enable_rollback = enable_rollback
         self.log_file = log_file
         self.progress_callback = progress_callback
+        self.max_retries = max_retries
 
         if descriptions and len(descriptions) != len(commands):
             raise ValueError("Number of descriptions must match number of commands")
@@ -90,6 +99,7 @@ class InstallationCoordinator:
         enable_rollback: bool | None = None,
         log_file: str | None = None,
         progress_callback: Callable[[int, int, InstallationStep], None] | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> "InstallationCoordinator":
         """Create a coordinator from a structured plan produced by an LLM.
 
@@ -124,6 +134,7 @@ class InstallationCoordinator:
             ),
             log_file=log_file,
             progress_callback=progress_callback,
+            max_retries=max_retries,
         )
 
         for rollback_cmd in rollback_commands:
@@ -174,13 +185,38 @@ class InstallationCoordinator:
             self._log(f"Command blocked: {step.command} - {error}")
             return False
 
-        try:
+        def run_cmd() -> subprocess.CompletedProcess[str]:
             # Use shell=True carefully - commands are validated first
             # For complex shell commands (pipes, redirects), shell=True is needed
             # Simple commands could use shlex.split() with shell=False
-            result = subprocess.run(
+            return subprocess.run(
                 step.command, shell=True, capture_output=True, text=True, timeout=self.timeout
             )
+
+        def status_callback(msg: str) -> None:
+            self._log(msg)
+            # Only print to stdout if no progress callback is configured to avoid duplicates
+            if self.progress_callback is None:
+                print(msg)
+
+        # Load strategies and apply CLI override for network errors
+        strategies = load_strategies_from_env()
+        if ErrorCategory.NETWORK_ERROR in strategies:
+            # Create a new instance to avoid mutating the shared default object
+            original_strategy = strategies[ErrorCategory.NETWORK_ERROR]
+            strategies[ErrorCategory.NETWORK_ERROR] = RetryStrategy(
+                max_retries=self.max_retries,
+                backoff_factor=original_strategy.backoff_factor,
+                description=original_strategy.description,
+            )
+
+        retry_handler = SmartRetry(
+            strategies=strategies,
+            status_callback=status_callback,
+        )
+
+        try:
+            result = retry_handler.run(run_cmd)
 
             step.return_code = result.returncode
             step.output = result.stdout

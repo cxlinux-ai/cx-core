@@ -73,6 +73,7 @@ cortex install "python3 with pip and virtualenv" --execute
 - Without `--execute`, Cortex only shows the commands it would run
 - The `--dry-run` flag is recommended for first-time use to verify commands
 - Installation is recorded in history for potential rollback
+- **Smart Retry Logic**: Cortex automatically detects transient failures (like network timeouts) and retries commands with exponential backoff (up to 5 attempts). Permanent errors (like permission denied) fail immediately.
 
 ---
 

@@ -31,8 +31,9 @@ class TestInstallationStep(unittest.TestCase):
         self.assertEqual(step.duration(), 5.5)
 
 
+@patch("time.sleep")
 class TestInstallationCoordinator(unittest.TestCase):
-    def test_initialization(self):
+    def test_initialization(self, mock_sleep):
         commands = ["echo 1", "echo 2"]
         coordinator = InstallationCoordinator(commands)
 
@@ -40,7 +41,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(coordinator.steps[0].command, "echo 1")
         self.assertEqual(coordinator.steps[1].command, "echo 2")
 
-    def test_from_plan_initialization(self):
+    def test_from_plan_initialization(self, mock_sleep):
         plan = [
             {"command": "echo 1", "description": "First step"},
             {"command": "echo 2", "rollback": "echo rollback"},
@@ -54,7 +55,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertTrue(coordinator.enable_rollback)
         self.assertEqual(coordinator.rollback_commands, ["echo rollback"])
 
-    def test_initialization_with_descriptions(self):
+    def test_initialization_with_descriptions(self, mock_sleep):
         commands = ["echo 1", "echo 2"]
         descriptions = ["First", "Second"]
         coordinator = InstallationCoordinator(commands, descriptions)
@@ -62,7 +63,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(coordinator.steps[0].description, "First")
         self.assertEqual(coordinator.steps[1].description, "Second")
 
-    def test_initialization_mismatched_descriptions(self):
+    def test_initialization_mismatched_descriptions(self, mock_sleep):
         commands = ["echo 1", "echo 2"]
         descriptions = ["First"]
 
@@ -70,7 +71,7 @@ class TestInstallationCoordinator(unittest.TestCase):
             InstallationCoordinator(commands, descriptions)
 
     @patch("subprocess.run")
-    def test_execute_single_success(self, mock_run):
+    def test_execute_single_success(self, mock_run, mock_sleep):
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "success"
@@ -85,7 +86,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(result.steps[0].status, StepStatus.SUCCESS)
 
     @patch("subprocess.run")
-    def test_execute_single_failure(self, mock_run):
+    def test_execute_single_failure(self, mock_run, mock_sleep):
         mock_result = Mock()
         mock_result.returncode = 1
         mock_result.stdout = ""
@@ -100,7 +101,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(result.steps[0].status, StepStatus.FAILED)
 
     @patch("subprocess.run")
-    def test_execute_multiple_success(self, mock_run):
+    def test_execute_multiple_success(self, mock_run, mock_sleep):
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "success"
@@ -115,7 +116,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertTrue(all(s.status == StepStatus.SUCCESS for s in result.steps))
 
     @patch("subprocess.run")
-    def test_execute_stop_on_error(self, mock_run):
+    def test_execute_stop_on_error(self, mock_run, mock_sleep):
         def side_effect(*args, **kwargs):
             cmd = args[0] if args else kwargs.get("shell")
             if "fail" in str(cmd):
@@ -143,7 +144,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(result.steps[2].status, StepStatus.SKIPPED)
 
     @patch("subprocess.run")
-    def test_execute_continue_on_error(self, mock_run):
+    def test_execute_continue_on_error(self, mock_run, mock_sleep):
         def side_effect(*args, **kwargs):
             cmd = args[0] if args else kwargs.get("shell")
             if "fail" in str(cmd):
@@ -170,7 +171,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(result.steps[2].status, StepStatus.SUCCESS)
 
     @patch("subprocess.run")
-    def test_timeout_handling(self, mock_run):
+    def test_timeout_handling(self, mock_run, mock_sleep):
         mock_run.side_effect = Exception("Timeout")
 
         coordinator = InstallationCoordinator(["sleep 1000"], timeout=1)
@@ -179,7 +180,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.steps[0].status, StepStatus.FAILED)
 
-    def test_progress_callback(self):
+    def test_progress_callback(self, mock_sleep):
         callback_calls = []
 
         def callback(current, total, step):
@@ -199,7 +200,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertEqual(callback_calls[0], (1, 2, "echo 1"))
         self.assertEqual(callback_calls[1], (2, 2, "echo 2"))
 
-    def test_log_file(self):
+    def test_log_file(self, mock_sleep):
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".log") as f:
             log_file = f.name
 
@@ -223,7 +224,7 @@ class TestInstallationCoordinator(unittest.TestCase):
                 os.unlink(log_file)
 
     @patch("subprocess.run")
-    def test_rollback(self, mock_run):
+    def test_rollback(self, mock_run, mock_sleep):
         mock_result = Mock()
         mock_result.returncode = 1
         mock_result.stdout = ""
@@ -238,7 +239,7 @@ class TestInstallationCoordinator(unittest.TestCase):
         self.assertGreaterEqual(mock_run.call_count, 2)
 
     @patch("subprocess.run")
-    def test_verify_installation(self, mock_run):
+    def test_verify_installation(self, mock_run, mock_sleep):
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "Docker version 20.10.0"
@@ -252,7 +253,7 @@ class TestInstallationCoordinator(unittest.TestCase):
 
         self.assertTrue(verify_results["docker --version"])
 
-    def test_get_summary(self):
+    def test_get_summary(self, mock_sleep):
         with patch("subprocess.run") as mock_run:
             mock_result = Mock()
             mock_result.returncode = 0
@@ -270,7 +271,7 @@ class TestInstallationCoordinator(unittest.TestCase):
             self.assertEqual(summary["failed"], 0)
             self.assertEqual(summary["skipped"], 0)
 
-    def test_export_log(self):
+    def test_export_log(self, mock_sleep):
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
             export_file = f.name
 
@@ -299,7 +300,7 @@ class TestInstallationCoordinator(unittest.TestCase):
                 os.unlink(export_file)
 
     @patch("subprocess.run")
-    def test_step_timing(self, mock_run):
+    def test_step_timing(self, mock_run, mock_sleep):
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "success"

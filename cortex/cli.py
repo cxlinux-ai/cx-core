@@ -41,6 +41,7 @@ from cortex.uninstall_impact import (
 )
 from cortex.update_checker import UpdateChannel, should_notify_update
 from cortex.updater import Updater, UpdateStatus
+from cortex.utils.retry import DEFAULT_MAX_RETRIES
 from cortex.validators import validate_api_key, validate_install_request
 from cortex.version_manager import get_version_string
 
@@ -1544,6 +1545,7 @@ class CortexCLI:
         dry_run: bool = False,
         parallel: bool = False,
         json_output: bool = False,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> int:
         """Install software using the LLM-powered package manager."""
         # Initialize installation history
@@ -1769,6 +1771,7 @@ class CortexCLI:
                     timeout=300,
                     stop_on_error=True,
                     progress_callback=progress_callback,
+                    max_retries=max_retries,
                 )
 
                 result = coordinator.execute()
