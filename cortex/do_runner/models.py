@@ -87,13 +87,20 @@ class TaskNode:
         child.parent_id = self.id
         self.children.append(child)
 
-    def get_depth(self) -> int:
-        """Get the depth of this node in the tree."""
+    def get_depth(self, all_tasks: dict[str, "TaskNode"] | None = None) -> int:
+        """Get the depth of this node in the tree.
+
+        Args:
+            all_tasks: Optional dict mapping task IDs to TaskNodes for traversal.
+                      If not provided, returns 0 (cannot traverse without reference).
+        """
+        if all_tasks is None:
+            return 0
         depth = 0
-        node = self
-        while node.parent_id:
+        current_id = self.parent_id
+        while current_id and current_id in all_tasks:
             depth += 1
-            node = node
+            current_id = all_tasks[current_id].parent_id
         return depth
 
 

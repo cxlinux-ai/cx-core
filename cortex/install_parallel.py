@@ -1,10 +1,7 @@
 import asyncio
-import concurrent.futures
 import re
-import subprocess
 import time
 from collections.abc import Callable
-from concurrent.futures import Executor
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -41,7 +38,6 @@ class ParallelTask:
 
 async def run_single_task(
     task: ParallelTask,
-    executor: Executor,
     timeout: int,
     log_callback: Callable[[str, str], None] | None = None,
 ) -> bool:
@@ -49,7 +45,6 @@ async def run_single_task(
 
     Args:
         task: Task to run
-        executor: Thread pool executor for running blocking subprocess calls
         timeout: Command timeout in seconds
         log_callback: Optional callback for logging messages
 
@@ -74,29 +69,28 @@ async def run_single_task(
             return False
 
     try:
-        # Run command in executor (thread pool) to avoid blocking the event loop
-        loop = asyncio.get_running_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(
-                executor,
-                # Use shell=True carefully - commands are validated against dangerous patterns above.
-                # shell=True is required to support complex shell commands (e.g., pipes, redirects).
-                lambda: subprocess.run(
-                    task.command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                ),
+        # Use async subprocess for proper async execution
+        # shell=True is required to support complex shell commands (e.g., pipes, redirects).
+        # Commands are validated against dangerous patterns above.
+        process = await asyncio.wait_for(
+            asyncio.create_subprocess_shell(
+                task.command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             ),
-            timeout=timeout + 5,  # Slight buffer for asyncio overhead
+            timeout=timeout,
         )
 
-        task.output = result.stdout
-        task.error = result.stderr
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout,
+        )
+
+        task.output = stdout.decode("utf-8", errors="replace")
+        task.error = stderr.decode("utf-8", errors="replace")
         task.end_time = time.time()
 
-        if result.returncode == 0:
+        if process.returncode == 0:
             task.status = TaskStatus.SUCCESS
             if log_callback:
                 log_callback(f"Finished {task.name} (ok)", "success")
@@ -180,7 +174,6 @@ async def run_parallel_install(
     failed = set()
 
     # Thread pool for subprocess calls
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     try:
         while pending or running:
@@ -215,7 +208,7 @@ async def run_parallel_install(
 
             # Create tasks for ready items
             for task_name in ready_to_start:
-                coro = run_single_task(tasks[task_name], executor, timeout, log_callback)
+                coro = run_single_task(tasks[task_name], timeout, log_callback)
                 running[task_name] = asyncio.create_task(coro)
 
             # If nothing is running and nothing is pending, we're done
@@ -236,16 +229,16 @@ async def run_parallel_install(
                         if running_coro is task_coro:
                             task = tasks[task_name]
 
-                            # Handle cancelled tasks
+                            # Handle cancelled child tasks (not outer cancellation)
                             try:
                                 success = task_coro.result()
                             except asyncio.CancelledError:
-                                # Task was cancelled due to stop_on_error
+                                # Child task was cancelled due to stop_on_error
                                 task.status = TaskStatus.SKIPPED
                                 task.error = "Task cancelled due to dependency failure"
                                 failed.add(task_name)
                                 del running[task_name]
-                                break
+                                break  # Continue to next completed task
 
                             if success:
                                 completed.add(task_name)
@@ -269,8 +262,13 @@ async def run_parallel_install(
                             del running[task_name]
                             break
 
+    except asyncio.CancelledError:
+        # Cancel all running tasks on outer cancellation
+        for task_coro in running.values():
+            task_coro.cancel()
+        raise
     finally:
-        executor.shutdown(wait=True)
+        pass  # Cleanup if needed
 
     # Check overall success
     all_success = len(failed) == 0

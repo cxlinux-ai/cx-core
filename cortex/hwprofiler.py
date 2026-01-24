@@ -351,8 +351,7 @@ class HardwareProfiler:
                                 # Fallback: guess based on device name
                                 if "sd" in device_name.lower():
                                     storage_type = "hdd"  # Default assumption
-                                elif "nvme" in device_name.lower():
-                                    storage_type = "nvme"
+                                # Note: nvme already handled above, no need to check again
 
                             storage_devices.append(
                                 {"type": storage_type, "size": size_mb, "device": device_name}

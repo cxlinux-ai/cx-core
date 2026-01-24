@@ -201,12 +201,16 @@ class CortexMCPServer:
     async def _detect_hardware(self) -> dict:
         hardware = {}
         try:
-            with open("/proc/cpuinfo") as f:
-                for line in f:
-                    if line.startswith("model name"):
-                        hardware["cpu"] = line.split(":")[1].strip()
-                        break
-        except:
+            # Use async file reading via asyncio
+            loop = asyncio.get_running_loop()
+            content = await loop.run_in_executor(
+                None, lambda: open("/proc/cpuinfo").read()
+            )
+            for line in content.split("\n"):
+                if line.startswith("model name"):
+                    hardware["cpu"] = line.split(":")[1].strip()
+                    break
+        except Exception:
             hardware["cpu"] = "Unknown"
 
         try:
@@ -220,7 +224,7 @@ class CortexMCPServer:
             stdout, _ = await process.communicate()
             if process.returncode == 0:
                 hardware["gpu"] = stdout.decode("utf-8").strip()
-        except:
+        except Exception:
             hardware["gpu"] = None
 
         return hardware
