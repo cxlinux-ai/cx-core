@@ -176,6 +176,21 @@ class StdinHandler:
             return data
         return self.truncate(data)
 
+    @staticmethod
+    def get_input(prompt: str = "") -> str:
+        """Get interactive input from stdin safely.
+
+        Args:
+            prompt: Prompt text to display
+
+        Returns:
+            Input string or empty string on cancellation
+        """
+        try:
+            return input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            return ""
+
 
 def detect_content_type(content: str) -> str:
     """Detect the type of content from stdin.

@@ -40,6 +40,15 @@ cortex simulate "install oracle 23 ai"
 # Shows: disk space, dependencies, estimated time
 ```
 
+### Predictive Error Prevention
+
+Cortex automatically analyzes installation requests for potential risks (kernel mismatch, low RAM, disk space) before execution. If a risk is detected, you will see a warning panel and be asked for confirmation.
+
+```bash
+# Example warning for risky hardware/software combo
+cortex install "nvidia-cuda-latest"
+```
+
 ### Progress & Notifications
 ```bash
 # Installation with progress

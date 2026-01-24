@@ -114,8 +114,29 @@ class TestFallbackBehavior(unittest.TestCase):
         decision = router.route_task(TaskType.SYSTEM_OPERATION)
         self.assertEqual(decision.provider, LLMProvider.CLAUDE)
 
+    @patch("cortex.llm_router.OpenAI")
+    @patch("cortex.llm_router.AsyncOpenAI")
     @patch.dict(os.environ, {}, clear=True)
-    def test_error_when_no_providers_available(self):
+    def test_fallback_to_ollama(self, mock_async_openai, mock_openai):
+        """Should fallback to Ollama if primary providers unavailable."""
+        router = LLMRouter(
+            claude_api_key=None,
+            kimi_api_key=None,
+            ollama_base_url="http://localhost:11434",
+            enable_fallback=True,
+        )
+
+        # User chat normally Claude -> fallback to Ollama
+        decision = router.route_task(TaskType.USER_CHAT)
+        self.assertEqual(decision.provider, LLMProvider.OLLAMA)
+
+        # System ops normally Kimi -> fallback to Ollama
+        decision = router.route_task(TaskType.SYSTEM_OPERATION)
+        self.assertEqual(decision.provider, LLMProvider.OLLAMA)
+
+    @patch("cortex.llm_router.OpenAI", side_effect=ImportError)
+    @patch.dict(os.environ, {}, clear=True)
+    def test_error_when_no_providers_available(self, mock_openai):
         """Should raise error if no providers configured."""
         router = LLMRouter(claude_api_key=None, kimi_api_key=None, enable_fallback=True)
 
@@ -137,7 +158,9 @@ class TestCostTracking(unittest.TestCase):
     def setUp(self):
         """Set up router with tracking enabled."""
         self.router = LLMRouter(
-            claude_api_key="test-claude-key", kimi_api_key="test-kimi-key", track_costs=True
+            claude_api_key="test-claude-key",
+            kimi_api_key="test-kimi-key",
+            track_costs=True,
         )
 
     def test_cost_calculation_claude(self):
@@ -251,7 +274,9 @@ class TestClaudeIntegration(unittest.TestCase):
 
         # Test completion
         result = router._complete_claude(
-            messages=[{"role": "user", "content": "Hello"}], temperature=0.7, max_tokens=1024
+            messages=[{"role": "user", "content": "Hello"}],
+            temperature=0.7,
+            max_tokens=1024,
         )
 
         self.assertEqual(result.content, "Hello from Claude")
@@ -321,7 +346,9 @@ class TestKimiIntegration(unittest.TestCase):
 
         # Test completion
         result = router._complete_kimi(
-            messages=[{"role": "user", "content": "Hello"}], temperature=0.7, max_tokens=1024
+            messages=[{"role": "user", "content": "Hello"}],
+            temperature=0.7,
+            max_tokens=1024,
         )
 
         self.assertEqual(result.content, "Hello from Kimi K2")
@@ -352,7 +379,9 @@ class TestKimiIntegration(unittest.TestCase):
 
         # Call with temperature=1.0
         router._complete_kimi(
-            messages=[{"role": "user", "content": "Hello"}], temperature=1.0, max_tokens=1024
+            messages=[{"role": "user", "content": "Hello"}],
+            temperature=1.0,
+            max_tokens=1024,
         )
 
         # Verify temperature was scaled to 0.6
@@ -393,6 +422,225 @@ class TestKimiIntegration(unittest.TestCase):
         call_args = mock_client.chat.completions.create.call_args
         self.assertIn("tools", call_args.kwargs)
         self.assertEqual(call_args.kwargs["tool_choice"], "auto")
+
+
+class TestOpenAIIntegration(unittest.TestCase):
+    """Test OpenAI API integration."""
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    @patch("cortex.llm_router.OpenAI")
+    def test_openai_completion(self, mock_openai, mock_async_openai):
+        """Test OpenAI completion with mocked API."""
+        mock_message = Mock()
+        mock_message.content = "Hello from OpenAI"
+
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=120, completion_tokens=30)
+        mock_response.model_dump = lambda: {"mock": "response"}
+
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai.return_value = mock_client
+        mock_async_openai.return_value = AsyncMock()
+
+        router = LLMRouter(openai_api_key="test-openai-key")
+        router.openai_client = mock_client
+        router.openai_api_keys = ["test-openai-key"]
+
+        result = router._complete_openai(
+            messages=[{"role": "user", "content": "Hello"}],
+            temperature=0.7,
+            max_tokens=1024,
+        )
+
+        self.assertEqual(result.content, "Hello from OpenAI")
+        self.assertEqual(result.provider, LLMProvider.OPENAI)
+        self.assertEqual(result.tokens_used, 150)
+        self.assertEqual(result.cost_usd, 0.0)
+        self.assertEqual(result.latency_seconds, 0.0)
+        self.assertEqual(result.raw_response, {"mock": "response"})
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    @patch("cortex.llm_router.OpenAI")
+    def test_openai_key_rotation(self, mock_openai, mock_async_openai):
+        """Test OpenAI key rotation on failure."""
+        bad_client = Mock()
+        bad_client.chat.completions.create.side_effect = Exception("bad key")
+
+        mock_message = Mock()
+        mock_message.content = "Recovered response"
+
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=90, completion_tokens=10)
+        mock_response.model_dump = lambda: {"mock": "response"}
+
+        good_client = Mock()
+        good_client.chat.completions.create.return_value = mock_response
+
+        mock_openai.return_value = good_client
+        mock_async_openai.return_value = AsyncMock()
+
+        router = LLMRouter(openai_api_key="bad-key,good-key")
+        router.openai_client = bad_client
+        router.openai_api_keys = ["bad-key", "good-key"]
+
+        result = router._complete_openai(
+            messages=[{"role": "user", "content": "Hello"}],
+            temperature=0.7,
+            max_tokens=1024,
+        )
+
+        self.assertEqual(result.provider, LLMProvider.OPENAI)
+        self.assertEqual(result.content, "Recovered response")
+        self.assertEqual(result.tokens_used, 100)
+        self.assertEqual(result.raw_response, {"mock": "response"})
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    @patch("cortex.llm_router.OpenAI")
+    def test_openai_all_keys_fail(self, mock_openai, mock_async_openai):
+        """Test OpenAI error propagation when all keys fail."""
+        bad_client_1 = Mock()
+        bad_client_1.chat.completions.create.side_effect = Exception("bad key 1")
+
+        bad_client_2 = Mock()
+        bad_client_2.chat.completions.create.side_effect = Exception("bad key 2")
+
+        mock_openai.return_value = bad_client_2
+        mock_async_openai.return_value = AsyncMock()
+
+        router = LLMRouter(openai_api_key="bad-key-1,bad-key-2")
+        router.openai_client = bad_client_1
+        router.openai_api_keys = ["bad-key-1", "bad-key-2"]
+
+        with self.assertRaises(RuntimeError) as context:
+            router._complete_openai(
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=0.7,
+                max_tokens=1024,
+            )
+
+        self.assertIsNotNone(context.exception.__cause__)
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    @patch("cortex.llm_router.OpenAI")
+    def test_acomplete_openai_success(self, mock_openai, mock_async_openai):
+        """Test async OpenAI completion with mocked API."""
+        mock_message = Mock()
+        mock_message.content = "Async OpenAI response"
+
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=80, completion_tokens=20)
+        mock_response.model_dump = lambda: {"mock": "response"}
+
+        mock_openai.return_value = Mock()
+
+        mock_async_client = AsyncMock()
+        mock_async_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_async_openai.return_value = mock_async_client
+
+        router = LLMRouter(openai_api_key="test-openai-key")
+        router.openai_client_async = mock_async_client
+        router.openai_api_keys = ["test-openai-key"]
+
+        async def run_test():
+            result = await router._acomplete_openai(
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=0.7,
+                max_tokens=1024,
+            )
+
+            self.assertEqual(result.provider, LLMProvider.OPENAI)
+            self.assertEqual(result.content, "Async OpenAI response")
+            self.assertEqual(result.tokens_used, 100)
+            self.assertEqual(result.cost_usd, 0.0)
+            self.assertEqual(result.latency_seconds, 0.0)
+            self.assertEqual(result.raw_response, {"mock": "response"})
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    @patch("cortex.llm_router.OpenAI")
+    def test_acomplete_openai_key_rotation(self, mock_openai, mock_async_openai):
+        """Test async OpenAI key rotation on failure."""
+        mock_openai.return_value = Mock()
+
+        bad_async_client = AsyncMock()
+        bad_async_client.chat.completions.create = AsyncMock(side_effect=Exception("bad key"))
+
+        mock_message = Mock()
+        mock_message.content = "Async recovered"
+
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = Mock(prompt_tokens=60, completion_tokens=20)
+        mock_response.model_dump = lambda: {"mock": "response"}
+
+        good_async_client = AsyncMock()
+        good_async_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        mock_async_openai.return_value = good_async_client
+
+        router = LLMRouter(openai_api_key="bad-key good-key")
+        router.openai_client_async = bad_async_client
+        router.openai_api_keys = ["bad-key", "good-key"]
+
+        async def run_test():
+            result = await router._acomplete_openai(
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=0.7,
+                max_tokens=1024,
+            )
+
+            self.assertEqual(result.provider, LLMProvider.OPENAI)
+            self.assertEqual(result.content, "Async recovered")
+            self.assertEqual(result.tokens_used, 80)
+
+        asyncio.run(run_test())
+
+    @patch("cortex.llm_router.AsyncOpenAI")
+    @patch("cortex.llm_router.OpenAI")
+    def test_acomplete_openai_all_keys_fail(self, mock_openai, mock_async_openai):
+        """Test async OpenAI error propagation when all keys fail."""
+        mock_openai.return_value = Mock()
+
+        bad_async_client_1 = AsyncMock()
+        bad_async_client_1.chat.completions.create = AsyncMock(side_effect=Exception("bad key 1"))
+
+        bad_async_client_2 = AsyncMock()
+        bad_async_client_2.chat.completions.create = AsyncMock(side_effect=Exception("bad key 2"))
+
+        mock_async_openai.return_value = bad_async_client_2
+
+        router = LLMRouter(openai_api_key="bad1,bad2")
+        router.openai_client_async = bad_async_client_1
+        router.openai_api_keys = ["bad1", "bad2"]
+
+        async def run_test():
+            with self.assertRaises(RuntimeError) as context:
+                await router._acomplete_openai(
+                    messages=[{"role": "user", "content": "Hello"}],
+                    temperature=0.7,
+                    max_tokens=1024,
+                )
+
+            self.assertIsNotNone(context.exception.__cause__)
+
+        asyncio.run(run_test())
 
 
 class TestEndToEnd(unittest.TestCase):
@@ -737,6 +985,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestCostTracking))
     suite.addTests(loader.loadTestsFromTestCase(TestClaudeIntegration))
     suite.addTests(loader.loadTestsFromTestCase(TestKimiIntegration))
+    suite.addTests(loader.loadTestsFromTestCase(TestOpenAIIntegration))
     suite.addTests(loader.loadTestsFromTestCase(TestEndToEnd))
     suite.addTests(loader.loadTestsFromTestCase(TestConvenienceFunction))
     suite.addTests(loader.loadTestsFromTestCase(TestParallelProcessing))

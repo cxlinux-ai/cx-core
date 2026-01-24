@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ class LLMProvider(Enum):
 
     CLAUDE = "claude"
     KIMI_K2 = "kimi_k2"
+    OPENAI = "openai"
     OLLAMA = "ollama"
 
 
@@ -96,6 +98,10 @@ class LLMRouter:
             "input": 1.0,  # Estimated lower cost
             "output": 5.0,  # Estimated lower cost
         },
+        LLMProvider.OPENAI: {
+            "input": 0.0,  # Unknown/varies by model
+            "output": 0.0,  # Unknown/varies by model
+        },
         LLMProvider.OLLAMA: {
             "input": 0.0,  # Free - local inference
             "output": 0.0,  # Free - local inference
@@ -118,8 +124,10 @@ class LLMRouter:
         self,
         claude_api_key: str | None = None,
         kimi_api_key: str | None = None,
+        openai_api_key: str | None = None,
         ollama_base_url: str | None = None,
         ollama_model: str | None = None,
+        openai_model: str | None = None,
         default_provider: LLMProvider = LLMProvider.CLAUDE,
         enable_fallback: bool = True,
         track_costs: bool = True,
@@ -130,14 +138,21 @@ class LLMRouter:
         Args:
             claude_api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env)
             kimi_api_key: Moonshot API key (defaults to MOONSHOT_API_KEY env)
+            openai_api_key: OpenAI API key or delimited list (defaults to OPENAI_API_KEY/OPENAI_API_KEYS env)
+                Multiple keys are supported for rotation/fallback. Accepted delimiters for
+                openai_api_key/OPENAI_API_KEYS are commas, semicolons, or spaces. The
+                loader prefers OPENAI_API_KEYS when present and falls back to OPENAI_API_KEY.
             ollama_base_url: Ollama API base URL (defaults to http://localhost:11434)
             ollama_model: Ollama model to use (defaults to llama3.2)
+            openai_model: OpenAI model to use (defaults to gpt-4o-mini)
             default_provider: Fallback provider if routing fails
             enable_fallback: Try alternate LLM if primary fails
             track_costs: Track token usage and costs
         """
         self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY")
         self.kimi_api_key = kimi_api_key or os.getenv("MOONSHOT_API_KEY")
+        self.openai_api_keys = self._load_openai_keys(openai_api_key)
+        self.openai_model = openai_model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.default_provider = default_provider
         self.enable_fallback = enable_fallback
         self.track_costs = track_costs
@@ -145,10 +160,12 @@ class LLMRouter:
         # Initialize clients (sync)
         self.claude_client = None
         self.kimi_client = None
+        self.openai_client = None
 
         # Initialize async clients
         self.claude_client_async = None
         self.kimi_client_async = None
+        self.openai_client_async = None
 
         if self.claude_api_key:
             self.claude_client = Anthropic(api_key=self.claude_api_key)
@@ -167,6 +184,13 @@ class LLMRouter:
             logger.info("✅ Kimi K2 API client initialized")
         else:
             logger.warning("⚠️  No Kimi K2 API key provided")
+
+        if self.openai_api_keys:
+            self.openai_client = OpenAI(api_key=self.openai_api_keys[0])
+            self.openai_client_async = AsyncOpenAI(api_key=self.openai_api_keys[0])
+            logger.info("✅ OpenAI API client initialized")
+        else:
+            logger.warning("⚠️  No OpenAI API key provided")
 
         # Initialize Ollama client (local inference)
         self.ollama_base_url = ollama_base_url or os.getenv(
@@ -200,8 +224,31 @@ class LLMRouter:
         self.provider_stats = {
             LLMProvider.CLAUDE: {"requests": 0, "tokens": 0, "cost": 0.0},
             LLMProvider.KIMI_K2: {"requests": 0, "tokens": 0, "cost": 0.0},
+            LLMProvider.OPENAI: {"requests": 0, "tokens": 0, "cost": 0.0},
             LLMProvider.OLLAMA: {"requests": 0, "tokens": 0, "cost": 0.0},
         }
+
+    @staticmethod
+    def _split_api_keys(value: str | None) -> list[str]:
+        if not value:
+            return []
+        return [key.strip() for key in re.split(r"[\s,;]+", value) if key.strip()]
+
+    def _load_openai_keys(self, explicit_key: str | None) -> list[str]:
+        keys: list[str] = []
+        if explicit_key:
+            keys.extend(self._split_api_keys(explicit_key))
+
+        keys.extend(self._split_api_keys(os.getenv("OPENAI_API_KEY")))
+        keys.extend(self._split_api_keys(os.getenv("OPENAI_API_KEYS")))
+
+        seen = set()
+        unique_keys = []
+        for key in keys:
+            if key and key not in seen:
+                unique_keys.append(key)
+                seen.add(key)
+        return unique_keys
 
     def route_task(
         self, task_type: TaskType, force_provider: LLMProvider | None = None
@@ -232,6 +279,12 @@ class LLMRouter:
             if self.kimi_client and self.enable_fallback:
                 logger.warning("Claude unavailable, falling back to Kimi K2")
                 provider = LLMProvider.KIMI_K2
+            elif self.openai_api_keys and self.enable_fallback:
+                logger.warning("Claude unavailable, falling back to OpenAI")
+                provider = LLMProvider.OPENAI
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("Claude unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
             else:
                 raise RuntimeError("Claude API not configured and no fallback available")
 
@@ -239,8 +292,27 @@ class LLMRouter:
             if self.claude_client and self.enable_fallback:
                 logger.warning("Kimi K2 unavailable, falling back to Claude")
                 provider = LLMProvider.CLAUDE
+            elif self.openai_api_keys and self.enable_fallback:
+                logger.warning("Kimi K2 unavailable, falling back to OpenAI")
+                provider = LLMProvider.OPENAI
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("Kimi K2 unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
             else:
                 raise RuntimeError("Kimi K2 API not configured and no fallback available")
+
+        if provider == LLMProvider.OPENAI and not self.openai_api_keys:
+            if self.claude_client and self.enable_fallback:
+                logger.warning("OpenAI unavailable, falling back to Claude")
+                provider = LLMProvider.CLAUDE
+            elif self.kimi_client and self.enable_fallback:
+                logger.warning("OpenAI unavailable, falling back to Kimi K2")
+                provider = LLMProvider.KIMI_K2
+            elif self.ollama_client and self.enable_fallback:
+                logger.warning("OpenAI unavailable, falling back to Ollama")
+                provider = LLMProvider.OLLAMA
+            else:
+                raise RuntimeError("OpenAI API not configured and no fallback available")
 
         if provider == LLMProvider.OLLAMA and not self.ollama_client:
             if self.claude_client and self.enable_fallback:
@@ -249,6 +321,9 @@ class LLMRouter:
             elif self.kimi_client and self.enable_fallback:
                 logger.warning("Ollama unavailable, falling back to Kimi K2")
                 provider = LLMProvider.KIMI_K2
+            elif self.openai_api_keys and self.enable_fallback:
+                logger.warning("Ollama unavailable, falling back to OpenAI")
+                provider = LLMProvider.OPENAI
             else:
                 raise RuntimeError("Ollama not available and no fallback configured")
 
@@ -257,6 +332,25 @@ class LLMRouter:
         return RoutingDecision(
             provider=provider, task_type=task_type, reasoning=reasoning, confidence=0.95
         )
+
+    def _get_fallback_provider(self, current: LLMProvider) -> LLMProvider | None:
+        """Find the next available provider that isn't the current one."""
+        candidates = []
+
+        # Priority order: Claude -> Kimi -> OpenAI -> Ollama
+        if self.claude_client and current != LLMProvider.CLAUDE:
+            candidates.append(LLMProvider.CLAUDE)
+
+        if self.kimi_client and current != LLMProvider.KIMI_K2:
+            candidates.append(LLMProvider.KIMI_K2)
+
+        if self.openai_api_keys and current != LLMProvider.OPENAI:
+            candidates.append(LLMProvider.OPENAI)
+
+        if self.ollama_client and current != LLMProvider.OLLAMA:
+            candidates.append(LLMProvider.OLLAMA)
+
+        return candidates[0] if candidates else None
 
     def complete(
         self,
@@ -292,6 +386,8 @@ class LLMRouter:
                 response = self._complete_claude(messages, temperature, max_tokens, tools)
             elif routing.provider == LLMProvider.KIMI_K2:
                 response = self._complete_kimi(messages, temperature, max_tokens, tools)
+            elif routing.provider == LLMProvider.OPENAI:
+                response = self._complete_openai(messages, temperature, max_tokens, tools)
             else:  # OLLAMA
                 response = self._complete_ollama(messages, temperature, max_tokens, tools)
 
@@ -304,27 +400,38 @@ class LLMRouter:
             return response
 
         except Exception as e:
-            logger.error(f"❌ Error with {routing.provider.value}: {e}")
+            self._log_provider_failure(routing.provider, e)
 
             # Try fallback if enabled
             if self.enable_fallback:
-                fallback_provider = (
-                    LLMProvider.KIMI_K2
-                    if routing.provider == LLMProvider.CLAUDE
-                    else LLMProvider.CLAUDE
-                )
-                logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                fallback_provider = self._get_fallback_provider(routing.provider)
 
-                return self.complete(
-                    messages=messages,
-                    task_type=task_type,
-                    force_provider=fallback_provider,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                )
+                if fallback_provider:
+                    logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                    return self.complete(
+                        messages=messages,
+                        task_type=task_type,
+                        force_provider=fallback_provider,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                    )
+                else:
+                    raise RuntimeError("No AI providers are available. Check your API keys.")
             else:
                 raise
+
+    @staticmethod
+    def _log_provider_failure(provider: LLMProvider, error: Exception) -> None:
+        provider_names = {
+            LLMProvider.CLAUDE: "Claude",
+            LLMProvider.KIMI_K2: "Kimi K2",
+            LLMProvider.OPENAI: "OpenAI",
+            LLMProvider.OLLAMA: "Ollama",
+        }
+        name = provider_names.get(provider, provider.value)
+        logger.warning(f"{name} request failed")
+        logger.debug("%s error: %s", name, error)
 
     def _complete_claude(
         self,
@@ -334,6 +441,9 @@ class LLMRouter:
         tools: list[dict] | None = None,
     ) -> LLMResponse:
         """Generate completion using Claude API."""
+        if not self.claude_client:
+            raise RuntimeError("Claude client not initialized")
+
         # Extract system message if present
         system_message = None
         user_messages = []
@@ -390,6 +500,9 @@ class LLMRouter:
         tools: list[dict] | None = None,
     ) -> LLMResponse:
         """Generate completion using Kimi K2 API."""
+        if not self.kimi_client:
+            raise RuntimeError("Kimi K2 client not initialized")
+
         # Kimi K2 recommends temperature=0.6
         # Map user's temperature to Kimi's scale
         kimi_temp = temperature * 0.6
@@ -419,6 +532,75 @@ class LLMRouter:
             content=content,
             provider=LLMProvider.KIMI_K2,
             model="kimi-k2-instruct",
+            tokens_used=input_tokens + output_tokens,
+            cost_usd=cost,
+            latency_seconds=0.0,  # Set by caller
+            raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+        )
+
+    def _complete_openai(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> LLMResponse:
+        """Generate completion using OpenAI API."""
+        if not self.openai_api_keys:
+            raise RuntimeError("OpenAI client not initialized")
+
+        last_error: Exception | None = None
+        for index, key in enumerate(self.openai_api_keys):
+            try:
+                client = (
+                    self.openai_client if index == 0 and self.openai_client else OpenAI(api_key=key)
+                )
+                kwargs = self._build_openai_kwargs(messages, temperature, max_tokens, tools)
+
+                response = client.chat.completions.create(**kwargs)
+                return self._openai_response_to_llmresponse(response)
+            except Exception as e:
+                last_error = e
+                if index < len(self.openai_api_keys) - 1:
+                    logger.warning("OpenAI API key failed, trying next key")
+                    logger.debug("OpenAI error: %s", e)
+                    continue
+                break
+
+        raise RuntimeError(
+            "OpenAI API request failed. Check your OpenAI API key or billing."
+        ) from last_error
+
+    def _build_openai_kwargs(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "model": self.openai_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        return kwargs
+
+    def _openai_response_to_llmresponse(self, response: Any) -> LLMResponse:
+        content = response.choices[0].message.content or ""
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+        cost = self._calculate_cost(LLMProvider.OPENAI, input_tokens, output_tokens)
+
+        return LLMResponse(
+            content=content,
+            provider=LLMProvider.OPENAI,
+            model=self.openai_model,
             tokens_used=input_tokens + output_tokens,
             cost_usd=cost,
             latency_seconds=0.0,  # Set by caller
@@ -469,7 +651,8 @@ class LLMRouter:
             )
 
         except Exception as e:
-            logger.error(f"Ollama error: {e}")
+            logger.warning("Ollama request failed")
+            logger.debug("Ollama error: %s", e)
             raise RuntimeError(
                 f"Ollama request failed. Is Ollama running? (ollama serve) Error: {e}"
             )
@@ -515,6 +698,11 @@ class LLMRouter:
                         "requests": self.provider_stats[LLMProvider.KIMI_K2]["requests"],
                         "tokens": self.provider_stats[LLMProvider.KIMI_K2]["tokens"],
                         "cost_usd": round(self.provider_stats[LLMProvider.KIMI_K2]["cost"], 4),
+                    },
+                    "openai": {
+                        "requests": self.provider_stats[LLMProvider.OPENAI]["requests"],
+                        "tokens": self.provider_stats[LLMProvider.OPENAI]["tokens"],
+                        "cost_usd": round(self.provider_stats[LLMProvider.OPENAI]["cost"], 4),
                     },
                     "ollama": {
                         "requests": self.provider_stats[LLMProvider.OLLAMA]["requests"],
@@ -574,6 +762,8 @@ class LLMRouter:
                 response = await self._acomplete_claude(messages, temperature, max_tokens, tools)
             elif routing.provider == LLMProvider.KIMI_K2:
                 response = await self._acomplete_kimi(messages, temperature, max_tokens, tools)
+            elif routing.provider == LLMProvider.OPENAI:
+                response = await self._acomplete_openai(messages, temperature, max_tokens, tools)
             else:  # OLLAMA
                 response = await self._acomplete_ollama(messages, temperature, max_tokens, tools)
 
@@ -586,25 +776,24 @@ class LLMRouter:
             return response
 
         except Exception as e:
-            logger.error(f"❌ Error with {routing.provider.value}: {e}")
+            self._log_provider_failure(routing.provider, e)
 
             # Try fallback if enabled
             if self.enable_fallback:
-                fallback_provider = (
-                    LLMProvider.KIMI_K2
-                    if routing.provider == LLMProvider.CLAUDE
-                    else LLMProvider.CLAUDE
-                )
-                logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                fallback_provider = self._get_fallback_provider(routing.provider)
 
-                return await self.acomplete(
-                    messages=messages,
-                    task_type=task_type,
-                    force_provider=fallback_provider,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                )
+                if fallback_provider:
+                    logger.info(f"🔄 Attempting fallback to {fallback_provider.value}")
+                    return await self.acomplete(
+                        messages=messages,
+                        task_type=task_type,
+                        force_provider=fallback_provider,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                    )
+                else:
+                    raise RuntimeError("No AI providers are available. Check your API keys.")
             else:
                 raise
 
@@ -711,6 +900,41 @@ class LLMRouter:
             raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
         )
 
+    async def _acomplete_openai(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+    ) -> LLMResponse:
+        """Async: Generate completion using OpenAI API."""
+        if not self.openai_api_keys:
+            raise RuntimeError("OpenAI client not initialized")
+
+        last_error: Exception | None = None
+        for index, key in enumerate(self.openai_api_keys):
+            try:
+                client = (
+                    self.openai_client_async
+                    if index == 0 and self.openai_client_async
+                    else AsyncOpenAI(api_key=key)
+                )
+                kwargs = self._build_openai_kwargs(messages, temperature, max_tokens, tools)
+
+                response = await client.chat.completions.create(**kwargs)
+                return self._openai_response_to_llmresponse(response)
+            except Exception as e:
+                last_error = e
+                if index < len(self.openai_api_keys) - 1:
+                    logger.warning("OpenAI API key failed, trying next key")
+                    logger.debug("OpenAI error: %s", e)
+                    continue
+                break
+
+        raise RuntimeError(
+            "OpenAI API request failed. Check your OpenAI API key or billing."
+        ) from last_error
+
     async def _acomplete_ollama(
         self,
         messages: list[dict[str, str]],
@@ -757,7 +981,8 @@ class LLMRouter:
             )
 
         except Exception as e:
-            logger.error(f"Ollama async error: {e}")
+            logger.warning("Ollama request failed")
+            logger.debug("Ollama error: %s", e)
             raise RuntimeError(
                 f"Ollama request failed. Is Ollama running? (ollama serve) Error: {e}"
             )

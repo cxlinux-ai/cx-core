@@ -125,24 +125,21 @@ class APIKeyDetector:
     def _check_environment_api_keys(self) -> tuple[bool, str, str, str] | None:
         """Check for API keys in environment variables.
 
-        Respects CORTEX_PROVIDER setting when multiple keys are available.
-        Falls back to OpenAI if Anthropic is not available but OpenAI is.
+        Respects CORTEX_PROVIDER when multiple keys exist and prefers OpenAI when unspecified.
         """
-        # Check if user has explicit provider preference
-        preferred_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+        explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
 
-        # If provider is specified, check for that key first
-        if preferred_provider in ("anthropic", "claude"):
+        # If user explicitly set a provider, check that key first
+        if explicit_provider in ("anthropic", "claude"):
             value = os.environ.get("ANTHROPIC_API_KEY")
             if value:
                 return (True, value, "anthropic", "environment")
-        elif preferred_provider == "openai":
+        elif explicit_provider == "openai":
             value = os.environ.get("OPENAI_API_KEY")
             if value:
                 return (True, value, "openai", "environment")
 
-        # Fall back to checking all keys if no preference or preferred key not found
-        # Prefer OpenAI over Anthropic if no explicit preference (since Anthropic seems to have issues)
+        # Fallback: prefer OpenAI first, then Anthropic
         for env_var, provider in [("OPENAI_API_KEY", "openai"), ("ANTHROPIC_API_KEY", "anthropic")]:
             value = os.environ.get(env_var)
             if value:
@@ -160,7 +157,29 @@ class APIKeyDetector:
 
             env_mgr = get_env_manager()
 
-            # Check for API keys in encrypted storage
+            # If CORTEX_PROVIDER is explicitly set, check that provider's key first
+            explicit_provider = os.environ.get("CORTEX_PROVIDER", "").lower()
+            if explicit_provider in ["openai", "claude", "anthropic"]:
+                # Map provider names to env vars and canonical provider names
+                if explicit_provider == "openai":
+                    target_env_var = "OPENAI_API_KEY"
+                    target_provider = "openai"
+                else:  # claude or anthropic both map to ANTHROPIC_API_KEY
+                    target_env_var = "ANTHROPIC_API_KEY"
+                    target_provider = "anthropic"
+
+                value = env_mgr.get_variable(app="cortex", key=target_env_var, decrypt=True)
+                if value:
+                    os.environ[target_env_var] = value
+                    logger.debug(f"Loaded {target_env_var} from encrypted storage")
+                    return (
+                        True,
+                        value,
+                        target_provider,
+                        "encrypted storage (~/.cortex/environments/)",
+                    )
+
+            # Check for API keys in encrypted storage (default order)
             for env_var, provider in ENV_VAR_PROVIDERS.items():
                 value = env_mgr.get_variable(app="cortex", key=env_var, decrypt=True)
                 if value:
