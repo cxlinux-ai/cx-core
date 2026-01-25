@@ -14,7 +14,7 @@ mod ollama;
 mod widget;
 
 pub use panel::{AIPanel, AIPanelState, TerminalContext, EnvironmentInfo};
-pub use provider::{AIProvider, AIProviderConfig};
+pub use provider::{AIProvider, AIProviderConfig, AIError};
 pub use chat::{ChatMessage, ChatRole, ChatHistory};
 pub use claude::ClaudeProvider;
 pub use ollama::{OllamaProvider, create_local_provider};

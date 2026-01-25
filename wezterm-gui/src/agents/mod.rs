@@ -3,17 +3,26 @@
 //! Provides integration with CX Linux system agents for
 //! intelligent system management.
 
+#![allow(dead_code)]
+
+mod docker;
+mod file;
+mod git;
+mod package;
 mod runtime;
+mod system;
 mod traits;
 
-// Re-exports are available for external use but currently internal-only
-#[allow(unused_imports)]
+// Re-export agents
+pub use docker::DockerAgent;
+pub use file::FileAgent;
+pub use git::GitAgent;
+pub use package::PackageAgent;
 pub use runtime::AgentRuntime;
-#[allow(unused_imports)]
+pub use system::SystemAgent;
 pub use traits::{Agent, AgentCapability, AgentRequest, AgentResponse};
 
 /// Available built-in agents
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltinAgent {
     /// System information and management
@@ -32,7 +41,6 @@ pub enum BuiltinAgent {
     Docker,
 }
 
-#[allow(dead_code)]
 impl BuiltinAgent {
     pub fn name(&self) -> &'static str {
         match self {
@@ -97,7 +105,6 @@ impl BuiltinAgent {
 }
 
 /// Example agent commands
-#[allow(dead_code)]
 pub mod examples {
     use super::BuiltinAgent;
 
@@ -147,5 +154,37 @@ pub mod examples {
                 "stop container web",
             ],
         }
+    }
+}
+
+/// Create a runtime with all built-in agents registered
+pub fn create_runtime() -> AgentRuntime {
+    let mut runtime = AgentRuntime::new();
+    runtime.register_builtin_agents();
+    runtime.enable();
+    runtime
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_runtime() {
+        let runtime = create_runtime();
+        assert!(runtime.is_enabled());
+        assert!(runtime.get("system").is_some());
+        assert!(runtime.get("file").is_some());
+        assert!(runtime.get("package").is_some());
+        assert!(runtime.get("git").is_some());
+        assert!(runtime.get("docker").is_some());
+    }
+
+    #[test]
+    fn test_builtin_agent_from_name() {
+        assert_eq!(BuiltinAgent::from_name("system"), Some(BuiltinAgent::System));
+        assert_eq!(BuiltinAgent::from_name("git"), Some(BuiltinAgent::Git));
+        assert_eq!(BuiltinAgent::from_name("docker"), Some(BuiltinAgent::Docker));
+        assert_eq!(BuiltinAgent::from_name("unknown"), None);
     }
 }

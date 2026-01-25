@@ -43,6 +43,7 @@ mod customglyph;
 mod download;
 mod frontend;
 mod glyphcache;
+mod input;
 mod inputmap;
 mod overlay;
 mod quad;
@@ -60,6 +61,7 @@ mod unicode_names;
 mod uniforms;
 mod update;
 mod utilsprites;
+mod workflows;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]

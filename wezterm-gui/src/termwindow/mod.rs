@@ -481,6 +481,10 @@ pub struct TermWindow {
     ai_widget: RefCell<crate::ai::AIPanelWidget>,
     /// AI Manager for provider selection and requests
     ai_manager: RefCell<crate::ai::AIManager>,
+
+    // CX Terminal: Agent System
+    /// Agent runtime for system operations
+    agent_runtime: RefCell<crate::agents::AgentRuntime>,
 }
 
 impl TermWindow {
@@ -814,6 +818,8 @@ impl TermWindow {
             ai_panel: RefCell::new(crate::ai::AIPanel::new(crate::ai::AIConfig::default())),
             ai_widget: RefCell::new(crate::ai::AIPanelWidget::new()),
             ai_manager: RefCell::new(crate::ai::AIManager::new(crate::ai::AIConfig::default())),
+            // CX Terminal: Agent System
+            agent_runtime: RefCell::new(crate::agents::create_runtime()),
         };
 
         let tw = Rc::new(RefCell::new(myself));

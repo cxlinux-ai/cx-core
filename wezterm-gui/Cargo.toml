@@ -93,6 +93,7 @@ unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
 url-funcs.workspace = true
 url.workspace = true
+uuid = { workspace = true, features = ["v4", "serde"] }
 walkdir.workspace = true
 wezterm-bidi.workspace = true
 wezterm-blob-leases = { workspace=true, features=["simple_tempdir"] }

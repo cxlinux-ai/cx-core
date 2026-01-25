@@ -1294,6 +1294,7 @@ dependencies = [
  "unicode-segmentation",
  "url",
  "url-funcs",
+ "uuid",
  "walkdir",
  "wezterm-bidi",
  "wezterm-blob-leases",

@@ -4,8 +4,10 @@
 //! including panel toggle, input routing, and AI request handling.
 
 use crate::ai::{
-    AIAction, AIConfig, AIManager, AIPanel, AIPanelState, AIPanelWidget, ChatMessage,
+    AIAction, AIConfig, AIError, AIManager, AIPanel, AIPanelState, AIPanelWidget,
+    AIProvider, ChatMessage, create_provider,
 };
+use crate::termwindow::TermWindowNotif;
 use mux::pane::PaneId;
 use mux::Mux;
 use ::window::WindowOps;
@@ -155,48 +157,124 @@ impl crate::TermWindow {
     pub fn execute_ai_action(&mut self, action: AIAction) {
         log::debug!("Executing AI action: {:?}", action);
 
-        let manager = self.ai_manager.borrow();
-        let provider = match manager.provider() {
-            Some(p) => p,
+        // Check if this is an agent command (starts with @ or contains agent keywords)
+        let user_input = action.user_prompt();
+        if self.try_agent_command(&user_input) {
+            return;
+        }
+
+        // Get window for async callback
+        let window = match self.window.as_ref() {
+            Some(w) => w.clone(),
             None => {
-                self.ai_panel.borrow_mut().set_error(
-                    "No AI provider configured. Set config.ai in your wezterm config.".to_string(),
-                );
+                log::error!("No window available for AI action");
                 return;
             }
         };
 
-        // Build messages from history
+        // Check if provider is configured
+        let manager = self.ai_manager.borrow();
+        if manager.provider().is_none() {
+            drop(manager);
+            self.ai_panel.borrow_mut().set_error(
+                "No AI provider configured. Set config.ai in your wezterm config.".to_string(),
+            );
+            if let Some(w) = self.window.as_ref() { w.invalidate(); }
+            return;
+        }
+
+        // Get config to recreate provider in async context
         let panel = self.ai_panel.borrow();
+        let ai_config = panel.config.clone();
+        let use_streaming = ai_config.stream;
         let messages: Vec<ChatMessage> = panel
             .history
             .messages()
             .iter()
             .cloned()
             .collect();
-        let _system_prompt = Some(action.system_prompt().to_string());
         drop(panel);
+        drop(manager);
 
-        // For now, we'll need to spawn this async
-        // This is a placeholder - actual async integration needs work
+        let system_prompt = Some(action.system_prompt().to_string());
+        let provider_name = ai_config.provider;
+
         log::info!(
-            "Would send to {}: {} messages with system prompt",
-            provider.name(),
-            messages.len()
+            "Sending to {:?}: {} messages with system prompt (streaming: {})",
+            provider_name,
+            messages.len(),
+            use_streaming
         );
 
-        // TODO: Spawn async task to call provider.chat_completion()
-        // For now, show a placeholder response
-        self.ai_panel.borrow_mut().append_response(
-            "AI response would appear here. Async integration pending.\n\n\
-             Configure AI in your wezterm.lua:\n\
-             config.ai = {\n\
-               enabled = true,\n\
-               provider = 'claude',\n\
-               api_key = os.getenv('ANTHROPIC_API_KEY'),\n\
-             }",
-        );
-        self.ai_panel.borrow_mut().complete_response();
+        // Spawn async task to call provider
+        promise::spawn::spawn(async move {
+            // Create provider in async context
+            let provider: Option<Box<dyn AIProvider>> = create_provider(&ai_config);
+
+            let result = match provider {
+                Some(p) => {
+                    if use_streaming {
+                        // Use streaming mode - get all chunks then send
+                        match p.chat_completion_stream(messages, system_prompt).await {
+                            Ok(mut stream) => {
+                                // Collect chunks and send updates
+                                let mut full_response = String::new();
+                                let win = window.clone();
+
+                                // Process all chunks
+                                while let Some(chunk) = stream.next_chunk() {
+                                    full_response.push_str(&chunk);
+
+                                    // Send incremental update for each chunk
+                                    let chunk_clone = chunk.clone();
+                                    win.notify(TermWindowNotif::Apply(Box::new(move |term_window| {
+                                        term_window.ai_panel.borrow_mut().append_response(&chunk_clone);
+                                        if let Some(w) = term_window.window.as_ref() { w.invalidate(); }
+                                    })));
+                                }
+
+                                // Signal completion
+                                window.notify(TermWindowNotif::Apply(Box::new(move |term_window| {
+                                    term_window.ai_panel.borrow_mut().complete_response();
+                                    if let Some(w) = term_window.window.as_ref() { w.invalidate(); }
+                                })));
+
+                                return; // Already handled
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        // Use non-streaming mode
+                        p.chat_completion(messages, system_prompt).await
+                    }
+                }
+                None => {
+                    Err(AIError::NotConfigured)
+                }
+            };
+
+            // Send result back to main thread via window notification
+            match result {
+                Ok(response) => {
+                    let content = response.content.clone();
+                    window.notify(TermWindowNotif::Apply(Box::new(move |term_window| {
+                        term_window.ai_panel.borrow_mut().append_response(&content);
+                        term_window.ai_panel.borrow_mut().complete_response();
+                        if let Some(w) = term_window.window.as_ref() { w.invalidate(); }
+                    })));
+                }
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    window.notify(TermWindowNotif::Apply(Box::new(move |term_window| {
+                        term_window.ai_panel.borrow_mut().set_error(error_msg);
+                        if let Some(w) = term_window.window.as_ref() { w.invalidate(); }
+                    })));
+                }
+            }
+        })
+        .detach();
+
+        // Immediately invalidate to show loading state
         if let Some(w) = self.window.as_ref() { w.invalidate(); }
     }
 
@@ -287,14 +365,25 @@ impl crate::TermWindow {
     pub fn update_ai_config(&mut self, _config: &config::ConfigHandle) {
         // TODO: Read AI config from Lua config
         // For now, use defaults or environment
-        let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
 
-        if api_key.is_some() {
+        // Check for Claude API key first (cloud provider)
+        let claude_api_key = std::env::var("ANTHROPIC_API_KEY").ok();
+
+        // Check for OpenAI API key
+        let openai_api_key = std::env::var("OPENAI_API_KEY").ok();
+
+        // Check for Ollama host (local provider) - default to localhost if not set
+        let ollama_host = std::env::var("OLLAMA_HOST")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+
+        // Prefer Claude if API key is set
+        if let Some(api_key) = claude_api_key {
             let ai_config = AIConfig {
                 enabled: true,
                 provider: crate::ai::AIProviderType::Claude,
-                api_key,
+                api_key: Some(api_key),
                 model: "claude-3-5-sonnet-20241022".to_string(),
+                stream: true,
                 ..AIConfig::default()
             };
 
@@ -302,19 +391,36 @@ impl crate::TermWindow {
             self.ai_manager.borrow_mut().update_config(ai_config);
 
             log::info!("AI panel configured with Claude provider");
-        } else if let Ok(_) = std::env::var("OLLAMA_HOST") {
-            // Check for Ollama
+        } else if let Some(api_key) = openai_api_key {
+            // OpenAI provider (not fully implemented yet, but config it)
             let ai_config = AIConfig {
                 enabled: true,
-                provider: crate::ai::AIProviderType::Local,
-                model: "llama3".to_string(),
+                provider: crate::ai::AIProviderType::OpenAI,
+                api_key: Some(api_key),
+                model: "gpt-4-turbo-preview".to_string(),
+                stream: true,
                 ..AIConfig::default()
             };
 
             *self.ai_panel.borrow_mut() = AIPanel::new(ai_config.clone());
             self.ai_manager.borrow_mut().update_config(ai_config);
 
-            log::info!("AI panel configured with Ollama provider");
+            log::info!("AI panel configured with OpenAI provider");
+        } else {
+            // Fall back to Ollama (local provider) - always available
+            let ai_config = AIConfig {
+                enabled: true,
+                provider: crate::ai::AIProviderType::Local,
+                api_endpoint: Some(ollama_host),
+                model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3".to_string()),
+                stream: true,
+                ..AIConfig::default()
+            };
+
+            *self.ai_panel.borrow_mut() = AIPanel::new(ai_config.clone());
+            self.ai_manager.borrow_mut().update_config(ai_config);
+
+            log::info!("AI panel configured with Ollama provider (local)");
         }
     }
 
@@ -410,5 +516,82 @@ impl crate::TermWindow {
     /// Access the AI manager
     pub fn ai_manager(&self) -> std::cell::Ref<'_, AIManager> {
         self.ai_manager.borrow()
+    }
+
+    /// Access the agent runtime
+    pub fn agent_runtime(&self) -> std::cell::Ref<'_, crate::agents::AgentRuntime> {
+        self.agent_runtime.borrow()
+    }
+
+    /// Try to execute a command using the agent system
+    /// Returns true if the command was handled by an agent
+    fn try_agent_command(&mut self, input: &str) -> bool {
+        let runtime = self.agent_runtime.borrow();
+
+        // Try to parse the command
+        if let Some(request) = runtime.parse_command(input) {
+            log::info!("Agent handling command: {} -> agent '{}'", input, request.agent);
+
+            // Execute the agent command
+            let response = runtime.handle(request);
+            drop(runtime);
+
+            // Format the response for the AI panel
+            let formatted = self.format_agent_response(&response);
+
+            // Add the response to the AI panel
+            let mut panel = self.ai_panel.borrow_mut();
+            panel.append_response(&formatted);
+            panel.complete_response();
+            drop(panel);
+
+            if let Some(w) = self.window.as_ref() {
+                w.invalidate();
+            }
+
+            return true;
+        }
+
+        false
+    }
+
+    /// Format an agent response for display in the AI panel
+    fn format_agent_response(&self, response: &crate::agents::AgentResponse) -> String {
+        let mut output = String::new();
+
+        if response.success {
+            output.push_str(&response.result);
+        } else {
+            if let Some(ref error) = response.error {
+                output.push_str(&format!("Error: {}\n", error));
+            }
+        }
+
+        // Add commands that were executed
+        if !response.commands_executed.is_empty() {
+            output.push_str("\n\n---\nCommands executed:\n");
+            for cmd in &response.commands_executed {
+                output.push_str(&format!("  $ {}\n", cmd));
+            }
+        }
+
+        // Add suggestions if any
+        if !response.suggestions.is_empty() {
+            output.push_str("\nTry also:\n");
+            for suggestion in &response.suggestions {
+                output.push_str(&format!("  - {}\n", suggestion));
+            }
+        }
+
+        output
+    }
+
+    /// List available agents
+    pub fn list_agents(&self) -> Vec<(String, String)> {
+        self.agent_runtime.borrow()
+            .list_agents()
+            .into_iter()
+            .map(|(name, desc)| (name.to_string(), desc.to_string()))
+            .collect()
     }
 }
