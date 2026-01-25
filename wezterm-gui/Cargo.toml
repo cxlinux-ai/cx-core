@@ -1,11 +1,12 @@
 [package]
-name = "wezterm-gui"
+name = "cx-terminal-gui"
 version = "0.1.0"
-authors = ["Wez Furlong <wez@wezfurlong.org>"]
+authors = ["CX Linux <support@cxlinux.com>"]
 edition = "2018"
 build = "build.rs"
 resolver = "2"
 publish = false
+description = "CX Terminal GUI - AI-native terminal for CX Linux"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -74,6 +75,7 @@ rangeset.workspace = true
 ratelim.workspace = true
 rayon.workspace = true
 regex.workspace = true
+reqwest = { workspace = true, features = ["json", "stream"] }
 serde = {workspace=true, features = ["rc", "derive"]}
 serde_json.workspace = true
 shlex.workspace = true

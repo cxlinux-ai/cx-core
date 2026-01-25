@@ -23,7 +23,7 @@ mod cli;
 
 #[derive(Debug, Parser)]
 #[command(
-    about = "Wez's Terminal Emulator\nhttp://github.com/wezterm/wezterm",
+    about = "CX Terminal - AI-Native Terminal for CX Linux\nhttps://cxlinux.com",
     version = wezterm_version()
 )]
 pub struct Opt {

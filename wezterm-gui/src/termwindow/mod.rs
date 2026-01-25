@@ -68,7 +68,9 @@ use wezterm_term::color::ColorPalette;
 use wezterm_term::input::LastMouseClick;
 use wezterm_term::{Alert, Progress, StableRowIndex, TerminalConfiguration, TerminalSize};
 
+pub mod ai;
 pub mod background;
+pub mod blocks;
 pub mod box_model;
 pub mod charselect;
 pub mod clipboard;
@@ -463,6 +465,22 @@ pub struct TermWindow {
     gl: Option<Rc<glium::backend::Context>>,
     webgpu: Option<Rc<WebGpuState>>,
     config_subscription: Option<config::ConfigSubscription>,
+
+    // CX Terminal: Command Blocks state
+    /// Block managers per pane - tracks command blocks
+    block_managers: RefCell<HashMap<PaneId, crate::blocks::BlockManager>>,
+    /// Block renderer for drawing block overlays
+    block_renderer: RefCell<crate::blocks::BlockRenderer>,
+    /// Current working directory per pane (for block metadata)
+    pane_cwd: RefCell<HashMap<PaneId, String>>,
+
+    // CX Terminal: AI Panel state
+    /// AI Panel state and chat history
+    ai_panel: RefCell<crate::ai::AIPanel>,
+    /// AI Panel widget for rendering
+    ai_widget: RefCell<crate::ai::AIPanelWidget>,
+    /// AI Manager for provider selection and requests
+    ai_manager: RefCell<crate::ai::AIManager>,
 }
 
 impl TermWindow {
@@ -788,6 +806,14 @@ impl TermWindow {
             key_table_state: KeyTableState::default(),
             modal: RefCell::new(None),
             opengl_info: None,
+            // CX Terminal: Command Blocks
+            block_managers: RefCell::new(HashMap::new()),
+            block_renderer: RefCell::new(crate::blocks::BlockRenderer::new()),
+            pane_cwd: RefCell::new(HashMap::new()),
+            // CX Terminal: AI Panel
+            ai_panel: RefCell::new(crate::ai::AIPanel::new(crate::ai::AIConfig::default())),
+            ai_widget: RefCell::new(crate::ai::AIPanelWidget::new()),
+            ai_manager: RefCell::new(crate::ai::AIManager::new(crate::ai::AIConfig::default())),
         };
 
         let tw = Rc::new(RefCell::new(myself));
@@ -1250,6 +1276,74 @@ impl TermWindow {
                     alert: Alert::ToastNotification { .. },
                     ..
                 } => {}
+
+                // CX Terminal: Handle command block alerts
+                MuxNotification::Alert {
+                    alert: Alert::CXBlockStart { command, timestamp },
+                    pane_id,
+                } => {
+                    if self.window_contains_pane(pane_id) {
+                        log::debug!("CX Block Start: {} (pane {})", command, pane_id);
+                        let cwd = self.get_pane_cwd(pane_id).unwrap_or_default();
+                        // Get current line from pane
+                        let current_line = self.get_pane_cursor_line(pane_id).unwrap_or(0);
+                        let mut managers = self.block_managers.borrow_mut();
+                        let manager = managers.entry(pane_id).or_insert_with(crate::blocks::BlockManager::new);
+                        manager.start_block(command, cwd, current_line);
+                        window.invalidate();
+                    }
+                }
+                MuxNotification::Alert {
+                    alert: Alert::CXBlockEnd { exit_code, timestamp: _ },
+                    pane_id,
+                } => {
+                    if self.window_contains_pane(pane_id) {
+                        log::debug!("CX Block End: exit_code={} (pane {})", exit_code, pane_id);
+                        let current_line = self.get_pane_cursor_line(pane_id).unwrap_or(0);
+                        let mut managers = self.block_managers.borrow_mut();
+                        if let Some(manager) = managers.get_mut(&pane_id) {
+                            manager.end_block(exit_code, current_line);
+                        }
+                        window.invalidate();
+                    }
+                }
+                MuxNotification::Alert {
+                    alert: Alert::CXCwdChanged { path },
+                    pane_id,
+                } => {
+                    if self.window_contains_pane(pane_id) {
+                        log::debug!("CX CWD Changed: {} (pane {})", path, pane_id);
+                        self.set_pane_cwd(pane_id, path);
+                    }
+                }
+                MuxNotification::Alert {
+                    alert: Alert::CXAIExplain { text },
+                    pane_id,
+                } => {
+                    if self.window_contains_pane(pane_id) {
+                        log::debug!("CX AI Explain request: {} (pane {})", text, pane_id);
+                        // TODO: Route to AI panel when implemented
+                    }
+                }
+                MuxNotification::Alert {
+                    alert: Alert::CXAISuggest { query },
+                    pane_id,
+                } => {
+                    if self.window_contains_pane(pane_id) {
+                        log::debug!("CX AI Suggest request: {} (pane {})", query, pane_id);
+                        // TODO: Route to AI panel when implemented
+                    }
+                }
+                MuxNotification::Alert {
+                    alert: Alert::CXAgentRequest { name, command },
+                    pane_id,
+                } => {
+                    if self.window_contains_pane(pane_id) {
+                        log::debug!("CX Agent request: {} - {} (pane {})", name, command, pane_id);
+                        // TODO: Route to agent system when implemented
+                    }
+                }
+
                 MuxNotification::TabAddedToWindow {
                     window_id: _,
                     tab_id,
@@ -1462,7 +1556,14 @@ impl TermWindow {
                     | Alert::IconTitleChanged(_)
                     | Alert::Progress(_)
                     | Alert::SetUserVar { .. }
-                    | Alert::Bell,
+                    | Alert::Bell
+                    // CX Terminal alerts
+                    | Alert::CXBlockStart { .. }
+                    | Alert::CXBlockEnd { .. }
+                    | Alert::CXCwdChanged { .. }
+                    | Alert::CXAIExplain { .. }
+                    | Alert::CXAISuggest { .. }
+                    | Alert::CXAgentRequest { .. },
             }
             | MuxNotification::PaneFocused(pane_id)
             | MuxNotification::PaneRemoved(pane_id)
@@ -3162,6 +3263,18 @@ impl TermWindow {
             PromptInputLine(args) => self.show_prompt_input_line(args),
             InputSelector(args) => self.show_input_selector(args),
             Confirmation(args) => self.show_confirmation(args),
+
+            // CX Terminal: AI Panel commands
+            ToggleAIPanel => {
+                self.toggle_ai_panel();
+            }
+            AIExplainSelection => {
+                let pane_id = pane.pane_id();
+                self.ai_explain_selection(pane_id);
+            }
+            AIGenerateCommand => {
+                self.ai_generate_command();
+            }
         };
         Ok(PerformAssignmentResult::Handled)
     }

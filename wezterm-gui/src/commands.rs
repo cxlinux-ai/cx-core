@@ -798,6 +798,31 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
             menubar: &["Help"],
             icon: Some("cod_debug"),
         },
+        // CX Terminal: AI Panel commands
+        ToggleAIPanel => CommandDef {
+            brief: "Toggle AI Panel".into(),
+            doc: "Show or hide the AI assistant panel".into(),
+            keys: vec![(Modifiers::CTRL, "Space".into())],
+            args: &[ArgType::ActiveWindow],
+            menubar: &["View"],
+            icon: Some("md_assistant"),
+        },
+        AIExplainSelection => CommandDef {
+            brief: "Explain Selection".into(),
+            doc: "Send the selected text to the AI for explanation".into(),
+            keys: vec![(Modifiers::CTRL.union(Modifiers::SHIFT), "e".into())],
+            args: &[ArgType::ActivePane],
+            menubar: &["Edit"],
+            icon: Some("md_help_outline"),
+        },
+        AIGenerateCommand => CommandDef {
+            brief: "Generate Command".into(),
+            doc: "Open AI panel to generate a command from natural language".into(),
+            keys: vec![(Modifiers::CTRL.union(Modifiers::SHIFT), "g".into())],
+            args: &[ArgType::ActivePane],
+            menubar: &["Edit"],
+            icon: Some("md_auto_fix_high"),
+        },
         InputSelector(_) => CommandDef {
             brief: "Prompt the user to choose from a list".into(),
             doc: "Activates the selector overlay and wait for input".into(),
@@ -2141,6 +2166,10 @@ fn compute_default_actions() -> Vec<KeyAssignment> {
         OpenUri("https://github.com/wezterm/wezterm/discussions/".to_string()),
         OpenUri("https://github.com/wezterm/wezterm/issues/".to_string()),
         ShowDebugOverlay,
+        // ----------------- CX Terminal: AI
+        ToggleAIPanel,
+        AIExplainSelection,
+        AIGenerateCommand,
         // ----------------- Misc
         OpenLinkAtMouseCursor,
     ];

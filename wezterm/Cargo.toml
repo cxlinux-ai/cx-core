@@ -1,9 +1,10 @@
 [package]
-name = "wezterm"
+name = "cx-terminal"
 version = "0.1.0"
-authors = ["Wez Furlong <wez@wezfurlong.org>"]
+authors = ["CX Linux <support@cxlinux.com>"]
 edition = "2018"
 publish = false
+description = "CX Terminal - AI-native terminal for Cortex Linux"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
