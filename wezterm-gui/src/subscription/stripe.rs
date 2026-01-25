@@ -187,7 +187,7 @@ impl StripeClient {
         tier: SubscriptionTier,
     ) -> Result<CheckoutSession, super::StripeError> {
         let price_id = tier
-            .stripe_price_id()
+            .stripe_price_id_monthly()
             .ok_or_else(|| super::StripeError::ApiError("No price for this tier".into()))?;
 
         let mut params = vec![

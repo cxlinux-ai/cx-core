@@ -366,6 +366,16 @@ impl FeatureGate {
                 .iter()
                 .map(|f| format!("{} {}", f.icon(), f.display_name()))
                 .collect(),
+            SubscriptionTier::Team => {
+                let mut benefits: Vec<String> = Feature::pro_features()
+                    .iter()
+                    .map(|f| format!("{} {}", f.icon(), f.display_name()))
+                    .collect();
+                benefits.push("☁️ Cloud LLM fallback".to_string());
+                benefits.push("👥 Team dashboard".to_string());
+                benefits.push("📋 Audit logging".to_string());
+                benefits
+            }
             SubscriptionTier::Enterprise => {
                 let mut benefits: Vec<String> = Feature::pro_features()
                     .iter()
