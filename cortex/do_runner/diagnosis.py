@@ -26,6 +26,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from rich.console import Console
 
@@ -2912,17 +2913,53 @@ class LoginHandler:
             # Also update cache
             self.cached_credentials[service] = credentials.copy()
 
+    @staticmethod
+    def _extract_registry_host(text: str) -> str | None:
+        """Extract and validate docker registry hostname from text.
+
+        Uses proper URL parsing to avoid substring matching vulnerabilities.
+        Returns the hostname if it's a known registry, None otherwise.
+        """
+        # Known registry patterns (must match as hostname, not substring)
+        known_registries = {
+            "ghcr.io": "ghcr",
+            "gcr.io": "gcloud",
+            "us.gcr.io": "gcloud",
+            "eu.gcr.io": "gcloud",
+            "asia.gcr.io": "gcloud",
+        }
+
+        # Try to find URLs or registry references in the text
+        # Docker image format: [registry/]image[:tag]
+        # Match patterns like: ghcr.io/owner/image or https://ghcr.io/...
+        url_patterns = [
+            r"https?://([a-zA-Z0-9.-]+)",  # Full URLs
+            r"(?:^|\s)([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/",  # registry/path format
+        ]
+
+        for pattern in url_patterns:
+            for match in re.finditer(pattern, text):
+                hostname = match.group(1).lower()
+                # Check if hostname exactly matches or ends with known registry
+                for registry, service in known_registries.items():
+                    if hostname == registry or hostname.endswith("." + registry):
+                        return service
+
+        return None
+
     def detect_login_requirement(self, cmd: str, stderr: str) -> LoginRequirement | None:
         """Detect which service needs login based on command and error."""
         cmd_lower = cmd.lower()
-        stderr_lower = stderr.lower()
 
         # Check for specific registries in docker commands
         if "docker" in cmd_lower:
-            if "ghcr.io" in cmd_lower or "ghcr.io" in stderr_lower:
-                return LOGIN_REQUIREMENTS.get("ghcr")
-            if "gcr.io" in cmd_lower or "gcr.io" in stderr_lower:
-                return LOGIN_REQUIREMENTS.get("gcloud")
+            # Use proper URL/hostname parsing to detect registries
+            registry_service = self._extract_registry_host(cmd)
+            if registry_service is None:
+                registry_service = self._extract_registry_host(stderr)
+
+            if registry_service:
+                return LOGIN_REQUIREMENTS.get(registry_service)
             return LOGIN_REQUIREMENTS.get("docker")
 
         # Check other services
