@@ -216,9 +216,14 @@ pub fn make_lua_context(config_file: &Path) -> anyhow::Result<Lua> {
     {
         let globals = lua.globals();
         // This table will be the `wezterm` module in the script
+        // CX Terminal: also register as 'cx' for convenience
         let wezterm_mod = get_or_create_module(&lua, "wezterm")?;
 
         let package: Table = globals.get("package").context("get _G.package")?;
+        let loaded: Table = package.get("loaded").context("get package.loaded")?;
+        // CX Terminal: Create 'cx' as an alias to 'wezterm' for CX users
+        loaded.set("cx", wezterm_mod.clone()).context("set cx alias")?;
+
         let package_path: String = package.get("path").context("get package.path as String")?;
         let mut path_array: Vec<String> = package_path.split(";").map(|s| s.to_owned()).collect();
 
@@ -227,6 +232,8 @@ pub fn make_lua_context(config_file: &Path) -> anyhow::Result<Lua> {
             array.insert(1, format!("{}/?/init.lua", path.display()));
         }
 
+        // CX Terminal: add .cx path first, then .wezterm for compatibility
+        prefix_path(&mut path_array, &crate::HOME_DIR.join(".cx"));
         prefix_path(&mut path_array, &crate::HOME_DIR.join(".wezterm"));
         for dir in crate::CONFIG_DIRS.iter() {
             prefix_path(&mut path_array, dir);
@@ -326,6 +333,14 @@ end
         wezterm_mod.set("target_triple", crate::wezterm_target_triple())?;
         wezterm_mod.set("version", crate::wezterm_version())?;
         wezterm_mod.set("home_dir", crate::HOME_DIR.to_str())?;
+
+        // CX Terminal: AI integration module
+        let ai_mod = lua.create_table()?;
+        ai_mod.set("enabled", false)?;  // AI disabled by default, enable in config
+        ai_mod.set("provider", "none")?;  // AI provider: "claude", "openai", "local", "none"
+        ai_mod.set("model", "")?;  // Model name if applicable
+        ai_mod.set("api_endpoint", "")?;  // Custom API endpoint
+        wezterm_mod.set("ai", ai_mod)?;
         wezterm_mod.set(
             "running_under_wsl",
             lua.create_function(|_, ()| Ok(crate::running_under_wsl()))?,

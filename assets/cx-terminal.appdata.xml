@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <content_rating type="oars-1.0" />
+  <id>org.cxlinux.cx-terminal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BSL-1.1 AND MIT</project_license>
+  <name>CX Terminal</name>
+  <summary>AI-native GPU-accelerated terminal for CX Linux</summary>
+  <description>
+    <p>
+      CX Terminal is an AI-native terminal emulator with support for modern features such as
+      fonts with ligatures, hyperlinks, multiple windows, tabs and split panes.
+    </p>
+
+    <p>
+      Configuration is expressed using Lua and many powerful functions are
+      provided to help you customize your terminal to your workflow.
+    </p>
+
+    <p>
+      Built for CX Linux with AI integration, voice commands, and
+      seamless integration with the CX ecosystem.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.cxlinux.cx-terminal.desktop</launchable>
+
+  <url type="homepage">https://cxlinux.com/</url>
+  <url type="bugtracker">https://github.com/cxlinux/cx-terminal/issues</url>
+
+  <developer_name>CX Linux</developer_name>
+
+  <releases>
+    <release version="0.1.0" date="2025-01-23">
+      <description>
+        <p>
+          Initial release of CX Terminal, forked from WezTerm with
+          CX Linux branding and AI integration points.
+        </p>
+      </description>
+    </release>
+  </releases>
+</component>

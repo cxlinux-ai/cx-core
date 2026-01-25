@@ -190,6 +190,8 @@ pub struct Config {
 
     /// Use a named color scheme rather than the palette specified
     /// by the colors setting.
+    /// CX Terminal defaults to "CX Dark"
+    #[dynamic(default = "default_color_scheme")]
     pub color_scheme: Option<String>,
 
     /// Named color schemes
@@ -1006,8 +1008,13 @@ impl Config {
         // multiple.  In addition, it spawns a lot of subprocesses,
         // so we do this bit "by-hand"
 
-        let mut paths = vec![PathPossibility::optional(HOME_DIR.join(".wezterm.lua"))];
+        // CX Terminal: look for cx.lua first, then wezterm.lua for compatibility
+        let mut paths = vec![
+            PathPossibility::optional(HOME_DIR.join(".cx.lua")),
+            PathPossibility::optional(HOME_DIR.join(".wezterm.lua")),
+        ];
         for dir in CONFIG_DIRS.iter() {
+            paths.push(PathPossibility::optional(dir.join("cx.lua")));
             paths.push(PathPossibility::optional(dir.join("wezterm.lua")))
         }
 
@@ -1022,7 +1029,8 @@ impl Config {
             // dir as the executable that will take precedence.
             if let Ok(exe_name) = std::env::current_exe() {
                 if let Some(exe_dir) = exe_name.parent() {
-                    paths.insert(0, PathPossibility::optional(exe_dir.join("wezterm.lua")));
+                    paths.insert(0, PathPossibility::optional(exe_dir.join("cx.lua")));
+                    paths.insert(1, PathPossibility::optional(exe_dir.join("wezterm.lua")));
                 }
             }
         }
@@ -1055,7 +1063,7 @@ impl Config {
             }
         }
 
-        // We didn't find (or were asked to skip) a wezterm.lua file, so
+        // We didn't find (or were asked to skip) a cortex.lua/wezterm.lua file, so
         // update the environment to make it simpler to understand this
         // state.
         std::env::remove_var("WEZTERM_CONFIG_FILE");
@@ -1735,6 +1743,11 @@ fn default_term() -> String {
 
 fn default_font_size() -> f64 {
     12.0
+}
+
+/// CX Terminal default color scheme
+fn default_color_scheme() -> Option<String> {
+    Some("CX Dark".to_string())
 }
 
 pub(crate) fn compute_cache_dir() -> anyhow::Result<PathBuf> {

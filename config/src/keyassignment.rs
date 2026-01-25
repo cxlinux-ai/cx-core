@@ -646,6 +646,14 @@ pub enum KeyAssignment {
     PromptInputLine(PromptInputLine),
     InputSelector(InputSelector),
     Confirmation(Confirmation),
+
+    // CX Terminal: AI Panel
+    /// Toggle the AI assistant panel
+    ToggleAIPanel,
+    /// Send selected text to AI for explanation
+    AIExplainSelection,
+    /// Generate a command from natural language
+    AIGenerateCommand,
 }
 impl_lua_conversion_dynamic!(KeyAssignment);
 

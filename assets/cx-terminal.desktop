@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=CX Terminal
+Comment=AI-Native Terminal for CX Linux
+Keywords=shell;prompt;command;commandline;cmd;terminal;cortex;cx;ai;
+Icon=org.cxlinux.cx-terminal
+StartupWMClass=org.cxlinux.cx-terminal
+TryExec=cx-terminal
+Exec=cx-terminal start --cwd .
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Terminal=false

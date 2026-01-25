@@ -34,6 +34,9 @@ use wezterm_gui_subcommands::*;
 use wezterm_mux_server_impl::update_mux_domains;
 use wezterm_toast_notification::*;
 
+mod ai;
+mod agents;
+mod blocks;
 mod colorease;
 mod commands;
 mod customglyph;
@@ -67,11 +70,12 @@ pub use termwindow::{set_window_class, set_window_position, TermWindow, ICON_DAT
 
 #[derive(Debug, Parser)]
 #[command(
-    about = "Wez's Terminal Emulator\nhttp://github.com/wezterm/wezterm",
+    name = "cx-terminal",
+    about = "CX Terminal - AI-Native Terminal for CX Linux\nhttps://github.com/cxlinux/cx-terminal",
     version = config::wezterm_version()
 )]
 struct Opt {
-    /// Skip loading wezterm.lua
+    /// Skip loading cx.lua config
     #[arg(long, short = 'n')]
     skip_config: bool,
 

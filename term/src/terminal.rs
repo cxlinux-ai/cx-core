@@ -71,6 +71,35 @@ pub enum Alert {
     OutputSinceFocusLost,
     /// A change to the progress bar state
     Progress(Progress),
+
+    // CX Terminal extensions
+    /// A command block has started
+    CXBlockStart {
+        command: String,
+        timestamp: i64,
+    },
+    /// A command block has ended
+    CXBlockEnd {
+        exit_code: i32,
+        timestamp: i64,
+    },
+    /// Shell reports current working directory
+    CXCwdChanged {
+        path: String,
+    },
+    /// AI explain request from shell
+    CXAIExplain {
+        text: String,
+    },
+    /// AI suggest request from shell
+    CXAISuggest {
+        query: String,
+    },
+    /// Agent invocation request
+    CXAgentRequest {
+        name: String,
+        command: String,
+    },
 }
 
 pub trait AlertHandler: Send + Sync {

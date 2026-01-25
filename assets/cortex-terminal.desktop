@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Cortex Terminal
+Comment=AI-Native Terminal for Cortex Linux
+Keywords=shell;prompt;command;commandline;cmd;terminal;cortex;ai;
+Icon=org.cortexlinux.cortex-terminal
+StartupWMClass=org.cortexlinux.cortex-terminal
+TryExec=cortex-terminal
+Exec=cortex-terminal start --cwd .
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Terminal=false

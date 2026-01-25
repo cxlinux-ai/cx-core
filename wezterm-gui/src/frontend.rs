@@ -147,7 +147,14 @@ impl GuiFrontEnd {
                         | Alert::WindowTitleChanged(_)
                         | Alert::TabTitleChanged(_)
                         | Alert::IconTitleChanged(_)
-                        | Alert::SetUserVar { .. },
+                        | Alert::SetUserVar { .. }
+                        // CX Terminal alerts - handled by TermWindow
+                        | Alert::CXBlockStart { .. }
+                        | Alert::CXBlockEnd { .. }
+                        | Alert::CXCwdChanged { .. }
+                        | Alert::CXAIExplain { .. }
+                        | Alert::CXAISuggest { .. }
+                        | Alert::CXAgentRequest { .. },
                 } => {}
                 MuxNotification::Empty => {
                     if config::configuration().quit_when_all_windows_are_closed {

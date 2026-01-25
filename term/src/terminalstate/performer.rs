@@ -249,6 +249,135 @@ impl<'a> Performer<'a> {
         }
     }
 
+    /// Try to parse a CX Terminal OSC sequence (777;cx;...)
+    /// Returns true if this was a CX sequence and was handled
+    fn try_parse_cx_sequence(&mut self, unspec: &[Vec<u8>]) -> bool {
+        // CX sequences start with "777" and have "cx" as the second part
+        if unspec.len() < 2 {
+            return false;
+        }
+
+        // First part should be "777"
+        if unspec[0].as_slice() != b"777" {
+            return false;
+        }
+
+        // Combine remaining parts with ; separator and check for "cx;" prefix
+        let mut combined = String::new();
+        for (i, part) in unspec.iter().skip(1).enumerate() {
+            if i > 0 {
+                combined.push(';');
+            }
+            combined.push_str(&String::from_utf8_lossy(part));
+        }
+
+        if !combined.starts_with("cx;") {
+            return false;
+        }
+
+        // Parse the CX sequence
+        let cx_data = &combined[3..]; // Skip "cx;"
+        let parts: Vec<&str> = cx_data.split(';').collect();
+
+        if parts.is_empty() {
+            return false;
+        }
+
+        let handler = match self.alert_handler.as_mut() {
+            Some(h) => h.as_mut(),
+            None => return true, // Consumed but no handler
+        };
+
+        match parts[0] {
+            "block" => Self::parse_cx_block(&parts[1..], handler),
+            "cwd" => Self::parse_cx_cwd(&parts[1..], handler),
+            "ai" => Self::parse_cx_ai(&parts[1..], handler),
+            "agent" => Self::parse_cx_agent(&parts[1..], handler),
+            _ => {
+                log::debug!("Unknown CX sequence type: {}", parts[0]);
+            }
+        }
+
+        true
+    }
+
+    fn parse_cx_block(parts: &[&str], handler: &mut dyn crate::terminal::AlertHandler) {
+        use std::collections::HashMap;
+
+        let mut params: HashMap<&str, &str> = HashMap::new();
+        for part in parts {
+            if let Some((key, value)) = part.split_once('=') {
+                params.insert(key, value);
+            } else {
+                params.insert(part, "true");
+            }
+        }
+
+        if params.contains_key("start") {
+            let command = params.get("cmd").map(|s| s.to_string()).unwrap_or_default();
+            let timestamp = params.get("time")
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(0);
+            handler.alert(Alert::CXBlockStart { command, timestamp });
+        } else if params.contains_key("end") {
+            let exit_code = params.get("exit")
+                .and_then(|e| e.parse().ok())
+                .unwrap_or(0);
+            let timestamp = params.get("time")
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(0);
+            handler.alert(Alert::CXBlockEnd { exit_code, timestamp });
+        }
+    }
+
+    fn parse_cx_cwd(parts: &[&str], handler: &mut dyn crate::terminal::AlertHandler) {
+        for part in parts {
+            if let Some((key, value)) = part.split_once('=') {
+                if key == "path" {
+                    handler.alert(Alert::CXCwdChanged { path: value.to_string() });
+                    return;
+                }
+            }
+        }
+    }
+
+    fn parse_cx_ai(parts: &[&str], handler: &mut dyn crate::terminal::AlertHandler) {
+        for part in parts {
+            if let Some((key, value)) = part.split_once('=') {
+                match key {
+                    "explain" | "text" => {
+                        handler.alert(Alert::CXAIExplain { text: value.to_string() });
+                        return;
+                    }
+                    "suggest" | "query" => {
+                        handler.alert(Alert::CXAISuggest { query: value.to_string() });
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn parse_cx_agent(parts: &[&str], handler: &mut dyn crate::terminal::AlertHandler) {
+        use std::collections::HashMap;
+
+        let mut params: HashMap<&str, &str> = HashMap::new();
+        for part in parts {
+            if let Some((key, value)) = part.split_once('=') {
+                params.insert(key, value);
+            }
+        }
+
+        if let Some(name) = params.get("name") {
+            let command = params.get("command").map(|s| s.to_string()).unwrap_or_default();
+            handler.alert(Alert::CXAgentRequest {
+                name: name.to_string(),
+                command,
+            });
+        }
+    }
+
     pub fn perform(&mut self, action: Action) {
         debug!("perform {:?}", action);
         if self.suppress_initial_title_change {
@@ -770,6 +899,11 @@ impl<'a> Performer<'a> {
                 self.set_hyperlink(link);
             }
             OperatingSystemCommand::Unspecified(unspec) => {
+                // Check for CX Terminal sequences (OSC 777;cx;...)
+                if self.try_parse_cx_sequence(&unspec) {
+                    return;
+                }
+
                 if self.config.log_unknown_escape_sequences() {
                     let mut output = String::new();
                     write!(&mut output, "Unhandled OSC ").ok();
