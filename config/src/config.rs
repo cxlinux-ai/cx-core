@@ -1597,7 +1597,7 @@ impl Config {
             if !wsl_env.is_empty() {
                 wsl_env.push(':');
             }
-            wsl_env.push_str("TERM:COLORTERM:TERM_PROGRAM:TERM_PROGRAM_VERSION");
+            wsl_env.push_str("TERM:COLORTERM:TERM_PROGRAM:TERM_PROGRAM_VERSION:CX_TERMINAL");
             cmd.env("WSLENV", wsl_env);
         }
 
@@ -1607,8 +1607,10 @@ impl Config {
         cmd.env("COLORTERM", "truecolor");
         // TERM_PROGRAM and TERM_PROGRAM_VERSION are an emerging
         // de-facto standard for identifying the terminal.
-        cmd.env("TERM_PROGRAM", "WezTerm");
+        cmd.env("TERM_PROGRAM", "CXTerminal");
         cmd.env("TERM_PROGRAM_VERSION", crate::wezterm_version());
+        // CX Terminal identification for shell integration
+        cmd.env("CX_TERMINAL", "1");
     }
 }
 
