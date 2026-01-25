@@ -179,7 +179,7 @@ class DockerSandbox:
             image: Default Docker image to use. Defaults to ubuntu:22.04
         """
         self.data_dir = data_dir or Path.home() / ".cortex" / "sandboxes"
-        self.default_image = image or self.DEFAULT_IMAGE
+        self.base_image = image or self.DEFAULT_IMAGE
         self._docker_path: str | None = None
 
         # Ensure data directory exists
@@ -349,7 +349,7 @@ class DockerSandbox:
             raise SandboxAlreadyExistsError(f"Sandbox '{name}' already exists")
 
         container_name = self._get_container_name(name)
-        image = image or self.default_image
+        image = image or self.base_image
 
         try:
             # Pull image if needed
