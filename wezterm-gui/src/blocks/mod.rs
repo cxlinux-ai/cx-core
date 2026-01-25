@@ -12,7 +12,7 @@ pub use block::{BlockId, BlockAction};
 // Block and BlockState available but currently only used internally
 #[allow(unused_imports)]
 pub use block::{Block, BlockState};
-pub use manager::{BlockManager, BlockActionResult, BlockStats};
+pub use manager::{BlockManager, BlockActionResult, BlockStats, BlockLearningData};
 pub use parser::CXSequence;
 // BlockParser available but currently only used internally
 #[allow(unused_imports)]

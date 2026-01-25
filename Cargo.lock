@@ -1253,6 +1253,7 @@ dependencies = [
  "finl_unicode",
  "frecency",
  "futures",
+ "gethostname 0.4.3",
  "hdrhistogram",
  "http_req",
  "image",
@@ -1267,6 +1268,7 @@ dependencies = [
  "mux",
  "mux-lua",
  "nucleo-matcher",
+ "once_cell",
  "ordered-float 4.6.0",
  "parking_lot",
  "portable-pty",
@@ -1289,6 +1291,7 @@ dependencies = [
  "textwrap",
  "thiserror 1.0.69",
  "tiny-skia",
+ "tokio",
  "umask",
  "unicode-normalization",
  "unicode-segmentation",
@@ -2144,6 +2147,16 @@ checksum = "4bb6743198531e02858aeaea5398fcc883e71851fcbcb5a2f773e2fb6cb1edf2"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "gethostname"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0176e0459c2e4a1fe232f984bca6890e681076abb9934f6cea7c326f3fc47818"
+dependencies = [
+ "libc",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -7069,7 +7082,7 @@ dependencies = [
  "env_logger 0.11.8",
  "filedescriptor",
  "filenamegen",
- "gethostname",
+ "gethostname 0.5.0",
  "hex",
  "k9",
  "libc",

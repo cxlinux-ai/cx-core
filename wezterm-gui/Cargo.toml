@@ -54,6 +54,7 @@ filedescriptor.workspace = true
 finl_unicode.workspace = true
 frecency.workspace = true
 futures.workspace = true
+gethostname = "0.4"
 hdrhistogram.workspace = true
 http_req.workspace = true
 image.workspace = true
@@ -67,6 +68,7 @@ mlua = {workspace=true, features=["send", "serialize"]}
 mux-lua.workspace = true
 mux.workspace = true
 nucleo-matcher.workspace = true
+once_cell = "1.19"
 ordered-float.workspace = true
 parking_lot.workspace = true
 portable-pty = { workspace=true, features = ["serde_support"]}
@@ -88,6 +90,7 @@ termwiz.workspace = true
 textwrap.workspace = true
 thiserror.workspace = true
 tiny-skia.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "net", "io-util"] }
 umask.workspace = true
 unicode-normalization.workspace = true
 unicode-segmentation.workspace = true

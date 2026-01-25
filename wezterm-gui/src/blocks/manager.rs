@@ -257,6 +257,45 @@ impl BlockManager {
         self.blocks.len()
     }
 
+    /// Get learning data for a recently completed block
+    /// Returns None if the block doesn't exist or is still running
+    pub fn get_learning_data(&self, id: BlockId) -> Option<BlockLearningData> {
+        let block = self.blocks.get(&id)?;
+
+        // Only return data for completed blocks
+        if block.state == BlockState::Running {
+            return None;
+        }
+
+        let exit_code = match block.state {
+            BlockState::Success => 0,
+            BlockState::Failed => block.exit_code.unwrap_or(1),
+            BlockState::Interrupted => -1,
+            BlockState::Running => return None,
+        };
+
+        Some(BlockLearningData {
+            command: block.command.clone(),
+            cwd: block.working_dir.clone(),
+            exit_code,
+            duration_ms: block.duration.map(|d| d.as_millis() as u64).unwrap_or(0),
+            interrupted: block.state == BlockState::Interrupted,
+        })
+    }
+
+    /// Get learning data for the most recently completed block
+    pub fn get_last_completed_learning_data(&self) -> Option<BlockLearningData> {
+        // Find the most recent non-running block
+        for id in self.block_order.iter().rev() {
+            if let Some(block) = self.blocks.get(id) {
+                if block.state != BlockState::Running {
+                    return self.get_learning_data(*id);
+                }
+            }
+        }
+        None
+    }
+
     /// Check if there are no blocks
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty()
@@ -319,6 +358,21 @@ pub struct BlockStats {
     pub interrupted: usize,
     pub pinned: usize,
     pub collapsed: usize,
+}
+
+/// Data for learning from a completed command block
+#[derive(Debug, Clone)]
+pub struct BlockLearningData {
+    /// The command that was executed
+    pub command: String,
+    /// Working directory
+    pub cwd: String,
+    /// Exit code
+    pub exit_code: i32,
+    /// Duration in milliseconds
+    pub duration_ms: u64,
+    /// Whether the command was interrupted
+    pub interrupted: bool,
 }
 
 #[cfg(test)]

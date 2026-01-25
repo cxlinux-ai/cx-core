@@ -485,6 +485,10 @@ pub struct TermWindow {
     // CX Terminal: Agent System
     /// Agent runtime for system operations
     agent_runtime: RefCell<crate::agents::AgentRuntime>,
+
+    // CX Terminal: CX Daemon Integration
+    /// Optional CX daemon client for system-wide AI and agent orchestration
+    cx_daemon_client: RefCell<Option<crate::cx_daemon::CXDaemonClient>>,
 }
 
 impl TermWindow {
@@ -820,6 +824,8 @@ impl TermWindow {
             ai_manager: RefCell::new(crate::ai::AIManager::new(crate::ai::AIConfig::default())),
             // CX Terminal: Agent System
             agent_runtime: RefCell::new(crate::agents::create_runtime()),
+            // CX Terminal: CX Daemon Integration
+            cx_daemon_client: RefCell::new(None),
         };
 
         let tw = Rc::new(RefCell::new(myself));

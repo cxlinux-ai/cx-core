@@ -40,11 +40,13 @@ mod blocks;
 mod colorease;
 mod commands;
 mod customglyph;
+mod cx_daemon;
 mod download;
 mod frontend;
 mod glyphcache;
 mod input;
 mod inputmap;
+mod learning;
 mod overlay;
 mod quad;
 mod renderstate;
@@ -55,12 +57,14 @@ mod selection;
 mod shapecache;
 mod spawn;
 mod stats;
+mod subscription;
 mod tabbar;
 mod termwindow;
 mod unicode_names;
 mod uniforms;
 mod update;
 mod utilsprites;
+mod voice;
 mod workflows;
 
 #[cfg(feature = "dhat-heap")]
