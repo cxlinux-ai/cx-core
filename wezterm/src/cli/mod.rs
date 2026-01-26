@@ -26,6 +26,7 @@ mod zoom_pane;
 // CX Terminal: AI-powered commands
 pub mod ask;
 pub mod ask_agent;
+pub mod ask_ai;
 pub mod ask_context;
 pub mod ask_executor;
 pub mod ask_patterns;
