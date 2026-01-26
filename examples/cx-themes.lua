@@ -303,31 +303,24 @@ config.window_background_opacity = 0.95
 
 -------------------------------------------------------------------------------
 -- FONT STYLING
--- CX Terminal default: Fira Code for terminal, Inter for UI
+-- System fonts FIRST to avoid "Unable to load font" errors
+-- Optional fonts (Fira Code, JetBrains Mono) at end for ligature support
 -------------------------------------------------------------------------------
 config.font = cx.font_with_fallback({
-    "Fira Code",      -- Primary: excellent ligatures and readability
-    "JetBrains Mono", -- Fallback: widely available
-    "Cascadia Code",  -- Fallback: Windows default
-    "Menlo",          -- Fallback: macOS default
+    "SF Mono",        -- macOS system font (always present)
+    "Menlo",          -- macOS fallback (always present)
+    "Monaco",         -- macOS classic (always present)
+    "DejaVu Sans Mono", -- Linux fallback
+    "Consolas",       -- Windows fallback
+    "JetBrains Mono", -- If installed (recommended for ligatures)
+    "Fira Code",      -- If installed (excellent ligatures)
 })
 config.font_size = 14.0
 
--- Enable Fira Code stylistic sets for better symbols
--- ss01: r with serifs, ss02: <= and >= with horizontal bar
--- ss03: & ampersand, ss04: $ with broken bar
--- ss05: @ with larger inner circle, ss06: thin backslash
--- ss07: ~= and != with large tilde/equals
--- ss08: == and === with large ligature
+-- Enable ligatures if using a font that supports them (JetBrains Mono, Fira Code)
 config.harfbuzz_features = {
     "calt=1",  -- Contextual alternates (ligatures)
-    "clig=1",  -- Ligatures
     "liga=1",  -- Standard ligatures
-    "ss01=1",  -- Fira Code stylistic set 1
-    "ss02=1",  -- Fira Code stylistic set 2
-    "ss03=1",  -- Fira Code stylistic set 3
-    "ss07=1",  -- Fira Code stylistic set 7
-    "zero=1",  -- Slashed zero
 }
 
 -- Disable ligatures if you prefer

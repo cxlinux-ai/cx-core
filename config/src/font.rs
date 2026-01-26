@@ -431,8 +431,16 @@ impl FontAttributes {
 impl Default for FontAttributes {
     fn default() -> Self {
         Self {
-            // CX Terminal: Default to JetBrains Mono (bundled)
-            family: "JetBrains Mono".into(),
+            // CX Terminal: Default to system font (Menlo on macOS, DejaVu on Linux)
+            // This ensures the terminal works without custom font installation
+            #[cfg(target_os = "macos")]
+            family: "Menlo".into(),
+            #[cfg(target_os = "linux")]
+            family: "DejaVu Sans Mono".into(),
+            #[cfg(target_os = "windows")]
+            family: "Consolas".into(),
+            #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+            family: "monospace".into(),
             weight: FontWeight::default(),
             stretch: FontStretch::default(),
             style: FontStyle::Normal,
