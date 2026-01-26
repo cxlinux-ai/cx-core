@@ -126,8 +126,8 @@ impl WhatCommand {
 /// Fix errors or problems using AI
 #[derive(Debug, Parser, Clone)]
 pub struct FixCommand {
-    /// Error message or problem description
-    #[arg(trailing_var_arg = true, required = true)]
+    /// Error message or problem description (reads last error if omitted)
+    #[arg(trailing_var_arg = true)]
     pub error: Vec<String>,
 
     /// Skip confirmation prompts
@@ -145,7 +145,18 @@ pub struct FixCommand {
 
 impl FixCommand {
     pub fn run(&self) -> Result<()> {
-        let query = format!("fix this error: {}", self.error.join(" "));
+        let error_text = if self.error.is_empty() {
+            // Try to read last error from shell integration
+            self.read_last_error()?
+        } else {
+            self.error.join(" ")
+        };
+
+        if error_text.is_empty() {
+            anyhow::bail!("No error to fix. Run a command first or provide an error message.");
+        }
+
+        let query = format!("fix this error: {}", error_text);
 
         let ask = AskCommand {
             query: vec![query],
@@ -157,6 +168,20 @@ impl FixCommand {
         };
 
         ask.run()
+    }
+
+    fn read_last_error(&self) -> Result<String> {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let error_file = std::path::Path::new(&home).join(".cx").join("last_error");
+
+        if error_file.exists() {
+            let content = std::fs::read_to_string(&error_file)?;
+            // Clear the file after reading
+            let _ = std::fs::write(&error_file, "");
+            Ok(content.trim().to_string())
+        } else {
+            Ok(String::new())
+        }
     }
 }
 

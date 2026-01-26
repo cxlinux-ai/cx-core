@@ -21,6 +21,29 @@ __cx_block_end() {
     return $exit_code
 }
 
+# CX Error Capture for cx fix
+__CX_DIR="${HOME}/.cx"
+__CX_LAST_ERROR="${__CX_DIR}/last_error"
+mkdir -p "$__CX_DIR" 2>/dev/null
+
+# Wrapper to run command and capture errors for cx fix
+cxrun() {
+    local tmp_err
+    tmp_err=$(mktemp)
+    eval "$@" 2> >(tee "$tmp_err" >&2)
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        {
+            echo "Command: $*"
+            echo "Exit code: $exit_code"
+            echo "---"
+            cat "$tmp_err"
+        } > "$__CX_LAST_ERROR"
+    fi
+    rm -f "$tmp_err"
+    return $exit_code
+}
+
 # Mark prompt boundaries
 __cx_prompt_start() {
     __cx_osc "133;A"
