@@ -68,12 +68,12 @@ use wezterm_term::color::ColorPalette;
 use wezterm_term::input::LastMouseClick;
 use wezterm_term::{Alert, Progress, StableRowIndex, TerminalConfiguration, TerminalSize};
 
-pub mod ai;
 pub mod background;
 pub mod blocks;
 pub mod box_model;
 pub mod charselect;
 pub mod clipboard;
+pub mod telemetry;
 pub mod keyevent;
 pub mod modal;
 mod mouseevent;
@@ -474,14 +474,6 @@ pub struct TermWindow {
     /// Current working directory per pane (for block metadata)
     pane_cwd: RefCell<HashMap<PaneId, String>>,
 
-    // CX Terminal: AI Panel state
-    /// AI Panel state and chat history
-    ai_panel: RefCell<crate::ai::AIPanel>,
-    /// AI Panel widget for rendering
-    ai_widget: RefCell<crate::ai::AIPanelWidget>,
-    /// AI Manager for provider selection and requests
-    ai_manager: RefCell<crate::ai::AIManager>,
-
     // CX Terminal: Agent System
     /// Agent runtime for system operations
     agent_runtime: RefCell<crate::agents::AgentRuntime>,
@@ -818,10 +810,6 @@ impl TermWindow {
             block_managers: RefCell::new(HashMap::new()),
             block_renderer: RefCell::new(crate::blocks::BlockRenderer::new()),
             pane_cwd: RefCell::new(HashMap::new()),
-            // CX Terminal: AI Panel
-            ai_panel: RefCell::new(crate::ai::AIPanel::new(crate::ai::AIConfig::default())),
-            ai_widget: RefCell::new(crate::ai::AIPanelWidget::new()),
-            ai_manager: RefCell::new(crate::ai::AIManager::new(crate::ai::AIConfig::default())),
             // CX Terminal: Agent System
             agent_runtime: RefCell::new(crate::agents::create_runtime()),
             // CX Terminal: CX Daemon Integration
@@ -3291,16 +3279,20 @@ impl TermWindow {
             InputSelector(args) => self.show_input_selector(args),
             Confirmation(args) => self.show_confirmation(args),
 
-            // CX Terminal: AI Panel commands
+            // CX Terminal: Show Telemetry Dashboard
             ToggleAIPanel => {
-                self.toggle_ai_panel();
+                use telemetry::TelemetryPanel;
+                let pane_id = pane.pane_id();
+                let modal = TelemetryPanel::new(pane_id);
+                self.set_modal(Rc::new(modal));
             }
             AIExplainSelection => {
-                let pane_id = pane.pane_id();
-                self.ai_explain_selection(pane_id);
+                // AI explain feature is via cx CLI
+                log::info!("Use 'cx explain' in terminal for AI explanations");
             }
             AIGenerateCommand => {
-                self.ai_generate_command();
+                // AI generate feature is via cx CLI
+                log::info!("Use 'cx' in terminal for AI command generation");
             }
         };
         Ok(PerformAssignmentResult::Handled)

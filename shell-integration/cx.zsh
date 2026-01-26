@@ -99,6 +99,181 @@ compdef _cx_explain cx_explain
 compdef _cx_suggest cx_suggest
 compdef _cx_agent cx_agent
 
+# ============================================================================
+# CX Quick Blocks - Type /python, /node, /react, etc. to scaffold environments
+# ============================================================================
+
+# Python environment setup
+/python() {
+    local name="${1:-my-python-project}"
+    echo "🐍 Setting up Python environment..."
+
+    if (( $+commands[cx] )); then
+        cx new python "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        mkdir -p "$name" && cd "$name"
+        python3 -m venv .venv
+        echo "source .venv/bin/activate"
+        source .venv/bin/activate 2>/dev/null || true
+    fi
+}
+
+# Node.js environment setup
+/node() {
+    local name="${1:-my-node-project}"
+    echo "📦 Setting up Node.js environment..."
+
+    if (( $+commands[cx] )); then
+        cx new node "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        mkdir -p "$name" && cd "$name"
+        npm init -y
+    fi
+}
+
+# React app setup
+/react() {
+    local name="${1:-my-react-app}"
+    echo "⚛️  Setting up React app..."
+
+    if (( $+commands[cx] )); then
+        cx new react "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        npm create vite@latest "$name" -- --template react
+        cd "$name" 2>/dev/null || true
+    fi
+}
+
+# Next.js app setup
+/nextjs() {
+    local name="${1:-my-nextjs-app}"
+    echo "▲ Setting up Next.js app..."
+
+    if (( $+commands[cx] )); then
+        cx new nextjs "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        npx create-next-app@latest "$name"
+        cd "$name" 2>/dev/null || true
+    fi
+}
+
+# FastAPI backend setup
+/api() {
+    local name="${1:-my-api}"
+    echo "🚀 Setting up FastAPI backend..."
+
+    if (( $+commands[cx] )); then
+        cx new fastapi "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        mkdir -p "$name" && cd "$name"
+        python3 -m venv .venv && source .venv/bin/activate
+        pip install fastapi uvicorn
+        cat > main.py << 'EOF'
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"message": "Hello World"}
+EOF
+        echo "Run with: uvicorn main:app --reload"
+    fi
+}
+
+# Docker project setup
+/docker() {
+    local name="${1:-my-docker-project}"
+    echo "🐳 Setting up Docker project..."
+
+    if (( $+commands[cx] )); then
+        cx new docker "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        mkdir -p "$name" && cd "$name"
+        cat > Dockerfile << 'EOF'
+FROM node:20-alpine
+WORKDIR /app
+COPY . .
+CMD ["node", "index.js"]
+EOF
+        echo "Created Dockerfile"
+    fi
+}
+
+# Go project setup
+/go() {
+    local name="${1:-my-go-project}"
+    echo "🐹 Setting up Go project..."
+
+    if (( $+commands[cx] )); then
+        cx new go "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        mkdir -p "$name" && cd "$name"
+        go mod init "$name"
+        cat > main.go << 'EOF'
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, World!")
+}
+EOF
+    fi
+}
+
+# Rust project setup
+/rust() {
+    local name="${1:-my-rust-project}"
+    echo "🦀 Setting up Rust project..."
+
+    if (( $+commands[cx] )); then
+        cx new rust "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        cargo new "$name"
+        cd "$name" 2>/dev/null || true
+    fi
+}
+
+# SQLite database setup
+/db() {
+    local name="${1:-my-db-project}"
+    echo "🗄️  Setting up SQLite database project..."
+
+    if (( $+commands[cx] )); then
+        cx new db "$name"
+        cd "$name" 2>/dev/null || true
+    else
+        mkdir -p "$name" && cd "$name"
+        touch data.db
+        echo "SQLite database created at data.db"
+    fi
+}
+
+# List available quick blocks
+/help() {
+    echo "CX Terminal Quick Blocks:"
+    echo ""
+    echo "  /python [name]  - Create Python project with uv/venv"
+    echo "  /node [name]    - Create Node.js project"
+    echo "  /react [name]   - Create React app with Vite"
+    echo "  /nextjs [name]  - Create Next.js app"
+    echo "  /api [name]     - Create FastAPI backend"
+    echo "  /docker [name]  - Create Docker project"
+    echo "  /go [name]      - Create Go project"
+    echo "  /rust [name]    - Create Rust project"
+    echo "  /db [name]      - Create SQLite database project"
+    echo ""
+    echo "Example: /python my-ml-project"
+}
+
 # Initialize
 if [[ "$TERM_PROGRAM" == "CXTerminal" ]] || [[ -n "$CX_TERMINAL" ]]; then
     __cx_setup

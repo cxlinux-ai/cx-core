@@ -430,6 +430,21 @@ impl FontAttributes {
 
 impl Default for FontAttributes {
     fn default() -> Self {
+        // CX Terminal: Use platform-appropriate default monospace font
+        // Fira Code is preferred but may not be installed, so we use
+        // system defaults that are guaranteed to exist
+        #[cfg(target_os = "macos")]
+        let default_family = "Menlo"; // Always available on macOS
+
+        #[cfg(target_os = "linux")]
+        let default_family = "monospace"; // Generic family, fontconfig resolves
+
+        #[cfg(target_os = "windows")]
+        let default_family = "Consolas"; // Always available on Windows
+
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        let default_family = "monospace"; // Fallback for other platforms
+
         Self {
             // CX Terminal: Default to system font (Menlo on macOS, DejaVu on Linux)
             // This ensures the terminal works without custom font installation

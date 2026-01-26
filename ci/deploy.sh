@@ -19,36 +19,54 @@ fi
 
 case $OSTYPE in
   darwin*)
-    zipdir=WezTerm-macos-$TAG_NAME
+    # CX Terminal: Updated branding from WezTerm
+    APP_NAME="CX Terminal"
+    APP_BUNDLE="CX Terminal.app"
+    zipdir=CXTerminal-macos-$TAG_NAME
+    dmgname=CXTerminal-macos-$TAG_NAME.dmg
     if [[ "$BUILD_REASON" == "Schedule" ]] ; then
-      zipname=WezTerm-macos-nightly.zip
+      zipname=CXTerminal-macos-nightly.zip
+      dmgname=CXTerminal-macos-nightly.dmg
     else
       zipname=$zipdir.zip
     fi
-    rm -rf $zipdir $zipname
-    mkdir $zipdir
-    cp -r assets/macos/WezTerm.app $zipdir/
+    rm -rf "$zipdir" "$zipname" "$dmgname"
+    mkdir "$zipdir"
+
+    # Copy the app template
+    cp -r "assets/macos/CX Terminal.app" "$zipdir/$APP_BUNDLE"
+
     # Omit MetalANGLE for now; it's a bit laggy compared to CGL,
     # and on M1/Big Sur, CGL is implemented in terms of Metal anyway
-    rm $zipdir/WezTerm.app/*.dylib
-    mkdir -p $zipdir/WezTerm.app/Contents/MacOS
-    mkdir -p $zipdir/WezTerm.app/Contents/Resources
-    cp -r assets/shell-integration/* $zipdir/WezTerm.app/Contents/Resources
-    cp -r assets/shell-completion $zipdir/WezTerm.app/Contents/Resources
-    tic -xe wezterm -o $zipdir/WezTerm.app/Contents/Resources/terminfo termwiz/data/wezterm.terminfo
+    rm -f "$zipdir/$APP_BUNDLE"/*.dylib 2>/dev/null || true
+    mkdir -p "$zipdir/$APP_BUNDLE/Contents/MacOS"
+    mkdir -p "$zipdir/$APP_BUNDLE/Contents/Resources"
+    cp -r assets/shell-integration/* "$zipdir/$APP_BUNDLE/Contents/Resources"
+    cp -r assets/shell-completion "$zipdir/$APP_BUNDLE/Contents/Resources"
+    tic -xe wezterm -o "$zipdir/$APP_BUNDLE/Contents/Resources/terminfo" termwiz/data/wezterm.terminfo
 
-    for bin in wezterm wezterm-mux-server wezterm-gui strip-ansi-escapes ; do
+    # CX Terminal: Updated binary names
+    # Map: old name -> new name (for copying into bundle)
+    declare -A BIN_MAP=(
+      ["cx-terminal"]="cx-terminal"
+      ["wezterm-mux-server"]="wezterm-mux-server"
+      ["cx-terminal-gui"]="cx-terminal-gui"
+      ["strip-ansi-escapes"]="strip-ansi-escapes"
+    )
+
+    for bin in "${!BIN_MAP[@]}" ; do
+      target_name="${BIN_MAP[$bin]}"
       # If the user ran a simple `cargo build --release`, then we want to allow
       # a single-arch package to be built
       if [[ -f $TARGET_DIR/release/$bin ]] ; then
-        cp $TARGET_DIR/release/$bin $zipdir/WezTerm.app/Contents/MacOS/$bin
+        cp $TARGET_DIR/release/$bin "$zipdir/$APP_BUNDLE/Contents/MacOS/$target_name"
       else
         # The CI runs `cargo build --target XXX --release` which means that
         # the binaries will be deployed in `$TARGET_DIR/XXX/release` instead of
         # the plain path above.
         # In that situation, we have two architectures to assemble into a
         # Universal ("fat") binary, so we use the `lipo` tool for that.
-        lipo $TARGET_DIR/*/release/$bin -output $zipdir/WezTerm.app/Contents/MacOS/$bin -create
+        lipo $TARGET_DIR/*/release/$bin -output "$zipdir/$APP_BUNDLE/Contents/MacOS/$target_name" -create
       fi
     done
 
@@ -79,7 +97,7 @@ case $OSTYPE in
       security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_PW" build.keychain
       echo "Codesign"
       /usr/bin/codesign --keychain build.keychain --force --options runtime \
-        --entitlements ci/macos-entitlement.plist --deep --sign "$MACOS_TEAM_ID" $zipdir/WezTerm.app/
+        --entitlements ci/macos-entitlement.plist --deep --sign "$MACOS_TEAM_ID" "$zipdir/$APP_BUNDLE/"
       echo "Restore default keychain"
       security default-keychain -d user -s $def_keychain
       echo "Remove build.keychain"
@@ -87,17 +105,38 @@ case $OSTYPE in
     fi
 
     set -x
-    zip -r $zipname $zipdir
+
+    # Create ZIP archive
+    zip -r "$zipname" "$zipdir"
+
+    # CX Terminal: Create DMG installer
+    echo "Creating DMG installer..."
+    DMG_TEMP="dmg_temp"
+    rm -rf "$DMG_TEMP"
+    mkdir -p "$DMG_TEMP"
+    cp -r "$zipdir/$APP_BUNDLE" "$DMG_TEMP/"
+    ln -s /Applications "$DMG_TEMP/Applications"
+
+    # Create DMG with hdiutil
+    hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_TEMP" -ov -format UDZO "$dmgname"
+    rm -rf "$DMG_TEMP"
+
     set +x
 
     if [ -n "$MACOS_TEAM_ID" ] ; then
-      echo "Notarize"
-      xcrun notarytool submit $zipname --wait --team-id "$MACOS_TEAM_ID" --apple-id "$MACOS_APPLEID" --password "$MACOS_APP_PW"
+      echo "Notarize ZIP"
+      xcrun notarytool submit "$zipname" --wait --team-id "$MACOS_TEAM_ID" --apple-id "$MACOS_APPLEID" --password "$MACOS_APP_PW"
+
+      echo "Notarize DMG"
+      xcrun notarytool submit "$dmgname" --wait --team-id "$MACOS_TEAM_ID" --apple-id "$MACOS_APPLEID" --password "$MACOS_APP_PW"
+
+      echo "Staple notarization ticket to DMG"
+      xcrun stapler staple "$dmgname"
     fi
     set -x
 
     SHA256=$(shasum -a 256 $zipname | cut -d' ' -f1)
-    sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/wezterm-homebrew-macos.rb.template > wezterm.rb
+    sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/wezterm-homebrew-macos.rb.template > cx-terminal.rb
 
     ;;
   msys)

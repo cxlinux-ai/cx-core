@@ -1,14 +1,22 @@
 //! CX Terminal: AI-powered ask command
 //!
-//! Provides natural language interface to system operations.
-//! Example: cx ask "install cuda drivers for my nvidia gpu"
-//! Example: cx ask --do "optimize my system for gaming"
+//! Smart command detection that uses CX primitives (`cx new`, `cx save`, etc.)
+//! before falling back to AI providers.
+//!
+//! Example: cx ask "create a python project" → cx new python <name>
+//! Example: cx ask "save my work" → cx save <smart-name>
+//! Example: cx ask "how do I install docker" → AI response with command
 
 use anyhow::Result;
 use clap::Parser;
+use std::env;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::process::Command;
+
+use super::ask_context::ProjectContext;
+use super::ask_patterns::PatternMatcher;
 
 /// AI-powered command interface
 #[derive(Debug, Parser, Clone)]
@@ -46,7 +54,6 @@ impl AskCommand {
         let query = self.query.join(" ");
 
         if query.is_empty() {
-            // Interactive mode - read from stdin
             return self.run_interactive();
         }
 
@@ -54,19 +61,82 @@ impl AskCommand {
             eprintln!("cx ask: {}", query);
         }
 
-        // Try to connect to daemon
-        let response = self.query_daemon(&query)?;
-
-        // Output response
-        match self.format.as_str() {
-            "json" => println!("{}", response),
-            "commands" => self.print_commands_only(&response),
-            _ => self.print_formatted(&response),
+        // Step 1: Try to match CX commands (new, save, restore, etc.)
+        if let Some(response) = self.try_cx_command(&query)? {
+            return self.handle_response(&response);
         }
 
-        // Execute if --do flag
+        // Step 2: Try AI providers (daemon, Claude, Ollama)
+        let response = self.query_ai(&query)?;
+        self.handle_response(&response)
+    }
+
+    /// Try to match query against CX command patterns and execute
+    fn try_cx_command(&self, query: &str) -> Result<Option<String>> {
+        let matcher = PatternMatcher::new();
+        let context = ProjectContext::detect();
+
+        if let Some(pattern_match) = matcher.match_query(query) {
+            // Only use pattern match if confidence is reasonable
+            if pattern_match.confidence >= 0.7 {
+                let mut command = pattern_match.command.clone();
+
+                // If command needs a name, try to extract or generate one
+                if pattern_match.needs_name {
+                    let name = matcher
+                        .extract_name(query)
+                        .unwrap_or_else(|| context.smart_snapshot_name());
+                    command = command.replace("{name}", &name);
+                }
+
+                // For CX commands, execute automatically (AI-native behavior)
+                println!("{}", pattern_match.description);
+                self.execute_cx_command(&command)?;
+
+                // Return empty response since we already handled it
+                return Ok(Some("{}".to_string()));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Execute a CX command with optional confirmation
+    fn execute_cx_command(&self, command: &str) -> Result<()> {
+        if !self.auto_confirm {
+            eprintln!("\n  $ {}", command);
+            eprint!("\nRun this? [Y/n] ");
+            io::stderr().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+
+            let input = input.trim();
+            if !input.is_empty() && !input.eq_ignore_ascii_case("y") {
+                eprintln!("Cancelled.");
+                return Ok(());
+            }
+        }
+
+        // Execute the command
+        let status = Command::new("sh").arg("-c").arg(command).status()?;
+
+        if !status.success() {
+            eprintln!("Command failed with exit code: {:?}", status.code());
+        }
+
+        Ok(())
+    }
+
+    fn handle_response(&self, response: &str) -> Result<()> {
+        match self.format.as_str() {
+            "json" => println!("{}", response),
+            "commands" => self.print_commands_only(response),
+            _ => self.print_formatted(response),
+        }
+
         if self.execute {
-            self.execute_commands(&response)?;
+            self.execute_commands(response)?;
         }
 
         Ok(())
@@ -82,18 +152,51 @@ impl AskCommand {
             anyhow::bail!("No query provided");
         }
 
-        let response = self.query_daemon(query)?;
-        self.print_formatted(&response);
-
-        if self.execute {
-            self.execute_commands(&response)?;
+        if let Some(response) = self.try_cx_command(query)? {
+            return self.handle_response(&response);
         }
 
-        Ok(())
+        let response = self.query_ai(query)?;
+        self.handle_response(&response)
     }
 
-    fn query_daemon(&self, query: &str) -> Result<String> {
-        // Try user socket first, then system socket
+    fn query_ai(&self, query: &str) -> Result<String> {
+        // Try daemon first
+        if let Some(response) = self.try_daemon(query)? {
+            return Ok(response);
+        }
+
+        // Try Claude API
+        if !self.local_only {
+            if let Ok(api_key) = env::var("ANTHROPIC_API_KEY") {
+                if !api_key.is_empty() && api_key.starts_with("sk-") {
+                    if let Ok(response) = self.query_claude(&query, &api_key) {
+                        return Ok(response);
+                    }
+                }
+            }
+        }
+
+        // Try Ollama
+        if let Ok(host) = env::var("OLLAMA_HOST") {
+            if !host.is_empty() && host.starts_with("http") {
+                if let Ok(response) = self.query_ollama(&query, &host) {
+                    return Ok(response);
+                }
+            }
+        }
+
+        // No AI available - return helpful message
+        let response = serde_json::json!({
+            "status": "no_ai",
+            "message": "No AI backend available for this query.",
+            "query": query,
+            "hint": "Set ANTHROPIC_API_KEY or OLLAMA_HOST for AI features, or try specific commands like 'cx new python myapp'"
+        });
+        Ok(serde_json::to_string_pretty(&response)?)
+    }
+
+    fn try_daemon(&self, query: &str) -> Result<Option<String>> {
         let uid = unsafe { libc::getuid() };
         let user_socket = CX_USER_SOCKET_TEMPLATE.replace("{}", &uid.to_string());
 
@@ -102,13 +205,11 @@ impl AskCommand {
         } else if Path::new(CX_DAEMON_SOCKET).exists() {
             CX_DAEMON_SOCKET.to_string()
         } else {
-            // Daemon not running - use fallback
-            return self.query_fallback(query);
+            return Ok(None);
         };
 
         match UnixStream::connect(&socket_path) {
             Ok(mut stream) => {
-                // Send request
                 let request = serde_json::json!({
                     "type": "ask",
                     "query": query,
@@ -120,81 +221,122 @@ impl AskCommand {
                 stream.write_all(&request_bytes)?;
                 stream.shutdown(std::net::Shutdown::Write)?;
 
-                // Read response
                 let mut response = String::new();
                 stream.read_to_string(&mut response)?;
-                Ok(response)
+                Ok(Some(response))
             }
             Err(e) => {
                 if self.verbose {
                     eprintln!("cx ask: daemon connection failed: {}", e);
                 }
-                self.query_fallback(query)
+                Ok(None)
             }
         }
     }
 
-    fn query_fallback(&self, query: &str) -> Result<String> {
-        // Direct AI query without daemon
-        // This is a simplified fallback that suggests using the daemon
+    fn query_claude(&self, query: &str, api_key: &str) -> Result<String> {
+        let context = ProjectContext::detect();
+        let system_prompt = format!(
+            "You are CX Terminal, an AI assistant for CX Linux. \
+            Current directory: {}. Project type: {:?}. \
+            Provide concise, actionable commands. Use ```bash code blocks.",
+            context.cwd.display(),
+            context.project_type
+        );
 
-        let response = serde_json::json!({
-            "status": "fallback",
-            "message": "CX daemon not running. Using limited fallback mode.",
-            "query": query,
-            "suggestion": self.generate_fallback_suggestion(query),
-            "hint": "Start the CX daemon for full AI capabilities: systemctl --user start cx-daemon"
+        let payload = serde_json::json!({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 1024,
+            "messages": [
+                {"role": "user", "content": format!("{}\n\nQuestion: {}", system_prompt, query)}
+            ]
         });
 
-        Ok(serde_json::to_string_pretty(&response)?)
+        let output = Command::new("curl")
+            .args([
+                "-s", "-X", "POST",
+                "https://api.anthropic.com/v1/messages",
+                "-H", &format!("x-api-key: {}", api_key),
+                "-H", "anthropic-version: 2023-06-01",
+                "-H", "content-type: application/json",
+                "-d", &payload.to_string(),
+            ])
+            .output()?;
+
+        if output.status.success() {
+            let response: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+            if let Some(content) = response["content"][0]["text"].as_str() {
+                let result = serde_json::json!({
+                    "status": "success",
+                    "source": "claude",
+                    "response": content,
+                });
+                return Ok(serde_json::to_string_pretty(&result)?);
+            }
+        }
+
+        anyhow::bail!("Claude API request failed")
     }
 
-    fn generate_fallback_suggestion(&self, query: &str) -> String {
-        // Basic pattern matching for common queries
-        let query_lower = query.to_lowercase();
+    fn query_ollama(&self, query: &str, host: &str) -> Result<String> {
+        let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3".to_string());
+        let context = ProjectContext::detect();
 
-        if query_lower.contains("install") && query_lower.contains("cuda") {
-            return "sudo apt install nvidia-cuda-toolkit".to_string();
-        }
-        if query_lower.contains("install") && query_lower.contains("nvidia") {
-            return "sudo apt install nvidia-driver-535".to_string();
-        }
-        if query_lower.contains("lamp")
-            || (query_lower.contains("apache")
-                && query_lower.contains("mysql")
-                && query_lower.contains("php"))
-        {
-            return "sudo apt install apache2 mysql-server php libapache2-mod-php php-mysql"
-                .to_string();
-        }
-        if query_lower.contains("disk") && query_lower.contains("space") {
-            return "du -h --max-depth=1 / 2>/dev/null | sort -hr | head -20".to_string();
-        }
-        if query_lower.contains("package") && query_lower.contains("disk") {
-            return "dpkg-query -Wf '${Installed-Size}\\t${Package}\\n' | sort -nr | head -20"
-                .to_string();
+        let payload = serde_json::json!({
+            "model": model,
+            "prompt": format!(
+                "You are CX Terminal assistant. Directory: {}. Answer concisely with commands.\n\nQuestion: {}",
+                context.cwd.display(), query
+            ),
+            "stream": false
+        });
+
+        let output = Command::new("curl")
+            .args([
+                "-s", "-X", "POST",
+                &format!("{}/api/generate", host),
+                "-H", "content-type: application/json",
+                "-d", &payload.to_string(),
+            ])
+            .output()?;
+
+        if output.status.success() {
+            let response: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+            if let Some(text) = response["response"].as_str() {
+                let result = serde_json::json!({
+                    "status": "success",
+                    "source": "ollama",
+                    "response": text,
+                });
+                return Ok(serde_json::to_string_pretty(&result)?);
+            }
         }
 
-        // Default
-        format!("Unable to process offline. Query: {}", query)
+        anyhow::bail!("Ollama request failed")
     }
 
     fn print_formatted(&self, response: &str) {
-        // Try to parse as JSON and pretty print
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
+            // CX command detection response
+            if json.get("status").and_then(|s| s.as_str()) == Some("cx_command") {
+                if let Some(desc) = json.get("description").and_then(|d| d.as_str()) {
+                    println!("{}", desc);
+                }
+                if let Some(cmd) = json.get("command").and_then(|c| c.as_str()) {
+                    println!("\n  $ {}", cmd);
+                }
+                return;
+            }
+
+            // AI response
+            if let Some(ai_response) = json.get("response").and_then(|r| r.as_str()) {
+                println!("{}", ai_response);
+                return;
+            }
+
+            // Message field
             if let Some(message) = json.get("message").and_then(|m| m.as_str()) {
                 println!("{}", message);
-            }
-            if let Some(suggestion) = json.get("suggestion").and_then(|s| s.as_str()) {
-                println!("\n  {}", suggestion);
-            }
-            if let Some(commands) = json.get("commands").and_then(|c| c.as_array()) {
-                println!("\nSuggested commands:");
-                for cmd in commands {
-                    if let Some(cmd_str) = cmd.as_str() {
-                        println!("  $ {}", cmd_str);
-                    }
-                }
             }
             if let Some(hint) = json.get("hint").and_then(|h| h.as_str()) {
                 eprintln!("\nHint: {}", hint);
@@ -206,14 +348,8 @@ impl AskCommand {
 
     fn print_commands_only(&self, response: &str) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
-            if let Some(commands) = json.get("commands").and_then(|c| c.as_array()) {
-                for cmd in commands {
-                    if let Some(cmd_str) = cmd.as_str() {
-                        println!("{}", cmd_str);
-                    }
-                }
-            } else if let Some(suggestion) = json.get("suggestion").and_then(|s| s.as_str()) {
-                println!("{}", suggestion);
+            if let Some(cmd) = json.get("command").and_then(|c| c.as_str()) {
+                println!("{}", cmd);
             }
         }
     }
@@ -221,24 +357,16 @@ impl AskCommand {
     fn execute_commands(&self, response: &str) -> Result<()> {
         let json: serde_json::Value = serde_json::from_str(response)?;
 
-        let commands: Vec<&str> =
-            if let Some(cmds) = json.get("commands").and_then(|c| c.as_array()) {
-                cmds.iter().filter_map(|c| c.as_str()).collect()
-            } else if let Some(suggestion) = json.get("suggestion").and_then(|s| s.as_str()) {
-                vec![suggestion]
-            } else {
-                return Ok(());
-            };
+        let command = json.get("command").and_then(|c| c.as_str());
 
-        if commands.is_empty() {
-            return Ok(());
-        }
+        let command = match command {
+            Some(cmd) => cmd,
+            None => return Ok(()),
+        };
 
         if !self.auto_confirm {
-            eprintln!("\nCommands to execute:");
-            for cmd in &commands {
-                eprintln!("  $ {}", cmd);
-            }
+            eprintln!("\nCommand to execute:");
+            eprintln!("  $ {}", command);
             eprint!("\nProceed? [y/N] ");
             io::stderr().flush()?;
 
@@ -251,27 +379,11 @@ impl AskCommand {
             }
         }
 
-        for cmd in commands {
-            eprintln!("$ {}", cmd);
-            let status = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(cmd)
-                .status()?;
+        eprintln!("$ {}", command);
+        let status = Command::new("sh").arg("-c").arg(command).status()?;
 
-            if !status.success() {
-                eprintln!("Command failed with exit code: {:?}", status.code());
-                if !self.auto_confirm {
-                    eprint!("Continue with remaining commands? [y/N] ");
-                    io::stderr().flush()?;
-
-                    let mut input = String::new();
-                    io::stdin().read_line(&mut input)?;
-
-                    if !input.trim().eq_ignore_ascii_case("y") {
-                        anyhow::bail!("Execution aborted by user");
-                    }
-                }
-            }
+        if !status.success() {
+            eprintln!("Command failed with exit code: {:?}", status.code());
         }
 
         Ok(())

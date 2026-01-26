@@ -25,7 +25,11 @@ mod zoom_pane;
 
 // CX Terminal: AI-powered commands
 pub mod ask;
+pub mod ask_context;
+pub mod ask_patterns;
+pub mod new;
 pub mod shortcuts;
+pub mod snapshot;
 
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
@@ -192,6 +196,22 @@ Outputs the pane-id for the newly created pane on success"
     /// Explain a command, file, or concept
     #[command(name = "explain", trailing_var_arg = true)]
     Explain(shortcuts::ExplainCommand),
+
+    /// Create a new project from a template
+    #[command(name = "new")]
+    New(new::NewCommand),
+
+    /// Save current workspace as a snapshot
+    #[command(name = "save")]
+    Save(snapshot::SaveCommand),
+
+    /// Restore a workspace from a snapshot
+    #[command(name = "restore")]
+    Restore(snapshot::RestoreCommand),
+
+    /// List or manage snapshots
+    #[command(name = "snapshots")]
+    Snapshots(snapshot::SnapshotsCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -250,6 +270,22 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             cmd.run()
         }
         CliSubCommand::Explain(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::New(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Save(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Restore(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Snapshots(cmd) => {
             drop(client);
             cmd.run()
         }

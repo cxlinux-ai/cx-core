@@ -3,7 +3,9 @@
 //! Provides integration with CX Linux system agents for
 //! intelligent system management.
 
+// CX Terminal: Scaffolded for future agent integration
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 mod docker;
 mod file;

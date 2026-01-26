@@ -1,5 +1,10 @@
 // Don't create a new standard console window when launched from the windows GUI.
 #![cfg_attr(not(test), windows_subsystem = "windows")]
+// CX Terminal: Allow unused code in scaffolded CX features (AI, agents, voice, etc.)
+// These will be wired up incrementally
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 
 use crate::customglyph::BlockKey;
 use crate::glyphcache::GlyphCache;
@@ -497,6 +502,8 @@ async fn async_run_terminal_gui(
                 window.set_active_without_saving(tab_idx);
             }
             trigger_and_log_gui_attached(MuxDomain(domain.domain_id())).await;
+            // CX Terminal: Already spawned a tab above, don't spawn another
+            return Ok(());
         }
     }
     spawn_tab_in_domain_if_mux_is_empty(cmd, is_connecting, domain, opts.workspace).await

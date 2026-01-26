@@ -798,30 +798,30 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
             menubar: &["Help"],
             icon: Some("cod_debug"),
         },
-        // CX Terminal: AI Panel commands
+        // CX Terminal: Telemetry Dashboard
         ToggleAIPanel => CommandDef {
-            brief: "Toggle AI Panel".into(),
-            doc: "Show or hide the AI assistant panel".into(),
+            brief: "Toggle Telemetry Dashboard".into(),
+            doc: "Show the CX Telemetry Dashboard with system stats and AI actions".into(),
             keys: vec![(Modifiers::CTRL, "Space".into())],
             args: &[ArgType::ActiveWindow],
             menubar: &["View"],
-            icon: Some("md_assistant"),
+            icon: Some("md_dashboard"),
         },
         AIExplainSelection => CommandDef {
             brief: "Explain Selection".into(),
-            doc: "Send the selected text to the AI for explanation".into(),
-            keys: vec![(Modifiers::CTRL.union(Modifiers::SHIFT), "e".into())],
+            doc: "Use 'cx explain' in terminal for AI explanations".into(),
+            keys: vec![],  // No default keybinding
             args: &[ArgType::ActivePane],
-            menubar: &["Edit"],
-            icon: Some("md_help_outline"),
+            menubar: &[],
+            icon: None,
         },
         AIGenerateCommand => CommandDef {
             brief: "Generate Command".into(),
-            doc: "Open AI panel to generate a command from natural language".into(),
-            keys: vec![(Modifiers::CTRL.union(Modifiers::SHIFT), "g".into())],
+            doc: "Use 'cx' in terminal for AI command generation".into(),
+            keys: vec![],  // No default keybinding
             args: &[ArgType::ActivePane],
-            menubar: &["Edit"],
-            icon: Some("md_auto_fix_high"),
+            menubar: &[],
+            icon: None,
         },
         InputSelector(_) => CommandDef {
             brief: "Prompt the user to choose from a list".into(),
@@ -1696,25 +1696,25 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
             icon: Some("md_pipe_disconnected"),
         },
         OpenUri(uri) => match uri.as_ref() {
-            "https://wezterm.org/" => CommandDef {
+            "https://cxlinux.ai/" => CommandDef {
                 brief: "Documentation".into(),
-                doc: "Visit the wezterm documentation website".into(),
+                doc: "Visit the CX Terminal documentation website".into(),
                 keys: vec![],
                 args: &[],
                 menubar: &["Help"],
                 icon: Some("md_help"),
             },
-            "https://github.com/wezterm/wezterm/discussions/" => CommandDef {
+            "https://github.com/cxlinux-ai/cx/discussions/" => CommandDef {
                 brief: "Discuss on GitHub".into(),
-                doc: "Visit wezterm's GitHub discussion".into(),
+                doc: "Visit CX Terminal's GitHub discussions".into(),
                 keys: vec![],
                 args: &[],
                 menubar: &["Help"],
                 icon: Some("oct_comment_discussion"),
             },
-            "https://github.com/wezterm/wezterm/issues/" => CommandDef {
+            "https://github.com/cxlinux-ai/cx/issues/" => CommandDef {
                 brief: "Search or report issue on GitHub".into(),
-                doc: "Visit wezterm's GitHub issues".into(),
+                doc: "Visit CX Terminal's GitHub issues".into(),
                 keys: vec![],
                 args: &[],
                 menubar: &["Help"],
@@ -2162,11 +2162,11 @@ fn compute_default_actions() -> Vec<KeyAssignment> {
         ShowLauncher,
         ShowTabNavigator,
         // ----------------- Help
-        OpenUri("https://wezterm.org/".to_string()),
-        OpenUri("https://github.com/wezterm/wezterm/discussions/".to_string()),
-        OpenUri("https://github.com/wezterm/wezterm/issues/".to_string()),
-        ShowDebugOverlay,
-        // ----------------- CX Terminal: AI
+        OpenUri("https://cxlinux.ai/".to_string()),
+        OpenUri("https://github.com/cxlinux-ai/cx/discussions/".to_string()),
+        OpenUri("https://github.com/cxlinux-ai/cx/issues/".to_string()),
+        // ShowDebugOverlay removed - debug feature, not needed in default actions
+        // ----------------- CX Terminal: AI (Ctrl+Space opens Telemetry Dashboard)
         ToggleAIPanel,
         AIExplainSelection,
         AIGenerateCommand,

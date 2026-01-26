@@ -6,7 +6,9 @@
 //! - Fine-tuned LLM access
 //! - Continuous learning pipeline
 
+// CX Terminal: Scaffolded for future daemon integration
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 mod agent_router;
 mod client;

@@ -265,9 +265,10 @@ impl Pane for LocalPane {
     fn is_dead(&self) -> bool {
         let mut proc = self.process.lock();
 
+        // CX Terminal: Updated link to CX docs
         const EXIT_BEHAVIOR: &str = "This message is shown because \
-            \x1b]8;;https://wezterm.org/\
-            config/lua/config/exit_behavior.html\
+            \x1b]8;;https://cxlinux.ai/\
+            docs/exit_behavior\
             \x1b\\exit_behavior\x1b]8;;\x1b\\";
 
         let mut terse = String::new();

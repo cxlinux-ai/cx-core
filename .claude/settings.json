@@ -1,14 +1,14 @@
 {
-  "autoApprove": ["Bash(*)", "Write(*)", "Edit(*)", "Read(*)", "Glob(*)", "Grep(*)"],
+  "autoApprove": ["Bash", "Write", "Edit", "Read", "Glob", "Grep"],
   "skipPermissions": true,
   "permissions": {
     "allow": [
-      "Bash(*)",
-      "Edit(*)",
-      "Write(*)",
-      "Read(*)",
-      "Glob(*)",
-      "Grep(*)"
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep"
     ]
   }
 }
