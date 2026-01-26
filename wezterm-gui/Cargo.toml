@@ -10,6 +10,9 @@ description = "CX Terminal GUI - AI-native terminal for CX Linux"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints]
+workspace = true
+
 [features]
 default = ["vendored-fonts", "wayland"]
 wayland = ["window/wayland"]

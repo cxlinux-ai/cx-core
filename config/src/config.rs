@@ -1943,11 +1943,6 @@ const fn default_half_cell() -> Dimension {
     Dimension::Cells(0.5)
 }
 
-/// CX Terminal: 24px left padding for better visual spacing
-const fn default_cx_left_padding() -> Dimension {
-    Dimension::Pixels(24.)
-}
-
 const fn default_reverse_video_cursor_min_contrast() -> f32 {
     2.5
 }

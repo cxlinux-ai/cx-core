@@ -8,6 +8,9 @@ description = "Cross platform window setup and render"
 license = "MIT"
 build = "build.rs"
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 k9.workspace = true
 

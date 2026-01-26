@@ -32,6 +32,13 @@ opt-level = 3
 # Disabled because it breaks builds on Windows
 #split-debuginfo = "unpacked"
 
+# Workspace-wide lint configuration
+# The objc crate (0.2.x) uses #[cfg(feature = "cargo-clippy")] which is a deprecated
+# pattern for detecting clippy. This tells Rust's cfg-checker to expect this value.
+# TODO: Migrate from objc to objc2 to eliminate this configuration
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
+
 [workspace.dependencies]
 ahash = "0.8"
 anyhow = "1.0"
@@ -155,6 +162,7 @@ num-derive = "0.4"
 num-traits = {version="0.2", default-features=false }
 objc = "0.2"
 objc2 = "0.6"
+objc2-app-kit = "0.3"
 objc2-core-graphics = "0.3"
 objc2-foundation = "0.3"
 objc2-user-notifications = "0.3"

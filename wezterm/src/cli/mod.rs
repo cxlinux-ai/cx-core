@@ -23,33 +23,6 @@ mod split_pane;
 mod tls_creds;
 mod zoom_pane;
 
-// CX Terminal: AI-powered commands
-// Allow dead code in scaffolded modules that will be wired up incrementally
-#[allow(dead_code)]
-pub mod ask;
-#[allow(dead_code)]
-pub mod ask_agent;
-#[allow(dead_code)]
-pub mod ask_ai;
-#[allow(dead_code)]
-pub mod ask_context;
-#[allow(dead_code)]
-pub mod ask_executor;
-#[allow(dead_code)]
-pub mod ask_patterns;
-#[allow(dead_code)]
-pub mod branding;
-#[allow(dead_code)]
-pub mod new;
-#[allow(dead_code)]
-pub mod plan;
-#[allow(dead_code)]
-pub mod shortcuts;
-#[allow(dead_code)]
-pub mod snapshot;
-#[allow(dead_code)]
-pub mod templates;
-
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
     #[command(name = "table", about = "multi line space separated table")]
@@ -190,47 +163,6 @@ Outputs the pane-id for the newly created pane on success"
     /// Zoom, unzoom, or toggle zoom state
     #[command(name = "zoom-pane", rename_all = "kebab")]
     ZoomPane(zoom_pane::ZoomPane),
-
-    // CX Terminal: AI-powered commands
-    /// Ask AI a question or request a task
-    #[command(name = "ask", trailing_var_arg = true)]
-    Ask(ask::AskCommand),
-
-    /// Install packages using natural language
-    #[command(name = "install", trailing_var_arg = true)]
-    Install(shortcuts::InstallCommand),
-
-    /// Setup or configure systems using natural language
-    #[command(name = "setup", trailing_var_arg = true)]
-    Setup(shortcuts::SetupCommand),
-
-    /// Ask questions about the system
-    #[command(name = "what", trailing_var_arg = true)]
-    What(shortcuts::WhatCommand),
-
-    /// Fix errors or problems using AI
-    #[command(name = "fix", trailing_var_arg = true)]
-    Fix(shortcuts::FixCommand),
-
-    /// Explain a command, file, or concept
-    #[command(name = "explain", trailing_var_arg = true)]
-    Explain(shortcuts::ExplainCommand),
-
-    /// Create a new project from a template
-    #[command(name = "new")]
-    New(new::NewCommand),
-
-    /// Save current workspace as a snapshot
-    #[command(name = "save")]
-    Save(snapshot::SaveCommand),
-
-    /// Restore a workspace from a snapshot
-    #[command(name = "restore")]
-    Restore(snapshot::RestoreCommand),
-
-    /// List or manage snapshots
-    #[command(name = "snapshots")]
-    Snapshots(snapshot::SnapshotsCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -267,47 +199,6 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::SetWindowTitle(cmd) => cmd.run(client).await,
         CliSubCommand::RenameWorkspace(cmd) => cmd.run(client).await,
         CliSubCommand::ZoomPane(cmd) => cmd.run(client).await,
-        // CX Terminal: AI commands don't need the mux client
-        CliSubCommand::Ask(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Install(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Setup(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::What(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Fix(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Explain(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::New(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Save(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Restore(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Snapshots(cmd) => {
-            drop(client);
-            cmd.run()
-        }
     }
 }
 
@@ -317,23 +208,6 @@ pub fn run_cli(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
         Ok(_) => Ok(()),
         Err(err) => crate::terminate_with_error(err),
     }
-}
-
-/// CX: Run a natural language prompt through AI
-/// This is the simplified entry point - everything goes through here
-pub fn run_prompt(prompt: &str) -> anyhow::Result<()> {
-    use ask::AskCommand;
-
-    let cmd = AskCommand {
-        query: vec![prompt.to_string()],
-        no_execute: false,      // Agent mode: execute commands
-        auto_confirm: true,     // User typed the prompt, they want it done
-        local_only: false,
-        format: "text".to_string(),
-        verbose: false,
-    };
-
-    cmd.run()
 }
 
 pub fn resolve_relative_cwd(cwd: Option<OsString>) -> anyhow::Result<Option<String>> {

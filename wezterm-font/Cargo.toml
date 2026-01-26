@@ -51,7 +51,8 @@ winapi.workspace = true
 cocoa.workspace = true
 core-foundation.workspace = true
 core-text.workspace = true
-objc.workspace = true
+objc2.workspace = true
+objc2-foundation.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true

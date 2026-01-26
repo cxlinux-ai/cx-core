@@ -41,7 +41,7 @@ pub struct Opt {
     config_override: Vec<(String, String)>,
 
     #[command(subcommand)]
-    cmd: SubCommand,
+    cmd: Option<SubCommand>,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -130,10 +130,6 @@ enum SubCommand {
 
     #[command(name = "version", about = "Show CX Terminal version")]
     Version,
-
-    // CX: Catch-all for natural language prompts AND default when no args
-    #[command(external_subcommand)]
-    External(Vec<OsString>),
 }
 
 #[derive(Debug, Parser, Clone)]
@@ -218,7 +214,13 @@ fn run() -> anyhow::Result<()> {
     let saver = UmaskSaver::new();
     let opts = Opt::parse();
 
-    match opts.cmd {
+    // No subcommand = start GUI
+    let cmd = match &opts.cmd {
+        Some(cmd) => cmd,
+        None => return delegate_to_gui(saver),
+    };
+
+    match cmd {
         SubCommand::Start(_)
         | SubCommand::BlockingStart(_)
         | SubCommand::LsFonts(_)
@@ -228,31 +230,19 @@ fn run() -> anyhow::Result<()> {
         | SubCommand::Connect(_) => delegate_to_gui(saver),
         SubCommand::ImageCat(cmd) => cmd.run(),
         SubCommand::SetCwd(cmd) => cmd.run(),
-        SubCommand::Cli(ref cli) => cli::run_cli(&opts, cli.clone()),
-        SubCommand::Record(ref cmd) => cmd.run(init_config(&opts)?),
+        SubCommand::Cli(cli) => cli::run_cli(&opts, cli.clone()),
+        SubCommand::Record(cmd) => cmd.run(init_config(&opts)?),
         SubCommand::Replay(cmd) => cmd.run(),
         SubCommand::ShellCompletion { shell } => {
             use clap::CommandFactory;
             let mut cmd = Opt::command();
             let name = cmd.get_name().to_string();
-            generate_completion(shell, &mut cmd, name, &mut std::io::stdout());
+            generate_completion(shell.clone(), &mut cmd, name, &mut std::io::stdout());
             Ok(())
         }
         SubCommand::Version => {
-            cli::branding::print_version(wezterm_version());
+            println!("CX Terminal {}", wezterm_version());
             Ok(())
-        }
-        SubCommand::External(args) => {
-            let prompt: String = args
-                .iter()
-                .map(|s| s.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-                .join(" ");
-            if prompt.is_empty() {
-                delegate_to_gui(saver)
-            } else {
-                cli::run_prompt(&prompt)
-            }
         }
     }
 }
