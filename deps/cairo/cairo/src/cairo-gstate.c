@@ -539,45 +539,45 @@ cairo_status_t
 _cairo_gstate_set_dash (cairo_gstate_t *gstate, const double *dash, int num_dashes, double offset)
 {
     double dash_total, on_total, off_total;
-    int i, j;
+    double *new_dash = NULL;
+    int i, j, new_num_dashes;
 
-    free (gstate->stroke_style.dash);
-    gstate->stroke_style.dash = NULL;
-
-    gstate->stroke_style.num_dashes = num_dashes;
-
-    if (gstate->stroke_style.num_dashes == 0) {
+    /* Validate all inputs before modifying gstate */
+    if (num_dashes == 0) {
+	free (gstate->stroke_style.dash);
+	gstate->stroke_style.dash = NULL;
+	gstate->stroke_style.num_dashes = 0;
 	gstate->stroke_style.dash_offset = 0.0;
 	return CAIRO_STATUS_SUCCESS;
     }
 
-    gstate->stroke_style.dash = _cairo_malloc_ab (gstate->stroke_style.num_dashes, sizeof (double));
-    if (unlikely (gstate->stroke_style.dash == NULL)) {
-	gstate->stroke_style.num_dashes = 0;
-	return _cairo_error (CAIRO_STATUS_NO_MEMORY);
+    /* First pass: validate inputs and count effective dashes */
+    new_num_dashes = num_dashes;
+    for (i = 0; i < num_dashes; i++) {
+	if (dash[i] < 0)
+	    return _cairo_error (CAIRO_STATUS_INVALID_DASH);
+	if (dash[i] == 0 && i > 0 && i < num_dashes - 1) {
+	    if (dash[i + 1] < 0)
+		return _cairo_error (CAIRO_STATUS_INVALID_DASH);
+	    new_num_dashes -= 2;
+	    i++; /* skip next element too */
+	}
     }
 
+    /* Allocate new dash array */
+    new_dash = _cairo_malloc_ab (new_num_dashes, sizeof (double));
+    if (unlikely (new_dash == NULL))
+	return _cairo_error (CAIRO_STATUS_NO_MEMORY);
+
+    /* Second pass: fill the array and compute totals */
     on_total = off_total = dash_total = 0.0;
     for (i = j = 0; i < num_dashes; i++) {
-	if (dash[i] < 0) {
-	    free (gstate->stroke_style.dash);
-	    gstate->stroke_style.dash = NULL;
-	    gstate->stroke_style.num_dashes = 0;
-	    return _cairo_error (CAIRO_STATUS_INVALID_DASH);
-	}
-
 	if (dash[i] == 0 && i > 0 && i < num_dashes - 1) {
-	    if (dash[++i] < 0) {
-		free (gstate->stroke_style.dash);
-		gstate->stroke_style.dash = NULL;
-		gstate->stroke_style.num_dashes = 0;
-		return _cairo_error (CAIRO_STATUS_INVALID_DASH);
-	    }
-
-	    gstate->stroke_style.dash[j-1] += dash[i];
-	    gstate->stroke_style.num_dashes -= 2;
-	} else
-	    gstate->stroke_style.dash[j++] = dash[i];
+	    i++; /* skip zero */
+	    new_dash[j-1] += dash[i];
+	} else {
+	    new_dash[j++] = dash[i];
+	}
 
 	if (dash[i]) {
 	    dash_total += dash[i];
@@ -589,27 +589,31 @@ _cairo_gstate_set_dash (cairo_gstate_t *gstate, const double *dash, int num_dash
     }
 
     if (dash_total == 0.0) {
-	free (gstate->stroke_style.dash);
-	gstate->stroke_style.dash = NULL;
-	gstate->stroke_style.num_dashes = 0;
+	free (new_dash);
 	return _cairo_error (CAIRO_STATUS_INVALID_DASH);
     }
 
     /* An odd dash value indicate symmetric repeating, so the total
      * is twice as long. */
-    if (gstate->stroke_style.num_dashes & 1) {
+    if (new_num_dashes & 1) {
 	dash_total *= 2;
 	on_total += off_total;
     }
 
     if (dash_total - on_total < CAIRO_FIXED_ERROR_DOUBLE) {
 	/* Degenerate dash -> solid line */
+	free (new_dash);
 	free (gstate->stroke_style.dash);
 	gstate->stroke_style.dash = NULL;
 	gstate->stroke_style.num_dashes = 0;
 	gstate->stroke_style.dash_offset = 0.0;
 	return CAIRO_STATUS_SUCCESS;
     }
+
+    /* Success - commit changes to gstate */
+    free (gstate->stroke_style.dash);
+    gstate->stroke_style.dash = new_dash;
+    gstate->stroke_style.num_dashes = new_num_dashes;
 
     /* The dashing code doesn't like a negative offset or a big positive
      * offset, so we compute an equivalent offset which is guaranteed to be
