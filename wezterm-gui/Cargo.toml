@@ -137,3 +137,7 @@ benchmarking.workspace = true
 env_logger.workspace = true
 k9.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "net", "io-util"] }
+
+[[bin]]
+name = "wezterm-gui"
+path = "src/main.rs"

@@ -60,3 +60,7 @@ workspace = true
 [target.'cfg(windows)'.build-dependencies]
 cc.workspace = true
 embed-resource.workspace = true
+
+[[bin]]
+name = "wezterm"
+path = "src/main.rs"
