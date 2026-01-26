@@ -6,6 +6,8 @@
 //! - Improve suggestions over time
 //! - User control over data collection
 
+#![allow(dead_code)] // WIP: Learning system not yet integrated
+
 mod collector;
 mod model;
 mod privacy;

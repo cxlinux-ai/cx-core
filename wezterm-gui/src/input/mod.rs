@@ -7,6 +7,8 @@
 //! - History navigation (Ctrl+R search)
 //! - Vi/Emacs keybindings option
 
+#![allow(dead_code)] // WIP: Modern input not yet integrated
+
 pub mod complete;
 pub mod editor;
 pub mod highlight;

@@ -167,6 +167,31 @@ Outputs the pane-id for the newly created pane on success"
     /// Zoom, unzoom, or toggle zoom state
     #[command(name = "zoom-pane", rename_all = "kebab")]
     ZoomPane(zoom_pane::ZoomPane),
+
+    // CX Terminal: AI-powered commands
+    /// Ask AI a question or request a task
+    #[command(name = "ask", trailing_var_arg = true)]
+    Ask(ask::AskCommand),
+
+    /// Install packages using natural language
+    #[command(name = "install", trailing_var_arg = true)]
+    Install(shortcuts::InstallCommand),
+
+    /// Setup or configure systems using natural language
+    #[command(name = "setup", trailing_var_arg = true)]
+    Setup(shortcuts::SetupCommand),
+
+    /// Ask questions about the system
+    #[command(name = "what", trailing_var_arg = true)]
+    What(shortcuts::WhatCommand),
+
+    /// Fix errors or problems using AI
+    #[command(name = "fix", trailing_var_arg = true)]
+    Fix(shortcuts::FixCommand),
+
+    /// Explain a command, file, or concept
+    #[command(name = "explain", trailing_var_arg = true)]
+    Explain(shortcuts::ExplainCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -203,6 +228,31 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::SetWindowTitle(cmd) => cmd.run(client).await,
         CliSubCommand::RenameWorkspace(cmd) => cmd.run(client).await,
         CliSubCommand::ZoomPane(cmd) => cmd.run(client).await,
+        // CX Terminal: AI commands don't need the mux client
+        CliSubCommand::Ask(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Install(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Setup(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::What(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Fix(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Explain(cmd) => {
+            drop(client);
+            cmd.run()
+        }
     }
 }
 

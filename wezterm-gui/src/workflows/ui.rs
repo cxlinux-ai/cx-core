@@ -6,6 +6,8 @@
 //! - Edit workflow
 //! - Variable input dialog
 
+#![allow(dead_code)] // WIP: UI not yet integrated into terminal
+
 use super::storage::WorkflowStorage;
 use super::{Workflow, WorkflowStep, WorkflowVariable};
 use std::collections::HashMap;

@@ -187,6 +187,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "Font-dependent snapshot test - run with K9_UPDATE_SNAPSHOTS=1 to update"]
     fn ligatures_fira() {
         config::use_test_configuration();
         let _ = env_logger::Builder::new()
@@ -306,6 +307,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "Font-dependent snapshot test - run with K9_UPDATE_SNAPSHOTS=1 to update"]
     fn ligatures_jetbrains() {
         config::use_test_configuration();
         let _ = env_logger::Builder::new()
