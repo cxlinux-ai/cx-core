@@ -152,53 +152,65 @@ impl TelemetryPanel {
 
         // Title
         children.push(
-            Element::new(&font, ElementContent::Text(" CX Telemetry Dashboard".into()))
-                .colors(ElementColors {
-                    border: BorderColor::default(),
-                    bg: border_color.clone(),
-                    text: LinearRgba::with_components(0.0, 0.0, 0.0, 1.0).into(),
-                })
-                .padding(BoxDimension {
-                    left: Dimension::Cells(0.5),
-                    right: Dimension::Cells(0.5),
-                    top: Dimension::Cells(0.25),
-                    bottom: Dimension::Cells(0.25),
-                })
-                .display(DisplayType::Block),
+            Element::new(
+                &font,
+                ElementContent::Text(" CX Telemetry Dashboard".into()),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: border_color.clone(),
+                text: LinearRgba::with_components(0.0, 0.0, 0.0, 1.0).into(),
+            })
+            .padding(BoxDimension {
+                left: Dimension::Cells(0.5),
+                right: Dimension::Cells(0.5),
+                top: Dimension::Cells(0.25),
+                bottom: Dimension::Cells(0.25),
+            })
+            .display(DisplayType::Block),
         );
 
         // System stats
         children.push(
-            Element::new(&font, ElementContent::Text(format!("  CPU: {:.1}%", data.cpu_percent)))
-                .colors(ElementColors {
-                    border: BorderColor::default(),
-                    bg: LinearRgba::TRANSPARENT.into(),
-                    text: text_color.clone(),
-                })
-                .display(DisplayType::Block),
+            Element::new(
+                &font,
+                ElementContent::Text(format!("  CPU: {:.1}%", data.cpu_percent)),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: LinearRgba::TRANSPARENT.into(),
+                text: text_color.clone(),
+            })
+            .display(DisplayType::Block),
         );
 
         children.push(
-            Element::new(&font, ElementContent::Text(format!(
-                "  RAM: {:.1}/{:.1} GB ({:.0}%)",
-                data.mem_used_gb, data.mem_total_gb, data.mem_percent
-            )))
-                .colors(ElementColors {
-                    border: BorderColor::default(),
-                    bg: LinearRgba::TRANSPARENT.into(),
-                    text: text_color.clone(),
-                })
-                .display(DisplayType::Block),
+            Element::new(
+                &font,
+                ElementContent::Text(format!(
+                    "  RAM: {:.1}/{:.1} GB ({:.0}%)",
+                    data.mem_used_gb, data.mem_total_gb, data.mem_percent
+                )),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: LinearRgba::TRANSPARENT.into(),
+                text: text_color.clone(),
+            })
+            .display(DisplayType::Block),
         );
 
         children.push(
-            Element::new(&font, ElementContent::Text(format!("  Git: {}", data.git_string())))
-                .colors(ElementColors {
-                    border: BorderColor::default(),
-                    bg: LinearRgba::TRANSPARENT.into(),
-                    text: git_color,
-                })
-                .display(DisplayType::Block),
+            Element::new(
+                &font,
+                ElementContent::Text(format!("  Git: {}", data.git_string())),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: LinearRgba::TRANSPARENT.into(),
+                text: git_color,
+            })
+            .display(DisplayType::Block),
         );
 
         // Separator
@@ -217,7 +229,10 @@ impl TelemetryPanel {
 
         // Actions header
         children.push(
-            Element::new(&font, ElementContent::Text("  Actions:".into()))
+            Element::new(
+                    &font,
+                    ElementContent::Text("  Actions:".into()),
+                )
                 .colors(ElementColors {
                     border: BorderColor::default(),
                     bg: LinearRgba::TRANSPARENT.into(),
@@ -236,22 +251,25 @@ impl TelemetryPanel {
 
             let prefix = if i == selected { "▶" } else { " " };
             children.push(
-                Element::new(&font, ElementContent::Text(format!(
-                    "  {} [{}] {}",
-                    prefix, action.key, action.label
-                )))
-                    .colors(ElementColors {
-                        border: BorderColor::default(),
-                        bg,
-                        text,
-                    })
-                    .padding(BoxDimension {
-                        left: Dimension::Cells(0.25),
-                        right: Dimension::Cells(0.25),
-                        top: Dimension::Cells(0.),
-                        bottom: Dimension::Cells(0.),
-                    })
-                    .display(DisplayType::Block),
+                Element::new(
+                    &font,
+                    ElementContent::Text(format!(
+                        "  {} [{}] {}",
+                        prefix, action.key, action.label
+                    )),
+                )
+                .colors(ElementColors {
+                    border: BorderColor::default(),
+                    bg,
+                    text,
+                })
+                .padding(BoxDimension {
+                    left: Dimension::Cells(0.25),
+                    right: Dimension::Cells(0.25),
+                    top: Dimension::Cells(0.),
+                    bottom: Dimension::Cells(0.),
+                })
+                .display(DisplayType::Block),
             );
         }
 
