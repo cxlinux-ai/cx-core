@@ -93,15 +93,10 @@ fn run() -> Result<()> {
 
     let args = Args::parse();
 
-    // Setup logging
-    let log_level = if args.verbose {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
-    };
-    env_logger::Builder::from_default_env()
-        .filter_level(log_level)
-        .init();
+    // env_bootstrap already initializes logging, just set level if verbose
+    if args.verbose {
+        log::set_max_level(log::LevelFilter::Debug);
+    }
 
     log::info!("Starting CX Daemon v{}", env!("CARGO_PKG_VERSION"));
 

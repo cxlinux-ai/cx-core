@@ -323,7 +323,12 @@ impl DaemonCommand {
 }
 
 fn get_socket_path() -> PathBuf {
-    // Use config module's runtime_dir helper
-    let runtime_dir = config::RUNTIME_DIR.as_path();
-    runtime_dir.join("cx/daemon.sock")
+    // Use the same logic as the daemon itself
+    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        PathBuf::from(runtime_dir).join("cx/daemon.sock")
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".cx/daemon.sock")
+    } else {
+        PathBuf::from("/var/run/cx/daemon.sock")
+    }
 }
