@@ -1,5 +1,8 @@
 name: ubuntu22.04
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches:

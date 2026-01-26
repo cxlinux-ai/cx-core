@@ -542,11 +542,11 @@ _cairo_gstate_set_dash (cairo_gstate_t *gstate, const double *dash, int num_dash
     int i, j;
 
     free (gstate->stroke_style.dash);
+    gstate->stroke_style.dash = NULL;
 
     gstate->stroke_style.num_dashes = num_dashes;
 
     if (gstate->stroke_style.num_dashes == 0) {
-	gstate->stroke_style.dash = NULL;
 	gstate->stroke_style.dash_offset = 0.0;
 	return CAIRO_STATUS_SUCCESS;
     }
@@ -559,12 +559,20 @@ _cairo_gstate_set_dash (cairo_gstate_t *gstate, const double *dash, int num_dash
 
     on_total = off_total = dash_total = 0.0;
     for (i = j = 0; i < num_dashes; i++) {
-	if (dash[i] < 0)
+	if (dash[i] < 0) {
+	    free (gstate->stroke_style.dash);
+	    gstate->stroke_style.dash = NULL;
+	    gstate->stroke_style.num_dashes = 0;
 	    return _cairo_error (CAIRO_STATUS_INVALID_DASH);
+	}
 
 	if (dash[i] == 0 && i > 0 && i < num_dashes - 1) {
-	    if (dash[++i] < 0)
+	    if (dash[++i] < 0) {
+		free (gstate->stroke_style.dash);
+		gstate->stroke_style.dash = NULL;
+		gstate->stroke_style.num_dashes = 0;
 		return _cairo_error (CAIRO_STATUS_INVALID_DASH);
+	    }
 
 	    gstate->stroke_style.dash[j-1] += dash[i];
 	    gstate->stroke_style.num_dashes -= 2;
@@ -580,8 +588,12 @@ _cairo_gstate_set_dash (cairo_gstate_t *gstate, const double *dash, int num_dash
 	}
     }
 
-    if (dash_total == 0.0)
+    if (dash_total == 0.0) {
+	free (gstate->stroke_style.dash);
+	gstate->stroke_style.dash = NULL;
+	gstate->stroke_style.num_dashes = 0;
 	return _cairo_error (CAIRO_STATUS_INVALID_DASH);
+    }
 
     /* An odd dash value indicate symmetric repeating, so the total
      * is twice as long. */

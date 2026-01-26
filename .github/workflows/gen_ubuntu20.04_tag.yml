@@ -1,5 +1,8 @@
 name: ubuntu20.04_tag
 
+permissions:
+  contents: read
+
 on:
   push:
     tags:

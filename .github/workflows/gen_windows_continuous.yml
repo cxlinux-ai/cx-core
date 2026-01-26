@@ -1,5 +1,8 @@
 name: windows_continuous
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "10 3 * * *"

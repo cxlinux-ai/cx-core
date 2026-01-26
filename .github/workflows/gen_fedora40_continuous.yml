@@ -1,5 +1,8 @@
 name: fedora40_continuous
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "10 3 * * *"

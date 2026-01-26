@@ -1,5 +1,8 @@
 name: windows_tag
 
+permissions:
+  contents: read
+
 on:
   push:
     tags:

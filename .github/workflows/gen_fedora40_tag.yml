@@ -1,5 +1,8 @@
 name: fedora40_tag
 
+permissions:
+  contents: read
+
 on:
   push:
     tags:
