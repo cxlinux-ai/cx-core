@@ -13,8 +13,8 @@
   <a href="https://github.com/cxlinux-ai/cx/actions">
     <img src="https://github.com/cxlinux-ai/cx/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
   </a>
-  <a href="https://github.com/cxlinux-ai/cx/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
+  <a href="https://github.com/cxlinux-ai/cx/blob/main/LICENSE.md">
+    <img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" />
   </a>
   <a href="https://github.com/cxlinux-ai/cx/releases">
     <img src="https://img.shields.io/badge/version-0.1.0--alpha-orange.svg" alt="Version" />

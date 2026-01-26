@@ -1,129 +1,116 @@
-# Contributing to wezterm
+# Contributing to CX Terminal
 
-Thanks for considering donating your time and energy!  I value any contribution,
-even if it is just to highlight a typo.
+Thanks for considering contributing to CX Terminal! We value any contribution, even if it is just to highlight a typo.
 
-Included here are some guidelines that can help streamline taking in your contribution.
-They are just guidelines and not hard-and-fast rules. Things will probably go faster
-and smoother if you have the time and energy to read and follow these suggestions.
+## Quick Start for Contributors
 
-## Contributing Documentation
+```bash
+# Clone the repository
+git clone https://github.com/cxlinux-ai/cx.git
+cd cx
 
-There's never enough!  Pretty much anything is fair game to improve here.
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-### Running the doc build yourself
+# Check the code compiles
+cargo check
 
-To check your documentation additions, you can optionally build the docs yourself and see how the changes will look on the webpage. 
+# Run tests
+cargo test
 
-To serve them up, and then automatically rebuild and refresh the docs in your browser, run:
-```console
-$ ci/build-docs.sh serve
-```
-And then click on the URL that it prints out after it has performed the first build.
+# Build release
+cargo build --release
 
-Any arguments passed to `build-docs.sh` are passed down to the underlying `mkdocs` utility.
-
-Look at [mkdocs serve](https://www.mkdocs.org/user-guide/cli/#mkdocs-serve) for more information on additional parameters.
-
-### Operating system specific installation instructions?
-
-There are a lot of targets out there.  Today we have docs that are Ubuntu biased
-and I know that there are a lot of flavors of Linux. Rather than expand the README
-with instructions for those, please translate the instructions into steps that
-can be run in the [`get-deps`](https://github.com/wezterm/wezterm/blob/master/get-deps)
-script.
-
-## Contributing code
-
-Yes please!
-
-If you are new to the Rust language check out <https://doc.rust-lang.org/rust-by-example/>.
-
-### Where to find things?
-
-The `term` directory holds the core terminal model code. This is agnostic
-of any windowing system. If you want to add support for terminal escape
-sequences and that sort of thing, you probably want to be in the `term` directory.
-Keep in mind that for maximal compatibility and utility `wezterm` aims to
-be compatible with the `xterm` behavior.
-https://invisible-island.net/xterm/ctlseqs/ctlseqs.html is a useful resource!
-
-The `src` directory holds the code for the `wezterm` program. This is
-the GUI renderer for the terminal model.  If you want to change something
-about the GUI you want to be in the `src` dir.
-
-### Iterating
-
-I tend to iterate and sanity check as I develop using `cargo check`; it
-will type-check your code without generating code which is much faster
-than building everything in release mode:
-
-```console
-$ cargo check
+# Run the terminal
+./target/release/cx-terminal-gui
 ```
 
-Likewise, if you want to quickly check that something works, you can run it
-in debug mode using:
+## Project Structure
 
-```console
-$ cargo run
+| Directory | Description |
+|-----------|-------------|
+| `wezterm-gui/src/ai/` | AI panel and LLM providers |
+| `wezterm-gui/src/blocks/` | Command blocks system |
+| `wezterm-gui/src/agents/` | CX Linux agent system |
+| `wezterm-gui/src/voice/` | Voice capture and transcription |
+| `wezterm-gui/src/learning/` | ML workflow learning |
+| `wezterm/src/cli/` | CLI commands (ask, install, setup, etc.) |
+| `term/` | Core terminal model (escape sequences, etc.) |
+| `config/` | Configuration and Lua bindings |
+| `shell-integration/` | Shell scripts for CX features |
+
+## Development Workflow
+
+### Check your code compiles
+```bash
+cargo check
 ```
 
-This will produce a debug-instrumented binary with poor optimization. This will
-give you more detail in the backtrace produced if you run `RUST_BACKTRACE=1 cargo run`.
-
-If you get a panic and want to examine local variables, you'll need to use gdb:
-
-```console
-$ cargo build
-$ gdb ./target/debug/wezterm
-$ break rust_panic               # hit tab to complete the name of the panic symbol!
-$ run
-$ bt
+### Run in debug mode
+```bash
+cargo run --bin cx-terminal-gui
 ```
 
-### Please include tests to cover your changes!
-
-This will help ensure that your contributions keep working as things change.
-
-You can run the existing tests using:
-
-```console
-$ cargo test --all
+### Run tests
+```bash
+cargo test --all
 ```
 
-There are some helper classes for writing tests for terminal behavior.
-Here's [an example of a test to verify that the terminal contents
-match expectations](https://github.com/wezterm/wezterm/blob/fd532a8c2fb3b56593597cf8be1775da1feda0a3/term/src/test/mod.rs#L314).
+### Format code (required before PR)
+```bash
+cargo fmt --all
+```
 
-Please also make a point of adding comments to your tests to help
-clarify the intent of the test!
+## CX Terminal Additions
 
-### Please also include documentation if you are adding or changing behavior
+When adding CX-specific features:
 
-This helps to keep things well-understood and working in the long term.
-Don't worry if you're not a wordsmith or English isn't your first language as
-I can help with that. It is more important to capture the intent of the
-feature and having this written out in English also helps when it comes
-to reviewing the code.
+1. Add `// CX Terminal:` comments to mark our additions
+2. Use the `cx` prefix for new modules/functions
+3. Follow existing patterns in the codebase
+4. Add tests for new functionality
+
+### AI Commands
+
+The AI CLI commands are in `wezterm/src/cli/`:
+- `ask.rs` - Main AI query command
+- `shortcuts.rs` - Convenience commands (install, setup, what, fix, explain)
+
+### Command Blocks
+
+The blocks system is in `wezterm-gui/src/blocks/`:
+- `block.rs` - Block data structure
+- `manager.rs` - Block lifecycle management
+- `parser.rs` - OSC sequence parsing
+- `renderer.rs` - Block rendering
 
 ## Submitting a Pull Request
 
-After considering all of the above, and once you've prepared your contribution
-and are ready to submit it, you'll need to create a pull request.
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes
+4. Run tests: `cargo test --all`
+5. Format code: `cargo fmt --all`
+6. Commit with clear message: `git commit -m "feat: Add my feature"`
+7. Push and create PR
 
-If you're new to GitHub Pull Requests, read through
-https://help.github.com/articles/creating-a-pull-request/ to understand
-how the process works.
+### Commit Message Format
 
-### Before you submit your code
+```
+type: Short description
 
-Make sure that the tests are working and that the code is correctly
-formatted otherwise the continuous integration system will fail your build:
+Longer description if needed.
 
-```console
-$ rustup component add rustfmt-preview          # you only need to do this once
-$ cargo test --all
-$ cargo fmt --all
+Co-Authored-By: Your Name <your@email.com>
 ```
 
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+## Code of Conduct
+
+Be respectful and constructive. We're all here to build something great.
+
+## Questions?
+
+- Discord: https://discord.gg/cxlinux
+- GitHub Issues: https://github.com/cxlinux-ai/cx/issues
