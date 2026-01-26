@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/cx_linux_ai_logo.png" alt="CX Linux Logo" width="250" />
+  <img src="assets/icon/cx-terminal-icon.svg" alt="CX Terminal Logo" width="200" />
 </p>
 
 <h1 align="center">CX Terminal</h1>
