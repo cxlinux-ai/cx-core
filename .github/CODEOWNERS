@@ -9,12 +9,16 @@
 **/pricing*.rs @cxlinux-ai/GidTeam
 **/pricing*.ts @cxlinux-ai/GidTeam
 **/pricing*.tsx @cxlinux-ai/GidTeam
+**/pricing*.py @cxlinux-ai/GidTeam
 **/stripe*.rs @cxlinux-ai/GidTeam
 **/stripe*.ts @cxlinux-ai/GidTeam
+**/stripe*.py @cxlinux-ai/GidTeam
 **/billing*.rs @cxlinux-ai/GidTeam
 **/billing*.ts @cxlinux-ai/GidTeam
+**/billing*.py @cxlinux-ai/GidTeam
 **/license*.rs @cxlinux-ai/GidTeam
 **/license*.ts @cxlinux-ai/GidTeam
+**/license*.py @cxlinux-ai/GidTeam
 
 # License and legal files
 LICENSE* @cxlinux-ai/GidTeam
@@ -22,7 +26,4 @@ COPYING* @cxlinux-ai/GidTeam
 
 # CI/CD and workflows
 .github/workflows/ @cxlinux-ai/GidTeam
-
-# AI instructions (private)
-CLAUDE.md @cxlinux-ai/GidTeam
 
