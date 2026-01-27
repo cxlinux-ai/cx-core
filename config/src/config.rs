@@ -1733,7 +1733,11 @@ pub fn default_hyperlink_rules() -> Vec<hyperlink::Rule> {
 }
 
 fn default_harfbuzz_features() -> Vec<String> {
-    ["kern", "liga", "clig"]
+    // CX Terminal: Disable standard ligatures by default to prevent cursor
+    // positioning issues with "fi", "fl", etc. ligatures in terminal contexts.
+    // Users can re-enable with harfbuzz_features = ["kern", "liga", "clig"]
+    // See: https://github.com/wezterm/wezterm/issues/1736
+    ["kern", "liga=0", "clig"]
         .iter()
         .map(|&s| s.to_string())
         .collect()
