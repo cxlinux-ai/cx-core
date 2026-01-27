@@ -67,6 +67,7 @@
             zlib
           ]
           ++ lib.optionals stdenv.isLinux [
+            alsa-lib
             libxkbcommon
             wayland
 
