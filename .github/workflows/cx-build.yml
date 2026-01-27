@@ -50,8 +50,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            cmake \
             libfontconfig1-dev \
-            libfreetype6-dev libx11-dev libx11-xcb-dev libxcb1-dev \
+            libfreetype6-dev \
             libx11-dev \
             libx11-xcb-dev \
             libxcb1-dev \
@@ -61,11 +62,13 @@ jobs:
             libxcb-keysyms1-dev \
             libxcb-icccm4-dev \
             libxcb-image0-dev \
+            libxcb-util-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libwayland-dev \
             libssl-dev \
-            libegl1-mesa-dev
+            libegl1-mesa-dev \
+            libasound2-dev
 
       - name: Cargo check
         run: cargo check --workspace
@@ -113,8 +116,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            cmake \
             libfontconfig1-dev \
-            libfreetype6-dev libx11-dev libx11-xcb-dev libxcb1-dev \
+            libfreetype6-dev \
             libx11-dev \
             libx11-xcb-dev \
             libxcb1-dev \
@@ -124,11 +128,13 @@ jobs:
             libxcb-keysyms1-dev \
             libxcb-icccm4-dev \
             libxcb-image0-dev \
+            libxcb-util-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libwayland-dev \
             libssl-dev \
-            libegl1-mesa-dev
+            libegl1-mesa-dev \
+            libasound2-dev
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
@@ -186,8 +192,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            cmake \
             libfontconfig1-dev \
-            libfreetype6-dev libx11-dev libx11-xcb-dev libxcb1-dev \
+            libfreetype6-dev \
             libx11-dev \
             libx11-xcb-dev \
             libxcb1-dev \
@@ -197,11 +204,13 @@ jobs:
             libxcb-keysyms1-dev \
             libxcb-icccm4-dev \
             libxcb-image0-dev \
+            libxcb-util-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libwayland-dev \
             libssl-dev \
-            libegl1-mesa-dev
+            libegl1-mesa-dev \
+            libasound2-dev
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings

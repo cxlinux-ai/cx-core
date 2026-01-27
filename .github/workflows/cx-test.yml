@@ -42,6 +42,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            cmake \
             libfontconfig1-dev \
             libfreetype6-dev \
             libx11-dev \
@@ -53,11 +54,13 @@ jobs:
             libxcb-keysyms1-dev \
             libxcb-icccm4-dev \
             libxcb-image0-dev \
+            libxcb-util-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libwayland-dev \
             libssl-dev \
-            libegl1-mesa-dev
+            libegl1-mesa-dev \
+            libasound2-dev
 
       - name: Run tests
         run: cargo test --workspace
@@ -182,6 +185,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            cmake \
             libfontconfig1-dev \
             libfreetype6-dev \
             libx11-dev \
@@ -193,11 +197,13 @@ jobs:
             libxcb-keysyms1-dev \
             libxcb-icccm4-dev \
             libxcb-image0-dev \
+            libxcb-util-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libwayland-dev \
             libssl-dev \
-            libegl1-mesa-dev
+            libegl1-mesa-dev \
+            libasound2-dev
 
       - name: Run doc tests
         run: cargo test --doc --workspace
