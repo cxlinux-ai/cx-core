@@ -102,7 +102,8 @@ fedora_deps() {
     'xcb-util-keysyms-devel' \
     'xcb-util-image-devel' \
     'xcb-util-wm-devel' \
-    'rpm-build'
+    'rpm-build' \
+    'alsa-lib-devel'
 
   if test_flag; then
     $YUM install -y 'openssh-server'
@@ -174,7 +175,8 @@ debian_deps() {
     'lsb-release' \
     'python3' \
     'xdg-utils' \
-    'xorg-dev'
+    'xorg-dev' \
+    'libasound2-dev'
 
   if test_flag; then
     $APT install -y 'openssh-server'
