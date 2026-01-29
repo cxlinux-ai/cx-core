@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) 2026 CX Linux
  * Licensed under the Business Source License 1.1
  * You may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 //! - Rollback capability via installation history
 
 use anyhow::{Context, Result};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::process::Command;
@@ -277,10 +278,29 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
 
 /// Get available update version for a package
 fn get_available_update(package_name: &str) -> Result<Option<String>> {
-    // First, update package cache (silently)
-    let _ = Command::new("apt-get")
+    // First, update package cache
+    match Command::new("apt-get")
         .args(["update", "-qq"])
-        .output();
+        .output()
+    {
+        Ok(output) => {
+            if !output.status.success() {
+                warn!(
+                    "apt-get update failed with status: {}. Package cache may be stale.",
+                    output.status
+                );
+                if !output.stderr.is_empty() {
+                    warn!(
+                        "apt-get update stderr: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to execute apt-get update: {}. Package cache may be stale.", e);
+        }
+    }
 
     // Check for available updates
     let output = Command::new("apt-cache")

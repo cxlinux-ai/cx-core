@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) 2026 CX Linux
  * Licensed under the Business Source License 1.1
  * You may not use this file except in compliance with the License.
@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+
+#[cfg(unix)]
+use nix::unistd::geteuid;
 
 use super::{ScheduleCommand, ScheduleSubCommand, ScheduleCreateCommand, ScheduleFrequency, PatchStrategy};
 use super::database::SecurityDatabase;
@@ -443,8 +446,14 @@ fn send_notification(schedule: &Schedule) -> Result<()> {
 }
 
 /// Check if running as root
+#[cfg(unix)]
 fn is_root() -> bool {
-    unsafe { libc::geteuid() == 0 }
+    geteuid().is_root()
+}
+
+#[cfg(not(unix))]
+fn is_root() -> bool {
+    false
 }
 
 /// Sanitize name for use in systemd unit names
