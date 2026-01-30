@@ -34,7 +34,7 @@ GitHub Copilot excels at helping with these CX Terminal components:
 - **Caution:** Performance-critical; suggest benchmarks
 
 #### 5. **Lua API Bindings** ⭐⭐⭐
-- **Why:** 13+ lua-api-crates with repetitive FFI patterns
+- **Why:** 15 lua-api-crates with repetitive FFI patterns
 - **Tasks:** Exposing Rust functions to Lua configuration system
 - **Pattern:** `#[lua(...)] pub fn method(&self) -> mlua::Result<T>`
 - **Impact:** Extensibility without recompilation
@@ -62,9 +62,9 @@ GitHub Copilot excels at helping with these CX Terminal components:
 Copilot should be more conservative in these areas:
 
 #### Security-Critical Code ❌
-- Command validation logic in `security/`
-- Sandboxing and privilege escalation prevention
-- Authentication/authorization flows
+- Command validation and sandboxing logic
+- Privilege escalation prevention
+- Authentication/authorization flows (subscription, license validation)
 - **Approach:** Manual review required; suggest defensive patterns
 
 #### Core Terminal Emulation 🔶
