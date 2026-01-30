@@ -3,6 +3,99 @@
 ## Project Overview
 CX Linux is the AI-native OS layer for the $50B Linux system administration market. Instead of memorizing commands and googling errors, users describe their intent and the AI executes it safely and intelligently.
 
+## What Copilot is Best At Working On
+
+### 🎯 High-Value Areas for AI Assistance
+
+GitHub Copilot excels at helping with these CX Terminal components:
+
+#### 1. **AI Agent Development** ⭐⭐⭐
+- **Why:** Repetitive patterns with agent trait implementations
+- **Tasks:** Adding new specialized agents (cloud providers, package managers, system introspection)
+- **Pattern:** `impl Agent for NewAgent { async fn execute() { ... } }`
+- **Impact:** Each new agent multiplies platform capabilities
+
+#### 2. **Voice/Audio Pipeline** ⭐⭐⭐
+- **Why:** Complex audio processing with standard patterns
+- **Tasks:** Speech transcription, audio buffering, voice command mapping to CLI
+- **Components:** `voice/` module with cpal audio capture
+- **Pattern:** Async audio stream processing, VAD (Voice Activity Detection)
+
+#### 3. **Learning/ML Components** ⭐⭐⭐
+- **Why:** Local ML algorithms benefit from vectorization optimization
+- **Tasks:** TF-IDF implementation, N-gram pattern extraction, command suggestion ranking
+- **Components:** `learning/` module for privacy-preserving ML
+- **Pattern:** Statistical learning over command history without external data
+
+#### 4. **Rendering & UI Logic** ⭐⭐
+- **Why:** Complex layout math and WebGPU shader boilerplate
+- **Tasks:** Text painting algorithms, glyph caching, tab bar layouts, WGSL shaders
+- **Components:** `render/` and `termwindow/` modules
+- **Caution:** Performance-critical; suggest benchmarks
+
+#### 5. **Lua API Bindings** ⭐⭐⭐
+- **Why:** 13+ lua-api-crates with repetitive FFI patterns
+- **Tasks:** Exposing Rust functions to Lua configuration system
+- **Pattern:** `#[lua(...)] pub fn method(&self) -> mlua::Result<T>`
+- **Impact:** Extensibility without recompilation
+
+#### 6. **Protocol/IPC Layer** ⭐⭐
+- **Why:** JSON-RPC serialization patterns are mechanical
+- **Tasks:** Message types, daemon communication, Unix socket handling
+- **Components:** `cx_daemon/` module with 4-byte length-prefixed JSON-RPC
+- **Pattern:** Serde serialization with proper error handling
+
+#### 7. **Test Coverage** ⭐⭐⭐
+- **Why:** Test boilerplate is highly repetitive
+- **Tasks:** Unit tests, integration tests, mock implementations, error scenarios
+- **Target:** 95%+ coverage on new code
+- **Pattern:** Tokio async tests with proper cleanup
+
+#### 8. **CLI Command Implementation** ⭐⭐
+- **Why:** Clap argument parsing follows predictable patterns
+- **Tasks:** Adding new `cx` subcommands with help text and validation
+- **Components:** CLI modules for user-facing commands
+- **Pattern:** Natural language intent parsing with safety validation
+
+### ⚠️ Areas Requiring Caution
+
+Copilot should be more conservative in these areas:
+
+#### Security-Critical Code ❌
+- Command validation logic in `security/`
+- Sandboxing and privilege escalation prevention
+- Authentication/authorization flows
+- **Approach:** Manual review required; suggest defensive patterns
+
+#### Core Terminal Emulation 🔶
+- VT/ANSI escape sequence parsing (inherited from WezTerm)
+- PTY handling and process management
+- **Approach:** These are mature; avoid unnecessary changes
+
+#### Cryptographic Operations ❌
+- SSH key handling, certificate validation
+- Encryption/decryption routines
+- **Approach:** Only suggest well-vetted libraries (ring, rustls)
+
+### 💡 Optimal Copilot Usage Patterns
+
+**Best practices when using Copilot on this codebase:**
+
+1. **New Agent Scaffolding:** Copilot can generate entire agent implementations from trait signatures
+2. **Lua Binding Boilerplate:** Let Copilot write FFI bindings after you define the Rust signature
+3. **Test Generation:** Provide function signature + expected behavior, get comprehensive tests
+4. **Error Handling:** Copilot excels at adding `anyhow::Result` error propagation
+5. **Async Patterns:** Trust Copilot for Tokio async/await boilerplate
+6. **Documentation:** Effective at generating rustdoc comments from function signatures
+7. **Refactoring:** Good at mechanical refactors (rename, extract function, update imports)
+
+**When to ignore Copilot suggestions:**
+
+- Security-critical validation logic (always manually review)
+- Performance-critical hot paths (profile before accepting)
+- Architecture decisions (require human judgment)
+- Breaking changes to public APIs (consider compatibility)
+
 ## MANDATORY PRIORITIES
 
 ### 1. BSL 1.1 License Protection ⚠️
