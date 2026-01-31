@@ -19,7 +19,7 @@ use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
 
 // Local GGUF model constants
-const HF_REPO: &str = "shree3112/cortex-linux-7b";
+const HF_REPO: &str = "ShreemJ/cortex-linux-7b";
 const MODEL_FILENAME: &str = "cortex-linux-7b-Q4_K_M.gguf";
 
 const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:
