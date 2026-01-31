@@ -33,25 +33,19 @@ GitHub Copilot excels at helping with these CX Terminal components:
 - **Components:** `render/` and `termwindow/` modules
 - **Caution:** Performance-critical; suggest benchmarks
 
-#### 5. **Lua API Bindings** ⭐⭐⭐
-- **Why:** 15 lua-api-crates with repetitive FFI patterns
-- **Tasks:** Exposing Rust functions to Lua configuration system
-- **Pattern:** `#[lua(...)] pub fn method(&self) -> mlua::Result<T>`
-- **Impact:** Extensibility without recompilation
-
-#### 6. **Protocol/IPC Layer** ⭐⭐
+#### 5. **Protocol/IPC Layer** ⭐⭐
 - **Why:** JSON-RPC serialization patterns are mechanical
 - **Tasks:** Message types, daemon communication, Unix socket handling
 - **Components:** `cx_daemon/` module with 4-byte length-prefixed JSON-RPC
 - **Pattern:** Serde serialization with proper error handling
 
-#### 7. **Test Coverage** ⭐⭐⭐
+#### 6. **Test Coverage** ⭐⭐⭐
 - **Why:** Test boilerplate is highly repetitive
 - **Tasks:** Unit tests, integration tests, mock implementations, error scenarios
 - **Target:** 95%+ coverage on new code
 - **Pattern:** Tokio async tests with proper cleanup
 
-#### 8. **CLI Command Implementation** ⭐⭐
+#### 7. **CLI Command Implementation** ⭐⭐
 - **Why:** Clap argument parsing follows predictable patterns
 - **Tasks:** Adding new `cx` subcommands with help text and validation
 - **Components:** CLI modules for user-facing commands
