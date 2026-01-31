@@ -62,7 +62,7 @@ Copilot should be more conservative in these areas:
 - **Approach:** Manual review required; suggest defensive patterns
 
 #### Core Terminal Emulation 🔶
-- VT/ANSI escape sequence parsing (inherited from WezTerm)
+- VT/ANSI escape sequence parsing in CX Linux's terminal layer
 - PTY handling and process management
 - **Approach:** These are mature; avoid unnecessary changes
 
