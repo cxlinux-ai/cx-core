@@ -12,11 +12,37 @@ use clap::Parser;
 use std::env;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
+
+// Local GGUF model constants
+const HF_REPO: &str = "shree3112/cortex-linux-7b";
+const MODEL_FILENAME: &str = "cortex-linux-7b-Q4_K_M.gguf";
+
+const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:
+1. Answer directly if you have the knowledge
+2. Call one of these tools if you need external/live information:
+
+Available tools:
+- kb_lookup(application, query): Look up documentation for specific applications
+- troubleshoot(service, error_message?, symptoms?): Diagnose system issues  
+- search_packages(query, source?): Search apt/snap/pip for packages
+- get_system_info(info_type, target?): Get system status information
+- read_logs(source, service?, file_path?, lines?): Read log files
+
+Only call a tool when you genuinely need external information you don't have.
+
+Response format for commands:
+{"summary": "...", "commands": [{"command_template": "...", "explanation": "..."}]}
+
+Response format for tool calls:
+{"tool_call": {"name": "tool_name", "arguments": {...}}}
+
+Response format for refusals (dangerous requests):
+{"refusal": true, "message": "...", "safe_alternative": "..."}"#;
 
 /// AI-powered command interface
 #[derive(Debug, Parser, Clone)]
@@ -48,6 +74,24 @@ pub struct AskCommand {
 
 const CX_DAEMON_SOCKET: &str = "/var/run/cx/daemon.sock";
 const CX_USER_SOCKET_TEMPLATE: &str = "/run/user/{}/cx/daemon.sock";
+
+/// Get the path to the local model cache directory
+fn model_cache_dir() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("cx-linux")
+        .join("models")
+}
+
+/// Get the full path to the GGUF model file
+fn model_path() -> PathBuf {
+    model_cache_dir().join(MODEL_FILENAME)
+}
+
+/// Check if the local model is available
+fn is_local_model_available() -> bool {
+    model_path().exists()
+}
 
 impl AskCommand {
     pub fn run(&self) -> Result<()> {
@@ -166,6 +210,13 @@ impl AskCommand {
             return Ok(response);
         }
 
+        // Try local GGUF model (preferred for --local or when available)
+        if self.local_only || is_local_model_available() {
+            if let Ok(response) = self.query_local(query) {
+                return Ok(response);
+            }
+        }
+
         // Try Claude API
         if !self.local_only {
             if let Ok(api_key) = env::var("ANTHROPIC_API_KEY") {
@@ -186,14 +237,122 @@ impl AskCommand {
             }
         }
 
-        // No AI available - return helpful message
+        // No AI available - return helpful message with download instructions
+        let hint = if !is_local_model_available() {
+            "Local model not found. Download it with: cx ai download\nOr set ANTHROPIC_API_KEY or OLLAMA_HOST for cloud AI."
+        } else {
+            "Set ANTHROPIC_API_KEY or OLLAMA_HOST for AI features, or try specific commands like 'cx new python myapp'"
+        };
+        
         let response = serde_json::json!({
             "status": "no_ai",
             "message": "No AI backend available for this query.",
             "query": query,
-            "hint": "Set ANTHROPIC_API_KEY or OLLAMA_HOST for AI features, or try specific commands like 'cx new python myapp'"
+            "hint": hint
         });
         Ok(serde_json::to_string_pretty(&response)?)
+    }
+
+    fn query_local(&self, query: &str) -> Result<String> {
+        use llama_cpp_2::context::params::LlamaContextParams;
+        use llama_cpp_2::llama_backend::LlamaBackend;
+        use llama_cpp_2::llama_batch::LlamaBatch;
+        use llama_cpp_2::model::params::LlamaModelParams;
+        use llama_cpp_2::model::LlamaModel;
+        use llama_cpp_2::token::data_array::LlamaTokenDataArray;
+
+        let model_file = model_path();
+        if !model_file.exists() {
+            anyhow::bail!("Local model not found at {:?}", model_file);
+        }
+
+        if self.verbose {
+            eprintln!("Loading local model from {:?}...", model_file);
+        }
+
+        // Initialize backend
+        let backend = LlamaBackend::init()?;
+        
+        // Load model with GPU layers
+        let model_params = LlamaModelParams::default().with_n_gpu_layers(35);
+        let model = LlamaModel::load_from_file(&backend, &model_file, &model_params)?;
+
+        // Create context
+        let ctx_params = LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(2048))
+            .with_n_threads(4)
+            .with_n_threads_batch(4);
+        let mut ctx = model.new_context(&backend, ctx_params)?;
+
+        // Format prompt using Qwen chat template
+        let context = ProjectContext::detect();
+        let full_system = format!(
+            "{}\n\nCurrent directory: {}\nProject type: {:?}",
+            CX_SYSTEM_PROMPT,
+            context.cwd.display(),
+            context.project_type
+        );
+        
+        let prompt = format!(
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            full_system, query
+        );
+
+        // Tokenize
+        let tokens = model.str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)?;
+
+        // Create batch and add tokens
+        let mut batch = LlamaBatch::new(2048, 1);
+        for (i, token) in tokens.iter().enumerate() {
+            let is_last = i == tokens.len() - 1;
+            batch.add(*token, i as i32, &[0], is_last)?;
+        }
+
+        // Decode initial prompt
+        ctx.decode(&mut batch)?;
+
+        // Generate tokens
+        let mut output = String::new();
+        let max_tokens = 512;
+        let mut n_cur = tokens.len();
+
+        for _ in 0..max_tokens {
+            // Sample next token
+            let candidates = ctx.candidates();
+            let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
+            let token = candidates_data.sample_token(42);
+
+            // Check for end of generation
+            if model.is_eog_token(token) {
+                break;
+            }
+
+            // Decode token to text
+            let token_str = model.token_to_str(token, llama_cpp_2::model::Special::Tokenize)?;
+            
+            // Stop on end markers
+            if token_str.contains("<|im_end|>") || token_str.contains("<|endoftext|>") {
+                break;
+            }
+            
+            output.push_str(&token_str);
+
+            // Prepare next batch
+            batch.clear();
+            batch.add(token, n_cur as i32, &[0], true)?;
+            n_cur += 1;
+
+            // Decode
+            ctx.decode(&mut batch)?;
+        }
+
+        let result = serde_json::json!({
+            "status": "success",
+            "source": "local",
+            "model": MODEL_FILENAME,
+            "response": output.trim(),
+        });
+        Ok(serde_json::to_string_pretty(&result)?)
     }
 
     fn try_daemon(&self, query: &str) -> Result<Option<String>> {

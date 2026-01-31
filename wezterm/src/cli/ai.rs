@@ -1,0 +1,141 @@
+//! CX Terminal: AI model download command
+//!
+//! Downloads the CX Linux fine-tuned model from HuggingFace.
+//!
+//! Example: cx ai download
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use std::path::PathBuf;
+
+/// HuggingFace repository containing the model
+const HF_REPO: &str = "ShreemJ/cortex-linux-7b";
+
+/// Model filename
+const MODEL_FILENAME: &str = "cortex-linux-7b-Q4_K_M.gguf";
+
+/// AI model management commands
+#[derive(Debug, Parser, Clone)]
+pub struct AICommand {
+    #[command(subcommand)]
+    pub subcommand: AISubCommand,
+}
+
+#[derive(Debug, Parser, Clone)]
+pub enum AISubCommand {
+    /// Download the CX Linux AI model from HuggingFace
+    Download(DownloadCommand),
+}
+
+/// Download the CX Linux AI model
+#[derive(Debug, Parser, Clone)]
+pub struct DownloadCommand {
+    /// Force re-download even if model already exists
+    #[arg(long = "force", short = 'f')]
+    pub force: bool,
+
+    /// Show verbose progress
+    #[arg(long = "verbose", short = 'v')]
+    pub verbose: bool,
+}
+
+impl DownloadCommand {
+    /// Get the cache directory for CX Linux models
+    fn model_cache_dir() -> PathBuf {
+        dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("cx-linux")
+            .join("models")
+    }
+
+    /// Get the full path to the model file
+    fn model_path() -> PathBuf {
+        Self::model_cache_dir().join(MODEL_FILENAME)
+    }
+
+    /// Check if the model is already downloaded
+    fn is_model_available() -> bool {
+        Self::model_path().exists()
+    }
+
+    /// Download the model from HuggingFace
+    pub async fn download(&self) -> Result<()> {
+        let model_path = Self::model_path();
+        let cache_dir = Self::model_cache_dir();
+
+        // Check if model already exists
+        if model_path.exists() && !self.force {
+            println!("Model already exists at: {:?}", model_path);
+            println!("Use --force to re-download.");
+            return Ok(());
+        }
+
+        // Create cache directory if it doesn't exist
+        std::fs::create_dir_all(&cache_dir)
+            .with_context(|| format!("Failed to create cache directory: {:?}", cache_dir))?;
+
+        println!("Downloading CX Linux AI model from HuggingFace...");
+        println!("Repository: {}", HF_REPO);
+        println!("Model: {}", MODEL_FILENAME);
+        println!("Destination: {:?}", model_path);
+
+        if self.verbose {
+            println!("Cache directory: {:?}", cache_dir);
+        }
+
+        // Download using hf-hub
+        let api = hf_hub::api::tokio::Api::new()
+            .context("Failed to create HuggingFace API client")?;
+
+        let repo = api.model(HF_REPO.to_string());
+
+        println!("\nDownloading... (this may take a while, ~4.7GB)");
+        
+        let downloaded_path = repo
+            .get(MODEL_FILENAME)
+            .await
+            .with_context(|| format!("Failed to download model from HuggingFace: {}/{}", HF_REPO, MODEL_FILENAME))?;
+
+        // Verify the file was downloaded to the expected location
+        if downloaded_path != model_path {
+            // If hf-hub downloaded to a different location, move it
+            if self.verbose {
+                println!("Moving model from {:?} to {:?}", downloaded_path, model_path);
+            }
+            std::fs::rename(&downloaded_path, &model_path)
+                .with_context(|| format!("Failed to move model to {:?}", model_path))?;
+        }
+
+        // Verify file exists and has reasonable size (> 1GB)
+        let metadata = std::fs::metadata(&model_path)
+            .with_context(|| format!("Failed to get metadata for {:?}", model_path))?;
+        
+        let size_mb = metadata.len() / (1024 * 1024);
+        
+        if metadata.len() < 1000_000_000 {
+            eprintln!("Warning: Downloaded file seems too small ({} MB). Download may have failed.", size_mb);
+        }
+
+        println!("\n✓ Model downloaded successfully!");
+        println!("  Location: {:?}", model_path);
+        println!("  Size: {} MB", size_mb);
+        println!("\nYou can now use CX AI features in the terminal.");
+
+        Ok(())
+    }
+
+    pub fn run(&self) -> Result<()> {
+        let rt = tokio::runtime::Runtime::new()
+            .context("Failed to create tokio runtime")?;
+        
+        rt.block_on(self.download())
+    }
+}
+
+impl AICommand {
+    pub fn run(&self) -> Result<()> {
+        match &self.subcommand {
+            AISubCommand::Download(cmd) => cmd.run(),
+        }
+    }
+}

@@ -12,6 +12,10 @@ description = "CX Terminal - AI-native terminal for CX Linux"
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
+llama-cpp-2 = "0.1"
+hf-hub = { version = "0.3", features = ["tokio"] }
+dirs = "5.0"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 codec.workspace = true

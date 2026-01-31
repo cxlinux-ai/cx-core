@@ -151,11 +151,15 @@ debian_deps() {
   apt-cache show 'libxcb-util-dev' > /dev/null 2>&1 && XCBUTIL="libxcb-util-dev" || XCBUTIL="libxcb-util0-dev"
   $APT install -y \
     'bsdutils' \
+    'clang' \
     'cmake' \
     'dpkg-dev' \
     'fakeroot' \
     'gcc' \
     'g++' \
+    'libasound2-dev' \
+    'libc6-dev' \
+    'libclang-dev' \
     'libegl1-mesa-dev' \
     'libssl-dev' \
     'libfontconfig1-dev' \
