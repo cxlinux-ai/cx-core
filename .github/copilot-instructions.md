@@ -22,10 +22,10 @@ GitHub Copilot excels at helping with these CX Terminal components:
 - **Pattern:** Async audio stream processing, VAD (Voice Activity Detection)
 
 #### 3. **Learning/ML Components** ⭐⭐⭐
-- **Why:** Local ML algorithms benefit from vectorization optimization
-- **Tasks:** TF-IDF implementation, N-gram pattern extraction, command suggestion ranking
-- **Components:** `learning/` module for privacy-preserving ML
-- **Pattern:** Statistical learning over command history without external data
+- **Why:** Local intent understanding and ranking over history amplify LLM effectiveness
+- **Tasks:** Command suggestion ranking, retrieval over command/history logs, lightweight scoring heuristics
+- **Components:** `cx/llm/` routing plus local history/telemetry store for privacy-preserving behavior learning (future advanced ML optional)
+- **Pattern:** LLM-guided retrieval and statistical signals over local command history without external data
 
 #### 4. **Rendering & UI Logic** ⭐⭐
 - **Why:** Complex layout math and WebGPU shader boilerplate
