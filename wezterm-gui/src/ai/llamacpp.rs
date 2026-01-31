@@ -56,9 +56,8 @@ impl LlamaCppProvider {
     /// If the model is not found, it will return an error suggesting to download it.
     pub fn new(config: AIProviderConfig) -> Result<Self, AIError> {
         // Initialize the llama backend
-        let backend = LlamaBackend::init().map_err(|e| {
-            AIError::ApiError(format!("Failed to initialize llama backend: {}", e))
-        })?;
+        let backend = LlamaBackend::init()
+            .map_err(|e| AIError::ApiError(format!("Failed to initialize llama backend: {}", e)))?;
 
         let model_path = Self::model_path();
 
@@ -70,9 +69,10 @@ impl LlamaCppProvider {
         let model_params = LlamaModelParams::default();
 
         // Load the model
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params).map_err(
-            |e| AIError::ApiError(format!("Failed to load model from {:?}: {}", model_path, e)),
-        )?;
+        let model =
+            LlamaModel::load_from_file(&backend, &model_path, &model_params).map_err(|e| {
+                AIError::ApiError(format!("Failed to load model from {:?}: {}", model_path, e))
+            })?;
 
         Ok(Self {
             backend: Arc::new(backend),
@@ -111,7 +111,11 @@ impl LlamaCppProvider {
         std::fs::create_dir_all(&cache_dir)
             .map_err(|e| AIError::ApiError(format!("Failed to create cache directory: {}", e)))?;
 
-        log::info!("Downloading model from HuggingFace: {}/{}", HF_REPO, MODEL_FILENAME);
+        log::info!(
+            "Downloading model from HuggingFace: {}/{}",
+            HF_REPO,
+            MODEL_FILENAME
+        );
 
         let api = Api::new()
             .map_err(|e| AIError::NetworkError(format!("Failed to create HF API client: {}", e)))?;
@@ -162,8 +166,7 @@ impl LlamaCppProvider {
     /// Run inference on the model
     fn generate(&self, prompt: &str) -> Result<String, AIError> {
         // Create context parameters
-        let ctx_params = LlamaContextParams::default()
-            .with_n_ctx(std::num::NonZeroU32::new(4096));
+        let ctx_params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(4096));
 
         // Create context
         let mut ctx = self
@@ -178,7 +181,9 @@ impl LlamaCppProvider {
             .map_err(|e| AIError::ApiError(format!("Failed to tokenize prompt: {}", e)))?;
 
         if tokens.is_empty() {
-            return Err(AIError::InvalidResponse("Empty prompt after tokenization".to_string()));
+            return Err(AIError::InvalidResponse(
+                "Empty prompt after tokenization".to_string(),
+            ));
         }
 
         // Check context length
@@ -222,7 +227,7 @@ impl LlamaCppProvider {
 
             // Sample the next token
             let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
-            
+
             // Sample with seed (temperature is applied internally based on the data)
             let next_token = candidates_data.sample_token(seed);
 
@@ -278,10 +283,7 @@ impl LlamaCppProvider {
         }
 
         // Clean up the output - remove <|im_end|> if present
-        let output = output
-            .trim_end_matches(im_end_str)
-            .trim()
-            .to_string();
+        let output = output.trim_end_matches(im_end_str).trim().to_string();
 
         Ok(output)
     }

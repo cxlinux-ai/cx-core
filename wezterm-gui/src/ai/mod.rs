@@ -112,7 +112,8 @@ impl AIConfig {
             }
             _ => {
                 "You are a helpful Linux terminal assistant. \
-                 Provide concise, practical help with command-line tasks and system administration.".to_string()
+                 Provide concise, practical help with command-line tasks and system administration."
+                    .to_string()
             }
         });
 
@@ -159,7 +160,9 @@ impl AIConfig {
                     AIProviderType::None => "No AI provider configured".to_string(),
                     AIProviderType::Claude => "ANTHROPIC_API_KEY not set".to_string(),
                     AIProviderType::OpenAI => "OPENAI_API_KEY not set".to_string(),
-                    AIProviderType::CXLinux => "CX Linux model not found. Run 'cx ai download' to install.".to_string(),
+                    AIProviderType::CXLinux => {
+                        "CX Linux model not found. Run 'cx ai download' to install.".to_string()
+                    }
                     AIProviderType::Local => "Ollama not running on localhost:11434".to_string(),
                     AIProviderType::Custom => "Custom endpoint not configured".to_string(),
                 })

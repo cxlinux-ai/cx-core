@@ -69,10 +69,13 @@ impl DownloadCommand {
             println!("Use --force to re-download.");
             return Ok(());
         }
-        
+
         // Check for broken symlink (exists() returns false for broken symlinks, but is_symlink() returns true)
         if model_path.is_symlink() && !model_path.exists() {
-            println!("⚠ Found broken symlink at {:?}, will recreate...", model_path);
+            println!(
+                "⚠ Found broken symlink at {:?}, will recreate...",
+                model_path
+            );
             std::fs::remove_file(&model_path).ok();
         }
 
@@ -90,40 +93,46 @@ impl DownloadCommand {
         }
 
         // Download using hf-hub
-        let api = hf_hub::api::tokio::Api::new()
-            .context("Failed to create HuggingFace API client")?;
+        let api =
+            hf_hub::api::tokio::Api::new().context("Failed to create HuggingFace API client")?;
 
         let repo = api.model(HF_REPO.to_string());
 
         println!("\nDownloading... (this may take a while, ~4.7GB)");
-        
-        let downloaded_path = repo
-            .get(MODEL_FILENAME)
-            .await
-            .with_context(|| format!("Failed to download model from HuggingFace: {}/{}", HF_REPO, MODEL_FILENAME))?;
+
+        let downloaded_path = repo.get(MODEL_FILENAME).await.with_context(|| {
+            format!(
+                "Failed to download model from HuggingFace: {}/{}",
+                HF_REPO, MODEL_FILENAME
+            )
+        })?;
 
         // hf-hub downloads to its own cache and may return a path with relative symlinks.
         // Instead of moving (which breaks relative symlinks), create an absolute symlink
         // to the actual file in the HuggingFace cache.
         if downloaded_path != model_path {
             // Resolve to the actual file (follows symlinks)
-            let actual_file = std::fs::canonicalize(&downloaded_path)
-                .with_context(|| format!("Failed to resolve downloaded path: {:?}", downloaded_path))?;
-            
+            let actual_file = std::fs::canonicalize(&downloaded_path).with_context(|| {
+                format!("Failed to resolve downloaded path: {:?}", downloaded_path)
+            })?;
+
             if self.verbose {
-                println!("Creating symlink from {:?} to {:?}", model_path, actual_file);
+                println!(
+                    "Creating symlink from {:?} to {:?}",
+                    model_path, actual_file
+                );
             }
-            
+
             // Remove existing file/symlink if present
             if model_path.exists() || model_path.is_symlink() {
                 std::fs::remove_file(&model_path).ok();
             }
-            
+
             // Create absolute symlink to the actual blob file
             #[cfg(unix)]
             std::os::unix::fs::symlink(&actual_file, &model_path)
                 .with_context(|| format!("Failed to create symlink at {:?}", model_path))?;
-            
+
             #[cfg(windows)]
             std::os::windows::fs::symlink_file(&actual_file, &model_path)
                 .with_context(|| format!("Failed to create symlink at {:?}", model_path))?;
@@ -132,11 +141,14 @@ impl DownloadCommand {
         // Verify file exists and has reasonable size (> 1GB)
         let metadata = std::fs::metadata(&model_path)
             .with_context(|| format!("Failed to get metadata for {:?}", model_path))?;
-        
+
         let size_mb = metadata.len() / (1024 * 1024);
-        
+
         if metadata.len() < 1000_000_000 {
-            eprintln!("Warning: Downloaded file seems too small ({} MB). Download may have failed.", size_mb);
+            eprintln!(
+                "Warning: Downloaded file seems too small ({} MB). Download may have failed.",
+                size_mb
+            );
         }
 
         println!("\n✓ Model downloaded successfully!");
@@ -148,9 +160,8 @@ impl DownloadCommand {
     }
 
     pub fn run(&self) -> Result<()> {
-        let rt = tokio::runtime::Runtime::new()
-            .context("Failed to create tokio runtime")?;
-        
+        let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+
         rt.block_on(self.download())
     }
 }

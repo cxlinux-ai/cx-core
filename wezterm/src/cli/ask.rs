@@ -243,7 +243,7 @@ impl AskCommand {
         } else {
             "Set ANTHROPIC_API_KEY or OLLAMA_HOST for AI features, or try specific commands like 'cx new python myapp'"
         };
-        
+
         let response = serde_json::json!({
             "status": "no_ai",
             "message": "No AI backend available for this query.",
@@ -289,13 +289,17 @@ impl AskCommand {
         let stderr_fd = std::io::stderr().as_raw_fd();
         let _stderr_guard = if !self.verbose {
             let saved = unsafe { libc::dup(stderr_fd) };
-            let devnull = std::fs::OpenOptions::new()
-                .write(true)
-                .open("/dev/null")?;
+            let devnull = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
             unsafe { libc::dup2(devnull.as_raw_fd(), stderr_fd) };
-            StderrGuard { saved: Some(saved), fd: stderr_fd }
+            StderrGuard {
+                saved: Some(saved),
+                fd: stderr_fd,
+            }
         } else {
-            StderrGuard { saved: None, fd: stderr_fd }
+            StderrGuard {
+                saved: None,
+                fd: stderr_fd,
+            }
         };
 
         // Initialize backend and load model (stderr suppressed, restored on error or completion)
@@ -312,7 +316,6 @@ impl AskCommand {
 
         // _stderr_guard drops here, restoring stderr
 
-
         // Format prompt using Qwen chat template
         let context = ProjectContext::detect();
         let full_system = format!(
@@ -321,7 +324,7 @@ impl AskCommand {
             context.cwd.display(),
             context.project_type
         );
-        
+
         let prompt = format!(
             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
             full_system, query
@@ -358,12 +361,12 @@ impl AskCommand {
 
             // Decode token to text
             let token_str = model.token_to_str(token, llama_cpp_2::model::Special::Tokenize)?;
-            
+
             // Stop on end markers
             if token_str.contains("<|im_end|>") || token_str.contains("<|endoftext|>") {
                 break;
             }
-            
+
             output.push_str(&token_str);
 
             // Prepare next batch
