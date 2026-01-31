@@ -102,7 +102,7 @@ impl AskCommand {
         }
 
         if self.verbose {
-            eprintln!("cx ask: {}", query);
+            eprintln!("[verbose] Query: \"{}\"", query);
         }
 
         // Step 1: Try to match CX commands (new, save, restore, etc.)
@@ -268,7 +268,7 @@ impl AskCommand {
         }
 
         if self.verbose {
-            eprintln!("Loading local model from {:?}...", model_file);
+            eprintln!("[verbose] Loading model: {:?}", model_file);
         }
 
         // RAII guard to ensure stderr is restored on drop (even on error)
