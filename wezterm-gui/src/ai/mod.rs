@@ -200,12 +200,12 @@ impl AIProviderStatus {
 
 /// Detect the best available AI provider
 pub fn detect_best_provider() -> AIProviderType {
-    // Priority order: CX Linux > Claude > OpenAI > Local > None
+    // Priority order: Claude > OpenAI > Local (Ollama) > CX Linux (native fallback) > None
     let providers = [
-        AIProviderType::CXLinux,
         AIProviderType::Claude,
         AIProviderType::OpenAI,
         AIProviderType::Local,
+        AIProviderType::CXLinux,
     ];
 
     for &provider in &providers {

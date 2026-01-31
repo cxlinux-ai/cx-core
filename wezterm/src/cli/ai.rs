@@ -63,11 +63,17 @@ impl DownloadCommand {
         let model_path = Self::model_path();
         let cache_dir = Self::model_cache_dir();
 
-        // Check if model already exists
+        // Check if model already exists (and is valid)
         if model_path.exists() && !self.force {
-            println!("Model already exists at: {:?}", model_path);
+            println!("✓ Model already exists at: {:?}", model_path);
             println!("Use --force to re-download.");
             return Ok(());
+        }
+        
+        // Check for broken symlink (exists() returns false for broken symlinks, but is_symlink() returns true)
+        if model_path.is_symlink() && !model_path.exists() {
+            println!("⚠ Found broken symlink at {:?}, will recreate...", model_path);
+            std::fs::remove_file(&model_path).ok();
         }
 
         // Create cache directory if it doesn't exist
@@ -96,14 +102,31 @@ impl DownloadCommand {
             .await
             .with_context(|| format!("Failed to download model from HuggingFace: {}/{}", HF_REPO, MODEL_FILENAME))?;
 
-        // Verify the file was downloaded to the expected location
+        // hf-hub downloads to its own cache and may return a path with relative symlinks.
+        // Instead of moving (which breaks relative symlinks), create an absolute symlink
+        // to the actual file in the HuggingFace cache.
         if downloaded_path != model_path {
-            // If hf-hub downloaded to a different location, move it
+            // Resolve to the actual file (follows symlinks)
+            let actual_file = std::fs::canonicalize(&downloaded_path)
+                .with_context(|| format!("Failed to resolve downloaded path: {:?}", downloaded_path))?;
+            
             if self.verbose {
-                println!("Moving model from {:?} to {:?}", downloaded_path, model_path);
+                println!("Creating symlink from {:?} to {:?}", model_path, actual_file);
             }
-            std::fs::rename(&downloaded_path, &model_path)
-                .with_context(|| format!("Failed to move model to {:?}", model_path))?;
+            
+            // Remove existing file/symlink if present
+            if model_path.exists() || model_path.is_symlink() {
+                std::fs::remove_file(&model_path).ok();
+            }
+            
+            // Create absolute symlink to the actual blob file
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&actual_file, &model_path)
+                .with_context(|| format!("Failed to create symlink at {:?}", model_path))?;
+            
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_file(&actual_file, &model_path)
+                .with_context(|| format!("Failed to create symlink at {:?}", model_path))?;
         }
 
         // Verify file exists and has reasonable size (> 1GB)

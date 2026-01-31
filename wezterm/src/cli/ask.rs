@@ -260,6 +260,7 @@ impl AskCommand {
         use llama_cpp_2::model::params::LlamaModelParams;
         use llama_cpp_2::model::LlamaModel;
         use llama_cpp_2::token::data_array::LlamaTokenDataArray;
+        use std::os::unix::io::AsRawFd;
 
         let model_file = model_path();
         if !model_file.exists() {
@@ -270,19 +271,47 @@ impl AskCommand {
             eprintln!("Loading local model from {:?}...", model_file);
         }
 
-        // Initialize backend
+        // RAII guard to ensure stderr is restored on drop (even on error)
+        struct StderrGuard {
+            saved: Option<i32>,
+            fd: i32,
+        }
+        impl Drop for StderrGuard {
+            fn drop(&mut self) {
+                if let Some(saved) = self.saved {
+                    unsafe { libc::dup2(saved, self.fd) };
+                    unsafe { libc::close(saved) };
+                }
+            }
+        }
+
+        // Suppress llama.cpp verbose logging by redirecting stderr temporarily
+        let stderr_fd = std::io::stderr().as_raw_fd();
+        let _stderr_guard = if !self.verbose {
+            let saved = unsafe { libc::dup(stderr_fd) };
+            let devnull = std::fs::OpenOptions::new()
+                .write(true)
+                .open("/dev/null")?;
+            unsafe { libc::dup2(devnull.as_raw_fd(), stderr_fd) };
+            StderrGuard { saved: Some(saved), fd: stderr_fd }
+        } else {
+            StderrGuard { saved: None, fd: stderr_fd }
+        };
+
+        // Initialize backend and load model (stderr suppressed, restored on error or completion)
         let backend = LlamaBackend::init()?;
-        
-        // Load model with GPU layers
         let model_params = LlamaModelParams::default().with_n_gpu_layers(35);
         let model = LlamaModel::load_from_file(&backend, &model_file, &model_params)?;
 
-        // Create context
+        // Create context (also outputs logs)
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(2048))
             .with_n_threads(4)
             .with_n_threads_batch(4);
         let mut ctx = model.new_context(&backend, ctx_params)?;
+
+        // _stderr_guard drops here, restoring stderr
+
 
         // Format prompt using Qwen chat template
         let context = ProjectContext::detect();

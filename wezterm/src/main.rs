@@ -176,6 +176,10 @@ enum SubCommand {
     /// Explain a command, file, or concept
     #[command(name = "explain", about = "Explain a command or concept")]
     Explain(cli::shortcuts::ExplainCommand),
+
+    /// Manage AI models and settings
+    #[command(name = "ai", about = "Manage AI models (download, status, etc.)")]
+    AI(cli::ai::AICommand),
 }
 
 use termwiz::escape::osc::{
@@ -803,6 +807,7 @@ fn run() -> anyhow::Result<()> {
         SubCommand::What(cmd) => cmd.run(),
         SubCommand::Fix(cmd) => cmd.run(),
         SubCommand::Explain(cmd) => cmd.run(),
+        SubCommand::AI(cmd) => cmd.run(),
     }
 }
 
