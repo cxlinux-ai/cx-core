@@ -27,10 +27,10 @@
 
   <launchable type="desktop-id">cx-terminal.desktop</launchable>
 
-  <url type="homepage">https://wezterm.org/</url>
-  <url type="help">https://wezterm.org/help.html</url>
-  <url type="bugtracker">https://github.com/wezterm/wezterm/issues</url>
-  <url type="donation">https://github.com/sponsors/wez</url>
+  <url type="homepage">https://cxlinux.org/cx-terminal</url>
+  <url type="help">https://cxlinux.org/cx-terminal/docs</url>
+  <url type="bugtracker">https://github.com/cxlinux/cx-terminal/issues</url>
+  <url type="donation">https://github.com/sponsors/cxlinux</url>
 
   <screenshots>
     <screenshot type="default">
