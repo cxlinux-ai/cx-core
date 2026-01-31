@@ -28,10 +28,10 @@ GitHub Copilot excels at helping with these CX Terminal components:
 - **Pattern:** LLM-guided retrieval and statistical signals over local command history without external data
 
 #### 4. **Rendering & UI Logic** ⭐⭐
-- **Why:** Complex layout math and WebGPU shader boilerplate
-- **Tasks:** Text painting algorithms, glyph caching, tab bar layouts, WGSL shaders
-- **Components:** `render/` and `termwindow/` modules
-- **Caution:** Performance-critical; suggest benchmarks
+- **Why:** Complex Rich layout composition and terminal rendering logic
+- **Tasks:** Building Rich layouts (panels, tables, status lines), streaming updates, responsive Typer command output
+- **Components:** `cx/cli.py` and terminal UI helpers in `cx/ui/`
+- **Caution:** Performance-critical for a smooth terminal experience; suggest benchmarks on large outputs
 
 #### 5. **Protocol/IPC Layer** ⭐⭐
 - **Why:** JSON-RPC serialization patterns are mechanical
