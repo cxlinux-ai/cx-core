@@ -73,10 +73,10 @@
     <release version="20220807-113146-c2fee766" date="2022-08-07">
       <description>
         <p>
-          Featuring more powerful key and mouse bindings, new lua functions for
-          working with color, json, time, processes and windows, reduced
-          scrollback memory consumption, increased search performance, IME on
-          Wayland and more!
+          This release of CX Terminal introduces GPU-accelerated rendering,
+          cross-platform support, tabbed and split-pane multiplexing, and
+          Lua-based configuration, along with performance improvements and
+          various bug fixes.
         </p>
       </description>
     </release>
