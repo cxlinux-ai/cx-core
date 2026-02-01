@@ -23,7 +23,9 @@ use std::process::Command;
 
 use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
-use super::model_utils::{is_model_available as is_local_model_available, model_path, MODEL_FILENAME};
+use super::model_utils::{
+    is_model_available as is_local_model_available, model_path, MODEL_FILENAME,
+};
 
 const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:
 1. Answer directly if you have the knowledge

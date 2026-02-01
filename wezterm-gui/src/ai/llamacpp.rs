@@ -148,20 +148,22 @@ impl LlamaCppProvider {
 
         // Copy or symlink to expected location
         let target_path = Self::model_path()?;
-        
+
         if !target_path.exists() {
             #[cfg(unix)]
             {
-                std::os::unix::fs::symlink(&hf_model_path, &target_path).map_err(|e| {
-                    AIError::ApiError(format!("Failed to symlink model: {}", e))
-                })?;
-                log::info!("Symlinked model from {:?} to {:?}", hf_model_path, target_path);
+                std::os::unix::fs::symlink(&hf_model_path, &target_path)
+                    .map_err(|e| AIError::ApiError(format!("Failed to symlink model: {}", e)))?;
+                log::info!(
+                    "Symlinked model from {:?} to {:?}",
+                    hf_model_path,
+                    target_path
+                );
             }
             #[cfg(not(unix))]
             {
-                std::fs::copy(&hf_model_path, &target_path).map_err(|e| {
-                    AIError::ApiError(format!("Failed to copy model: {}", e))
-                })?;
+                std::fs::copy(&hf_model_path, &target_path)
+                    .map_err(|e| AIError::ApiError(format!("Failed to copy model: {}", e)))?;
                 log::info!("Copied model from {:?} to {:?}", hf_model_path, target_path);
             }
         }
@@ -267,11 +269,6 @@ impl LlamaCppProvider {
 
             // Sample the next token
             let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
-
-            // TODO: Apply temperature scaling to logits before sampling
-            // llama-cpp-2's LlamaTokenDataArray doesn't have a sample_temp method
-            // Temperature should be applied by scaling logits: logits[i] /= temperature
-            // This requires modifying the candidates array before creating LlamaTokenDataArray
 
             // Use a different seed for each token to avoid deterministic output.
             // A simple LCG is used here. A better RNG is recommended.
@@ -444,17 +441,21 @@ mod tests {
         // Create a mock provider (will fail to load model, but format_prompt doesn't need it)
         // We only need the config for format_prompt
         let messages = vec![ChatMessage::user("How do I list files?")];
-        
+
         // We can't easily create the provider without the model file, so we'll test the structure manually
         // but in a way that validates what format_prompt should produce
-        let expected_markers = vec!["<|im_start|>system", "<|im_start|>user", "<|im_start|>assistant"];
-        
+        let expected_markers = vec![
+            "<|im_start|>system",
+            "<|im_start|>user",
+            "<|im_start|>assistant",
+        ];
+
         // Verify the expected format contains all required markers
         for marker in expected_markers {
             // The prompt should contain these markers in the correct order
             assert!(marker.contains("|im_start|"));
         }
-        
+
         // Verify the message content would be included
         assert_eq!(messages[0].content, "How do I list files?");
     }
