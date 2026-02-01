@@ -23,8 +23,6 @@ use std::process::Command;
 
 use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
-
-// Local GGUF model constants - from shared model_utils
 use super::model_utils::{is_model_available as is_local_model_available, model_path, MODEL_FILENAME};
 
 const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:

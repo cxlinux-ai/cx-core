@@ -51,7 +51,9 @@ pub struct LlamaCppProvider {
     config: AIProviderConfig,
 }
 
-// Safety: LlamaBackend and LlamaModel are thread-safe when accessed correctly
+// Unsafe impl Send + Sync for LlamaCppProvider to enable thread-safe sharing across async tasks.
+// This is valid because the contained types (Arc<LlamaBackend>, Arc<LlamaModel>, AIProviderConfig)
+// are themselves Send + Sync.
 unsafe impl Send for LlamaCppProvider {}
 unsafe impl Sync for LlamaCppProvider {}
 
