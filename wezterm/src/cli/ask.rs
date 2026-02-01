@@ -1,3 +1,9 @@
+/*
+Copyright (c) 2026 AI Venture Holdings LLC
+Licensed under the Business Source License 1.1
+You may not use this file except in compliance with the License.
+*/
+
 //! CX Terminal: AI-powered ask command
 //!
 //! Smart command detection that uses CX primitives (`cx new`, `cx save`, etc.)
@@ -12,15 +18,14 @@ use clap::Parser;
 use std::env;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
 
-// Local GGUF model constants
-const HF_REPO: &str = "ShreemJ/cortex-linux-7b";
-const MODEL_FILENAME: &str = "cortex-linux-7b-Q4_K_M.gguf";
+// Local GGUF model constants - from shared model_utils
+use super::model_utils::{is_model_available as is_local_model_available, model_path, MODEL_FILENAME};
 
 const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:
 1. Answer directly if you have the knowledge
@@ -74,24 +79,6 @@ pub struct AskCommand {
 
 const CX_DAEMON_SOCKET: &str = "/var/run/cx/daemon.sock";
 const CX_USER_SOCKET_TEMPLATE: &str = "/run/user/{}/cx/daemon.sock";
-
-/// Get the path to the local model cache directory
-fn model_cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("cx-linux")
-        .join("models")
-}
-
-/// Get the full path to the GGUF model file
-fn model_path() -> PathBuf {
-    model_cache_dir().join(MODEL_FILENAME)
-}
-
-/// Check if the local model is available
-fn is_local_model_available() -> bool {
-    model_path().exists()
-}
 
 impl AskCommand {
     pub fn run(&self) -> Result<()> {
@@ -260,7 +247,6 @@ impl AskCommand {
         use llama_cpp_2::model::params::LlamaModelParams;
         use llama_cpp_2::model::LlamaModel;
         use llama_cpp_2::token::data_array::LlamaTokenDataArray;
-        use std::os::unix::io::AsRawFd;
 
         let model_file = model_path();
         if !model_file.exists() {
@@ -272,10 +258,13 @@ impl AskCommand {
         }
 
         // RAII guard to ensure stderr is restored on drop (even on error)
+        // This is Unix-specific for suppressing llama.cpp verbose logging
+        #[cfg(unix)]
         struct StderrGuard {
             saved: Option<i32>,
             fd: i32,
         }
+        #[cfg(unix)]
         impl Drop for StderrGuard {
             fn drop(&mut self) {
                 if let Some(saved) = self.saved {
@@ -286,21 +275,29 @@ impl AskCommand {
         }
 
         // Suppress llama.cpp verbose logging by redirecting stderr temporarily
-        let stderr_fd = std::io::stderr().as_raw_fd();
-        let _stderr_guard = if !self.verbose {
-            let saved = unsafe { libc::dup(stderr_fd) };
-            let devnull = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
-            unsafe { libc::dup2(devnull.as_raw_fd(), stderr_fd) };
-            StderrGuard {
-                saved: Some(saved),
-                fd: stderr_fd,
-            }
-        } else {
-            StderrGuard {
-                saved: None,
-                fd: stderr_fd,
+        #[cfg(unix)]
+        let _stderr_guard = {
+            use std::os::unix::io::AsRawFd;
+            let stderr_fd = std::io::stderr().as_raw_fd();
+            if !self.verbose {
+                let saved = unsafe { libc::dup(stderr_fd) };
+                let devnull = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
+                unsafe { libc::dup2(devnull.as_raw_fd(), stderr_fd) };
+                StderrGuard {
+                    saved: Some(saved),
+                    fd: stderr_fd,
+                }
+            } else {
+                StderrGuard {
+                    saved: None,
+                    fd: stderr_fd,
+                }
             }
         };
+
+        // Non-Unix: no stderr suppression (llama.cpp logs will be visible)
+        #[cfg(not(unix))]
+        let _ = self.verbose; // suppress unused variable warning
 
         // Initialize backend and load model (stderr suppressed, restored on error or completion)
         let backend = LlamaBackend::init()?;
@@ -349,10 +346,14 @@ impl AskCommand {
         let mut n_cur = tokens.len();
 
         for _ in 0..max_tokens {
-            // Sample next token
+            // Sample next token with time-based seed for non-deterministic output
             let candidates = ctx.candidates();
             let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
-            let token = candidates_data.sample_token(42);
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u32)
+                .unwrap_or(42);
+            let token = candidates_data.sample_token(seed);
 
             // Check for end of generation
             if model.is_eog_token(token) {

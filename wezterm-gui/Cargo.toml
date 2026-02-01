@@ -46,6 +46,7 @@ config.workspace = true
 cpal.workspace = true
 dhat = {workspace=true, optional=true}
 dirs-next.workspace = true
+dirs.workspace = true
 downcast-rs.workspace = true
 emojis.workspace = true
 env-bootstrap.workspace = true

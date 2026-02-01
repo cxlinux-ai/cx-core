@@ -1,3 +1,9 @@
+/*
+Copyright (c) 2026 AI Venture Holdings LLC
+Licensed under the Business Source License 1.1
+You may not use this file except in compliance with the License.
+*/
+
 //! LlamaCpp Provider for CX Terminal
 //!
 //! Implements the AIProvider trait using llama-cpp-2 for native GGUF model inference.
@@ -18,10 +24,10 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::token::data_array::LlamaTokenDataArray;
 
 /// HuggingFace repository containing the model
-pub const HF_REPO: &str = "ShreemJ/cortex-linux-7b";
+pub const HF_REPO: &str = "ShreemJ/cxlinux-ai-7b";
 
 /// Model filename
-pub const MODEL_FILENAME: &str = "cortex-linux-7b-Q4_K_M.gguf";
+pub const MODEL_FILENAME: &str = "cxlinux-ai-7b-Q4_K_M.gguf";
 
 /// Default system prompt for CX Linux assistant
 pub const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant for CX Linux. You can:
@@ -83,7 +89,7 @@ impl LlamaCppProvider {
 
     /// Get the cache directory for CX Linux models
     pub fn model_cache_dir() -> PathBuf {
-        dirs_next::cache_dir()
+        dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("cx-linux")
             .join("models")
@@ -215,10 +221,10 @@ impl LlamaCppProvider {
         let eos_token = self.model.token_eos();
         let im_end_str = "<|im_end|>";
 
-        // Random seed for sampling
-        let seed = std::time::SystemTime::now()
+        // Random seed for sampling. Use nanoseconds for better entropy.
+        let mut seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as u32)
+            .map(|d| d.as_nanos() as u32)
             .unwrap_or(42);
 
         for _ in 0..max_tokens {
@@ -228,7 +234,9 @@ impl LlamaCppProvider {
             // Sample the next token
             let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
 
-            // Sample with seed (temperature is applied internally based on the data)
+            // Use a different seed for each token to avoid deterministic output.
+            // A simple LCG is used here. A better RNG is recommended.
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
             let next_token = candidates_data.sample_token(seed);
 
             // Check for end of generation
@@ -244,17 +252,8 @@ impl LlamaCppProvider {
                 .token_to_str(next_token, llama_cpp_2::model::Special::Tokenize)
                 .unwrap_or_default();
 
-            // Check if we've generated the end marker
-            let current_output: String = output_tokens
-                .iter()
-                .filter_map(|t| {
-                    self.model
-                        .token_to_str(*t, llama_cpp_2::model::Special::Tokenize)
-                        .ok()
-                })
-                .collect();
-
-            if current_output.contains(im_end_str) {
+            // Check if we've generated the end marker (check only latest token for efficiency)
+            if token_str.contains(im_end_str) {
                 break;
             }
 

@@ -326,7 +326,7 @@ impl AIProviderType {
             Self::Claude => "claude-3-5-sonnet-20241022",
             Self::OpenAI => "gpt-4-turbo-preview",
             Self::Local => "llama3",
-            Self::CXLinux => "cortex-linux-7b-Q4_K_M",
+            Self::CXLinux => "cxlinux-ai-7b-Q4_K_M",
             Self::Custom => "",
         }
     }

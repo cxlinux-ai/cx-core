@@ -1389,6 +1389,7 @@ dependencies = [
  "config",
  "cpal",
  "dhat",
+ "dirs",
  "dirs-next",
  "downcast-rs",
  "embed-resource",

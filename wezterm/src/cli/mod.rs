@@ -28,6 +28,7 @@ pub mod ai;
 pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
+pub mod model_utils;
 pub mod new;
 pub mod shortcuts;
 pub mod snapshot;

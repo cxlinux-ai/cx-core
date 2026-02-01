@@ -1,3 +1,9 @@
+/*
+Copyright (c) 2026 AI Venture Holdings LLC
+Licensed under the Business Source License 1.1
+You may not use this file except in compliance with the License.
+*/
+
 //! CX Terminal: AI model download command
 //!
 //! Downloads the CX Linux fine-tuned model from HuggingFace.
@@ -6,13 +12,8 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::path::PathBuf;
 
-/// HuggingFace repository containing the model
-const HF_REPO: &str = "ShreemJ/cortex-linux-7b";
-
-/// Model filename
-const MODEL_FILENAME: &str = "cortex-linux-7b-Q4_K_M.gguf";
+use super::model_utils::{model_cache_dir, model_path, HF_REPO, MODEL_FILENAME};
 
 /// AI model management commands
 #[derive(Debug, Parser, Clone)]
@@ -40,28 +41,10 @@ pub struct DownloadCommand {
 }
 
 impl DownloadCommand {
-    /// Get the cache directory for CX Linux models
-    fn model_cache_dir() -> PathBuf {
-        dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("cx-linux")
-            .join("models")
-    }
-
-    /// Get the full path to the model file
-    fn model_path() -> PathBuf {
-        Self::model_cache_dir().join(MODEL_FILENAME)
-    }
-
-    /// Check if the model is already downloaded
-    fn is_model_available() -> bool {
-        Self::model_path().exists()
-    }
-
     /// Download the model from HuggingFace
     pub async fn download(&self) -> Result<()> {
-        let model_path = Self::model_path();
-        let cache_dir = Self::model_cache_dir();
+        let model_path = model_path();
+        let cache_dir = model_cache_dir();
 
         // Check if model already exists (and is valid)
         if model_path.exists() && !self.force {
