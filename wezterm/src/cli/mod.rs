@@ -31,6 +31,10 @@ pub mod new;
 pub mod shortcuts;
 pub mod snapshot;
 
+// HRM AI: Premium agent management (optional feature)
+pub mod hire;
+pub mod fire;
+
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
     #[command(name = "table", about = "multi line space separated table")]
@@ -212,6 +216,15 @@ Outputs the pane-id for the newly created pane on success"
     /// List or manage snapshots
     #[command(name = "snapshots")]
     Snapshots(snapshot::SnapshotsCommand),
+
+    // HRM AI: Premium agent management commands
+    /// Deploy an AI agent to a server (HRM AI premium feature)
+    #[command(name = "hire", about = "Deploy an AI agent (requires --features hrm)")]
+    Hire(hire::HireCommand),
+
+    /// Terminate an AI agent (HRM AI premium feature)
+    #[command(name = "fire", about = "Terminate an AI agent (requires --features hrm)")]
+    Fire(fire::FireCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -286,6 +299,15 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             cmd.run()
         }
         CliSubCommand::Snapshots(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        // HRM AI commands don't need the mux client
+        CliSubCommand::Hire(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Fire(cmd) => {
             drop(client);
             cmd.run()
         }
