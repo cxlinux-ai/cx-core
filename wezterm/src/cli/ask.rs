@@ -269,8 +269,10 @@ impl AskCommand {
         impl Drop for StderrGuard {
             fn drop(&mut self) {
                 if let Some(saved) = self.saved {
-                    unsafe { libc::dup2(saved, self.fd) };
-                    unsafe { libc::close(saved) };
+                    if saved >= 0 {
+                        unsafe { libc::dup2(saved, self.fd) };
+                        unsafe { libc::close(saved) };
+                    }
                 }
             }
         }
@@ -282,8 +284,15 @@ impl AskCommand {
             let stderr_fd = std::io::stderr().as_raw_fd();
             if !self.verbose {
                 let saved = unsafe { libc::dup(stderr_fd) };
+                if saved < 0 {
+                    anyhow::bail!("Failed to duplicate stderr file descriptor");
+                }
                 let devnull = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
-                unsafe { libc::dup2(devnull.as_raw_fd(), stderr_fd) };
+                let dup_result = unsafe { libc::dup2(devnull.as_raw_fd(), stderr_fd) };
+                if dup_result < 0 {
+                    unsafe { libc::close(saved) };
+                    anyhow::bail!("Failed to redirect stderr to /dev/null");
+                }
                 StderrGuard {
                     saved: Some(saved),
                     fd: stderr_fd,
@@ -313,7 +322,7 @@ impl AskCommand {
         #[cfg(unix)]
         drop(_stderr_guard);
 
-        // Format prompt using Qwen chat template
+        // CX Terminal: Augment system prompt with project context for better responses
         let context = ProjectContext::detect();
         let full_system = format!(
             "{}\n\nCurrent directory: {}\nProject type: {:?}",
@@ -327,10 +336,9 @@ impl AskCommand {
             full_system, query
         );
 
-        // Tokenize
         let tokens = model.str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)?;
 
-        // Check if prompt exceeds context window before creating batch
+        // CX Terminal: Prevent context overflow with 2048 token window
         if tokens.len() >= 2048 {
             anyhow::bail!(
                 "Prompt too long: {} tokens exceeds 2048 context window. Please shorten your query.",
@@ -338,23 +346,20 @@ impl AskCommand {
             );
         }
 
-        // Create batch and add tokens
         let mut batch = LlamaBatch::new(2048, 1);
         for (i, token) in tokens.iter().enumerate() {
             let is_last = i == tokens.len() - 1;
             batch.add(*token, i as i32, &[0], is_last)?;
         }
 
-        // Decode initial prompt
         ctx.decode(&mut batch)?;
 
-        // Generate tokens
         let mut output = String::new();
+        // CX Terminal: Reserve context space for response generation
         let max_tokens = std::cmp::min(512, 2048 - tokens.len());
         let mut n_cur = tokens.len();
 
         for _ in 0..max_tokens {
-            // Sample next token with time-based seed for non-deterministic output
             let candidates = ctx.candidates();
             let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
             let seed = std::time::SystemTime::now()
@@ -363,27 +368,23 @@ impl AskCommand {
                 .unwrap_or(42);
             let token = candidates_data.sample_token(seed);
 
-            // Check for end of generation
             if model.is_eog_token(token) {
                 break;
             }
 
-            // Decode token to text
             let token_str = model.token_to_str(token, llama_cpp_2::model::Special::Tokenize)?;
 
-            // Stop on end markers
+            // CX Terminal: Stop on Qwen chat template end markers
             if token_str.contains("<|im_end|>") || token_str.contains("<|endoftext|>") {
                 break;
             }
 
             output.push_str(&token_str);
 
-            // Prepare next batch
             batch.clear();
             batch.add(token, n_cur as i32, &[0], true)?;
             n_cur += 1;
 
-            // Decode
             ctx.decode(&mut batch)?;
         }
 

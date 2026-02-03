@@ -377,7 +377,22 @@ impl AIProvider for LlamaCppProvider {
             // True streaming would require refactoring the generate function
             let prompt = self.format_prompt(&messages, system.as_deref());
 
-            let content = tokio::task::block_in_place(|| self.generate(&prompt))?;
+            // Clone what we need for the blocking task
+            let backend = Arc::clone(&self.backend);
+            let model = Arc::clone(&self.model);
+            let config = self.config.clone();
+
+            // Run inference in blocking thread pool to avoid runtime panics
+            let content = tokio::task::spawn_blocking(move || {
+                let temp_provider = LlamaCppProvider {
+                    backend,
+                    model,
+                    config,
+                };
+                temp_provider.generate(&prompt)
+            })
+            .await
+            .map_err(|e| AIError::ApiError(format!("Join error: {}", e)))??;
 
             // Return as a single chunk (could be improved to true streaming later)
             Ok(AIResponseStream::new(vec![content]))
