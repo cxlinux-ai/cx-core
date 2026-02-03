@@ -309,11 +309,11 @@ impl AskCommand {
         let _ = self.verbose;
 
         let backend = LlamaBackend::init()?;
-        let model_params = LlamaModelParams::default().with_n_gpu_layers(35);
+        let model_params = LlamaModelParams::default();
         let model = LlamaModel::load_from_file(&backend, &model_file, &model_params)?;
 
         let ctx_params = LlamaContextParams::default()
-            .with_n_ctx(std::num::NonZeroU32::new(2048))
+            .with_n_ctx(std::num::NonZeroU32::new(4096))
             .with_n_threads(4)
             .with_n_threads_batch(4);
         let mut ctx = model.new_context(&backend, ctx_params)?;
@@ -338,15 +338,15 @@ impl AskCommand {
 
         let tokens = model.str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)?;
 
-        // CX Terminal: Prevent context overflow with 2048 token window
-        if tokens.len() >= 2048 {
+        // CX Terminal: Prevent context overflow with 4096 token window
+        if tokens.len() >= 4096 {
             anyhow::bail!(
-                "Prompt too long: {} tokens exceeds 2048 context window. Please shorten your query.",
+                "Prompt too long: {} tokens exceeds 4096 context window. Please shorten your query.",
                 tokens.len()
             );
         }
 
-        let mut batch = LlamaBatch::new(2048, 1);
+        let mut batch = LlamaBatch::new(4096, 1);
         for (i, token) in tokens.iter().enumerate() {
             let is_last = i == tokens.len() - 1;
             batch.add(*token, i as i32, &[0], is_last)?;
@@ -356,7 +356,7 @@ impl AskCommand {
 
         let mut output = String::new();
         // CX Terminal: Reserve context space for response generation
-        let max_tokens = std::cmp::min(512, 2048 - tokens.len());
+        let max_tokens = std::cmp::min(512, 4096 - tokens.len());
         let mut n_cur = tokens.len();
 
         for _ in 0..max_tokens {
