@@ -311,7 +311,10 @@ impl AskCommand {
             .with_n_threads_batch(4);
         let mut ctx = model.new_context(&backend, ctx_params)?;
 
-        // _stderr_guard drops here, restoring stderr
+        // Explicitly drop stderr guard to restore stderr before token generation
+        // This ensures only model load noise is suppressed, not inference errors
+        #[cfg(unix)]
+        drop(_stderr_guard);
 
         // Format prompt using Qwen chat template
         let context = ProjectContext::detect();
@@ -329,6 +332,14 @@ impl AskCommand {
 
         // Tokenize
         let tokens = model.str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)?;
+
+        // Check if prompt exceeds context window before creating batch
+        if tokens.len() > 2048 {
+            anyhow::bail!(
+                "Prompt too long: {} tokens exceeds 2048 context window. Please shorten your query.",
+                tokens.len()
+            );
+        }
 
         // Create batch and add tokens
         let mut batch = LlamaBatch::new(2048, 1);
