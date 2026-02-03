@@ -89,7 +89,7 @@ impl AskCommand {
         }
 
         if self.verbose {
-            eprintln!("[verbose] Query: \"{}\"", query);
+            log::debug!(target: "ask", "Query: \"{}\"", query);
         }
 
         // Step 1: Try to match CX commands (new, save, restore, etc.)
@@ -199,8 +199,10 @@ impl AskCommand {
 
         // Try local GGUF model (preferred for --local or when available)
         if self.local_only || is_local_model_available() {
-            if let Ok(response) = self.query_local(query) {
-                return Ok(response);
+            match self.query_local(query) {
+                Ok(response) => return Ok(response),
+                Err(e) if self.local_only => return Err(e),
+                Err(_) => {} // Fall through to other providers
             }
         }
 
@@ -254,11 +256,10 @@ impl AskCommand {
         }
 
         if self.verbose {
-            eprintln!("[verbose] Loading model: {:?}", model_file);
+            log::debug!(target: "ask", "Loading model: {:?}", model_file);
         }
 
-        // RAII guard to ensure stderr is restored on drop (even on error)
-        // This is Unix-specific for suppressing llama.cpp verbose logging
+        // CX Terminal: RAII guard ensures stderr restoration even on error
         #[cfg(unix)]
         struct StderrGuard {
             saved: Option<i32>,
@@ -274,7 +275,7 @@ impl AskCommand {
             }
         }
 
-        // Suppress llama.cpp verbose logging by redirecting stderr temporarily
+        // CX Terminal: Suppress llama.cpp's verbose model loading output
         #[cfg(unix)]
         let _stderr_guard = {
             use std::os::unix::io::AsRawFd;
@@ -295,24 +296,20 @@ impl AskCommand {
             }
         };
 
-        // Non-Unix: no stderr suppression (llama.cpp logs will be visible)
         #[cfg(not(unix))]
-        let _ = self.verbose; // suppress unused variable warning
+        let _ = self.verbose;
 
-        // Initialize backend and load model (stderr suppressed, restored on error or completion)
         let backend = LlamaBackend::init()?;
         let model_params = LlamaModelParams::default().with_n_gpu_layers(35);
         let model = LlamaModel::load_from_file(&backend, &model_file, &model_params)?;
 
-        // Create context (also outputs logs)
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(2048))
             .with_n_threads(4)
             .with_n_threads_batch(4);
         let mut ctx = model.new_context(&backend, ctx_params)?;
 
-        // Explicitly drop stderr guard to restore stderr before token generation
-        // This ensures only model load noise is suppressed, not inference errors
+        // CX Terminal: Restore stderr now that model loading is complete
         #[cfg(unix)]
         drop(_stderr_guard);
 
@@ -334,7 +331,7 @@ impl AskCommand {
         let tokens = model.str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)?;
 
         // Check if prompt exceeds context window before creating batch
-        if tokens.len() > 2048 {
+        if tokens.len() >= 2048 {
             anyhow::bail!(
                 "Prompt too long: {} tokens exceeds 2048 context window. Please shorten your query.",
                 tokens.len()
@@ -353,7 +350,7 @@ impl AskCommand {
 
         // Generate tokens
         let mut output = String::new();
-        let max_tokens = 512;
+        let max_tokens = std::cmp::min(512, 2048 - tokens.len());
         let mut n_cur = tokens.len();
 
         for _ in 0..max_tokens {

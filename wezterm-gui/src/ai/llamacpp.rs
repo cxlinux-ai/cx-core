@@ -52,12 +52,6 @@ pub struct LlamaCppProvider {
     config: AIProviderConfig,
 }
 
-// Unsafe impl Send + Sync for LlamaCppProvider to enable thread-safe sharing across async tasks.
-// This is valid because the contained types (Arc<LlamaBackend>, Arc<LlamaModel>, AIProviderConfig)
-// are themselves Send + Sync.
-unsafe impl Send for LlamaCppProvider {}
-unsafe impl Sync for LlamaCppProvider {}
-
 impl LlamaCppProvider {
     /// Create a new LlamaCpp provider
     ///
@@ -228,7 +222,8 @@ impl LlamaCppProvider {
 
         // Check context length
         let n_ctx = ctx.n_ctx() as usize;
-        if tokens.len() > n_ctx {
+        let remaining = n_ctx.saturating_sub(tokens.len());
+        if remaining == 0 {
             return Err(AIError::ContextTooLong);
         }
 
@@ -248,7 +243,7 @@ impl LlamaCppProvider {
 
         // Generate tokens
         let mut output_tokens = Vec::new();
-        let max_tokens = self.config.max_tokens as usize;
+        let max_tokens = std::cmp::min(self.config.max_tokens as usize, remaining);
         let mut n_cur = tokens.len();
 
         // Get special token IDs for stopping
@@ -449,7 +444,11 @@ mod tests {
             config: AIProviderConfig,
         }
         impl MockProvider {
-            fn format_prompt(&self, messages: &[ChatMessage], system_prompt: Option<&str>) -> String {
+            fn format_prompt(
+                &self,
+                messages: &[ChatMessage],
+                system_prompt: Option<&str>,
+            ) -> String {
                 // Call the actual LlamaCppProvider::format_prompt logic
                 let mut prompt = String::new();
                 let sys = system_prompt.unwrap_or(CX_SYSTEM_PROMPT);
@@ -480,15 +479,30 @@ mod tests {
         let prompt = mock.format_prompt(&messages, None);
 
         // Assert the output contains all required markers
-        assert!(prompt.contains("<|im_start|>system"), "Prompt should contain system marker");
-        assert!(prompt.contains("<|im_start|>user"), "Prompt should contain user marker");
-        assert!(prompt.contains("<|im_start|>assistant"), "Prompt should contain assistant marker");
-        
+        assert!(
+            prompt.contains("<|im_start|>system"),
+            "Prompt should contain system marker"
+        );
+        assert!(
+            prompt.contains("<|im_start|>user"),
+            "Prompt should contain user marker"
+        );
+        assert!(
+            prompt.contains("<|im_start|>assistant"),
+            "Prompt should contain assistant marker"
+        );
+
         // Verify the message content is included
-        assert!(prompt.contains("How do I list files?"), "Prompt should contain message content");
-        
+        assert!(
+            prompt.contains("How do I list files?"),
+            "Prompt should contain message content"
+        );
+
         // Verify system prompt is included
-        assert!(prompt.contains("Linux command expert"), "Prompt should contain system prompt");
+        assert!(
+            prompt.contains("Linux command expert"),
+            "Prompt should contain system prompt"
+        );
     }
 
     #[test]
