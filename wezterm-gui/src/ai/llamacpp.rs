@@ -150,11 +150,12 @@ impl LlamaCppProvider {
                 // Remove stale symlink if it exists but points to invalid target
                 if let Ok(metadata) = std::fs::symlink_metadata(&target_path) {
                     if metadata.file_type().is_symlink() {
-                        std::fs::remove_file(&target_path)
-                            .map_err(|e| AIError::ApiError(format!("Failed to remove stale symlink: {}", e)))?;
+                        std::fs::remove_file(&target_path).map_err(|e| {
+                            AIError::ApiError(format!("Failed to remove stale symlink: {}", e))
+                        })?;
                     }
                 }
-                
+
                 std::os::unix::fs::symlink(&hf_model_path, &target_path)
                     .map_err(|e| AIError::ApiError(format!("Failed to symlink model: {}", e)))?;
                 log::info!(
