@@ -128,6 +128,9 @@ k9 = "0.12.0"
 lazy_static = "1.4"
 leb128 = "0.2"
 lfucache = { path = "lfucache" }
+# CX Linux AI - Native LLM inference
+llama-cpp-2 = "0.1"
+hf-hub = { version = "0.3", features = ["tokio"] }
 libc = "0.2"
 libflate = "2"
 libloading = "0.8"
