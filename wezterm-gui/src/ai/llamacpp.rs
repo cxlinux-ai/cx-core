@@ -258,14 +258,14 @@ impl LlamaCppProvider {
         let eos_token = self.model.token_eos();
         let im_end_str = "<|im_end|>";
 
-        // Random seed for sampling. Use nanoseconds for better entropy.
-        let mut seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u32)
-            .unwrap_or(42);
+        // CX Terminal: Quality RNG for non-deterministic sampling
+        use std::collections::hash_map::RandomState;
+        use std::hash::{Hash, Hasher};
+        let random_state = RandomState::new();
 
-        // Accumulator to detect end-marker split across tokens
-        let mut output_accumulator = String::new();
+        // CX Terminal: Sliding window to detect split end markers efficiently
+        const MARKER_WINDOW_SIZE: usize = 20;
+        let mut marker_window = String::with_capacity(MARKER_WINDOW_SIZE * 2);
 
         for _ in 0..max_tokens {
             // Get logits for the last token
@@ -278,9 +278,10 @@ impl LlamaCppProvider {
             let temp_sampler = LlamaSampler::temp(self.config.temperature);
             candidates_data.apply_sampler(&temp_sampler);
 
-            // Use a different seed for each token to avoid deterministic output.
-            // A simple LCG is used here. A better RNG is recommended.
-            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            // Generate quality random seed from current position
+            let mut hasher = random_state.build_hasher();
+            n_cur.hash(&mut hasher);
+            let seed = hasher.finish() as u32;
             let next_token = candidates_data.sample_token(seed);
 
             // Check for end of generation
@@ -296,11 +297,17 @@ impl LlamaCppProvider {
                 .token_to_str(next_token, llama_cpp_2::model::Special::Tokenize)
                 .unwrap_or_default();
 
-            // Append to accumulator to detect split markers
-            output_accumulator.push_str(&token_str);
+            // Append to sliding window
+            marker_window.push_str(&token_str);
+            
+            // Keep only last MARKER_WINDOW_SIZE characters for efficiency
+            if marker_window.len() > MARKER_WINDOW_SIZE * 2 {
+                let skip = marker_window.len() - MARKER_WINDOW_SIZE;
+                marker_window = marker_window.chars().skip(skip).collect();
+            }
 
-            // Check if we've generated the end marker (using accumulator to catch split markers)
-            if output_accumulator.contains(im_end_str) {
+            // Check sliding window for end marker (catches split markers)
+            if marker_window.contains(im_end_str) {
                 break;
             }
 

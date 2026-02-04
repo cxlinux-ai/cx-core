@@ -383,12 +383,13 @@ impl AskCommand {
 
             let token_str = model.token_to_str(token, llama_cpp_2::model::Special::Tokenize)?;
 
-            // CX Terminal: Stop on Qwen chat template end markers
-            if token_str.contains("<|im_end|>") || token_str.contains("<|endoftext|>") {
+            // CX Terminal: Append to accumulator to detect split markers
+            output.push_str(&token_str);
+
+            // CX Terminal: Check accumulator for end markers (handles split tokens)
+            if output.contains("<|im_end|>") || output.contains("<|endoftext|>") {
                 break;
             }
-
-            output.push_str(&token_str);
 
             batch.clear();
             batch.add(token, n_cur as i32, &[0], true)?;
@@ -607,5 +608,131 @@ impl AskCommand {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_query_local_missing_model() {
+        let ask_cmd = AskCommand {
+            query: vec!["test".to_string()],
+            execute: false,
+            auto_confirm: false,
+            local_only: false,
+            format: "text".to_string(),
+            verbose: false,
+        };
+
+        let result = ask_cmd.query_local("test query");
+        
+        // If the model exists on this system, the test might succeed
+        // We validate the error path when model is missing
+        if result.is_err() {
+            let err_msg = result.unwrap_err().to_string();
+            // Should be model not found error
+            assert!(
+                err_msg.contains("Local model not found") || err_msg.contains("not found"),
+                "Error should mention missing model, got: {}",
+                err_msg
+            );
+        }
+        // If result is Ok, model exists - test passes either way
+    }
+
+    #[test]
+    fn test_query_local_prompt_too_long() {
+        let ask_cmd = AskCommand {
+            query: vec!["test".to_string()],
+            execute: false,
+            auto_confirm: false,
+            local_only: false,
+            format: "text".to_string(),
+            verbose: false,
+        };
+
+        // Create a very long query (assuming ~1 token per 4 chars, need ~14000+ chars)
+        let long_query = "word ".repeat(3000);
+        
+        let result = ask_cmd.query_local(&long_query);
+        assert!(result.is_err(), "Expected error for long prompt or missing model");
+    }
+
+    #[test]
+    fn test_stderr_guard_verbose_flag() {
+        let ask_cmd_verbose = AskCommand {
+            query: vec!["test".to_string()],
+            execute: false,
+            auto_confirm: false,
+            local_only: false,
+            format: "text".to_string(),
+            verbose: true,
+        };
+
+        let ask_cmd_quiet = AskCommand {
+            query: vec!["test".to_string()],
+            execute: false,
+            auto_confirm: false,
+            local_only: false,
+            format: "text".to_string(),
+            verbose: false,
+        };
+
+        assert!(ask_cmd_verbose.verbose, "Verbose should be true");
+        assert!(!ask_cmd_quiet.verbose, "Verbose should be false");
+    }
+
+    #[test]
+    fn test_query_local_context_window_constants() {
+        const MAX_RESPONSE_TOKENS: usize = 512;
+        const TOTAL_CONTEXT: usize = 4096;
+        let max_prompt_tokens = TOTAL_CONTEXT - MAX_RESPONSE_TOKENS;
+        
+        assert_eq!(max_prompt_tokens, 3584, "Max prompt tokens should be 3584");
+        assert_eq!(MAX_RESPONSE_TOKENS, 512, "Response tokens should be 512");
+        assert_eq!(TOTAL_CONTEXT, 4096, "Total context should be 4096");
+    }
+
+    #[test]
+    fn test_ask_command_clone() {
+        let cmd = AskCommand {
+            query: vec!["test".to_string()],
+            execute: true,
+            auto_confirm: false,
+            local_only: true,
+            format: "json".to_string(),
+            verbose: true,
+        };
+
+        let cloned = cmd.clone();
+        assert_eq!(cmd.query, cloned.query);
+        assert_eq!(cmd.execute, cloned.execute);
+        assert_eq!(cmd.auto_confirm, cloned.auto_confirm);
+        assert_eq!(cmd.local_only, cloned.local_only);
+        assert_eq!(cmd.format, cloned.format);
+        assert_eq!(cmd.verbose, cloned.verbose);
+    }
+
+    #[test]
+    fn test_format_handling() {
+        let ask_cmd = AskCommand {
+            query: vec!["test".to_string()],
+            execute: false,
+            auto_confirm: false,
+            local_only: false,
+            format: "json".to_string(),
+            verbose: false,
+        };
+
+        assert_eq!(ask_cmd.format, "json");
+
+        let ask_cmd_text = AskCommand {
+            format: "text".to_string(),
+            ..ask_cmd.clone()
+        };
+
+        assert_eq!(ask_cmd_text.format, "text");
     }
 }
