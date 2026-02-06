@@ -1,0 +1,87 @@
+name: CLA Signature Request
+description: Sign the Contributor License Agreement to contribute to CX Linux
+title: "CLA Signature: [Your Name]"
+labels: ["cla"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Contributor License Agreement
+
+        By submitting this form, you agree to the terms of the [CX Linux CLA](https://github.com/cxlinux-ai/cx-core/blob/main/CLA.md).
+
+        **Summary of what you're agreeing to:**
+        - You have the right to contribute the code you submit
+        - You grant AI Venture Holdings LLC a license to use your contributions
+        - You retain your own rights to your contributions
+
+  - type: input
+    id: name
+    attributes:
+      label: Full Legal Name
+      description: Your full name as it should appear in the CLA record
+      placeholder: "Jane Doe"
+    validations:
+      required: true
+
+  - type: input
+    id: github_username
+    attributes:
+      label: GitHub Username
+      description: Your GitHub username (without @)
+      placeholder: "janedoe"
+    validations:
+      required: true
+
+  - type: input
+    id: email
+    attributes:
+      label: Email Address
+      description: Email associated with your commits
+      placeholder: "jane@example.com"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Signature Type
+      description: Are you signing as an individual or on behalf of a company?
+      options:
+        - Individual
+        - Corporate (on behalf of my employer)
+    validations:
+      required: true
+
+  - type: input
+    id: company
+    attributes:
+      label: Company Name (if corporate)
+      description: Only required if signing on behalf of a company
+      placeholder: "Acme Corp"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Agreement
+      description: Please confirm the following
+      options:
+        - label: I have read and agree to the [Contributor License Agreement](https://github.com/cxlinux-ai/cx-core/blob/main/CLA.md)
+          required: true
+        - label: I have the authority to enter into this agreement (or my employer has authorized me)
+          required: true
+        - label: My contributions are my original work (or I have the right to submit them)
+          required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Any additional emails, notes, or context
+      placeholder: "Additional commit emails: jane.doe@work.com"
+    validations:
+      required: false
