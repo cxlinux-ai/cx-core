@@ -84,6 +84,47 @@ python scripts/backtest.py --data ./data/trades_history.csv
 python scripts/train_model.py --model xgboost
 ```
 
+## Deployment
+
+### Railway (Recommended — easiest)
+
+1. Push this repo to GitHub
+2. Go to [railway.app](https://railway.app), create a new project, connect your repo
+3. Add all env vars from `.env.example` in the Railway dashboard under **Variables**
+4. Railway auto-detects the `Dockerfile` and deploys — set to **Always On** (not sleep)
+5. That's it. Bot restarts automatically if it crashes.
+
+> Railway Starter plan ($5/mo) gives you enough compute. The bot uses minimal CPU/RAM.
+
+### VPS (DigitalOcean, Hetzner, etc.)
+
+```bash
+# SSH into your VPS
+ssh root@your-server-ip
+
+# Clone and configure
+git clone <your-repo-url> polymarket-clob-bot
+cd polymarket-clob-bot
+cp .env.example .env
+nano .env  # Add your credentials
+
+# Run with Docker Compose (auto-restarts on crash/reboot)
+docker compose up -d
+
+# Check logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Docker (any host)
+
+```bash
+docker build -t polymarket-bot .
+docker run -d --restart always --env-file .env --name polybot polymarket-bot
+```
+
 ## Risk Management
 
 - Maximum daily loss limit (configurable)
