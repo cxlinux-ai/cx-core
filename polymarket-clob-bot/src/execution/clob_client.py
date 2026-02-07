@@ -69,8 +69,9 @@ class ClobClient:
                 funder=self._settings.funder_address or None,
                 signature_type=self._settings.signature_type,
             )
-            # Derive API credentials
-            await self._run_sync(self._client.set_api_creds, self._client.create_or_derive_api_creds)
+            # Derive API credentials — call create_or_derive first, then set
+            creds = await self._run_sync(self._client.create_or_derive_api_creds)
+            self._client.set_api_creds(creds)
             logger.info("CLOB client authenticated successfully")
             return True
         except Exception as exc:

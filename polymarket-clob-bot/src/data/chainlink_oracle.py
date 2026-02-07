@@ -38,7 +38,7 @@ AGGREGATOR_ABI = [
     },
 ]
 
-POLYGON_RPC = "https://polygon-rpc.com"
+POLYGON_RPC = "https://polygon-bor-rpc.publicnode.com"
 
 
 class ChainlinkOracle:
@@ -48,7 +48,7 @@ class ChainlinkOracle:
         self,
         store: DataStore,
         assets: list[Asset] | None = None,
-        poll_interval: float = 5.0,
+        poll_interval: float = 15.0,
         rpc_url: str = POLYGON_RPC,
     ) -> None:
         self._store = store
@@ -95,8 +95,9 @@ class ChainlinkOracle:
                 self._decimals[asset.value] = 8  # Default
 
     async def _poll_all(self) -> None:
-        tasks = [self._poll_one(asset) for asset in self._contracts]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        for asset in self._contracts:
+            await self._poll_one(asset)
+            await asyncio.sleep(2.0)  # Stagger to avoid RPC rate limits
 
     async def _poll_one(self, asset: str) -> None:
         contract = self._contracts.get(asset)
