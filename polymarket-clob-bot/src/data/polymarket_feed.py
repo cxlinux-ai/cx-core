@@ -66,10 +66,19 @@ class PolymarketFeed:
         if self._ws:
             await self._ws.close()
 
-    # --- Market discovery via Gamma API ---
+    # CX Terminal: Slug-based 15-min market discovery
+    # 15-min crypto markets use slugs like "btc-updown-15m-{timestamp}"
+    # where timestamp = floor(unix_time / 900) * 900
+
+    ASSET_SLUG_MAP: dict[Asset, str] = {
+        Asset.BTC: "btc",
+        Asset.ETH: "eth",
+        Asset.SOL: "sol",
+        Asset.XRP: "xrp",
+    }
 
     async def _discovery_loop(self) -> None:
-        """Periodically discover new 15-min prediction markets."""
+        """Periodically discover new 15-min prediction markets via slug lookup."""
         while self._running:
             try:
                 await self._discover_markets()
@@ -78,105 +87,80 @@ class PolymarketFeed:
             await asyncio.sleep(self._config.refresh_interval_seconds)
 
     async def _discover_markets(self) -> None:
-        """Fetch active markets from Gamma API."""
+        """Look up current 15-min crypto markets by constructing their slugs."""
+        now = time.time()
+        current_slot = int(now // 900) * 900
+        # Check current and next slot
+        slots = [current_slot, current_slot + 900]
+
+        for slot_ts in slots:
+            for asset, coin in self.ASSET_SLUG_MAP.items():
+                slug = f"{coin}-updown-15m-{slot_ts}"
+                # Skip if we already track this slug
+                if any(
+                    s.market.question.endswith(str(slot_ts))
+                    for s in self._active_markets.values()
+                    if s.market.asset == asset
+                ):
+                    continue
+
+                await self._fetch_market_by_slug(slug, asset, slot_ts)
+
+        # Prune resolved/expired markets
+        expired = [
+            cid for cid, state in self._active_markets.items()
+            if state.market.close_timestamp < now - 300
+        ]
+        for cid in expired:
+            del self._active_markets[cid]
+
+    async def _fetch_market_by_slug(self, slug: str, asset: Asset, slot_ts: int) -> None:
+        """Fetch a single market from the Gamma API by slug."""
         url = f"{self._config.gamma_api_url}/markets"
-        params = {
-            "closed": "false",
-            "limit": 50,
-            "order": "endDate",
-            "ascending": "true",
-        }
+        params = {"slug": slug, "closed": "false"}
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status != 200:
-                        logger.warning("Gamma API returned %d", resp.status)
                         return
                     markets_raw = await resp.json()
         except Exception as exc:
-            logger.error("Gamma API request failed: %s", exc)
+            logger.debug("Gamma API slug lookup failed for %s: %s", slug, exc)
             return
 
-        for m in markets_raw:
-            try:
-                question = m.get("question", "")
-                condition_id = m.get("conditionId", "")
+        if not markets_raw:
+            return
 
-                if not condition_id or condition_id in self._active_markets:
-                    continue
+        m = markets_raw[0] if isinstance(markets_raw, list) else markets_raw
+        condition_id = m.get("conditionId", m.get("condition_id", ""))
+        if not condition_id or condition_id in self._active_markets:
+            return
 
-                # Filter for 15-min crypto markets
-                if not self._is_target_market(question):
-                    continue
+        tokens = m.get("tokens", [])
+        if len(tokens) < 2:
+            return
 
-                asset = self._detect_asset(question)
-                if not asset:
-                    continue
+        yes_token = next((t for t in tokens if t.get("outcome") in ("Yes", "Up")), None)
+        no_token = next((t for t in tokens if t.get("outcome") in ("No", "Down")), None)
+        if not yes_token or not no_token:
+            return
 
-                tokens = m.get("tokens", [])
-                if len(tokens) < 2:
-                    continue
+        close_timestamp = float(slot_ts + 900)
+        question = m.get("question", slug)
 
-                yes_token = next((t for t in tokens if t.get("outcome") == "Yes"), None)
-                no_token = next((t for t in tokens if t.get("outcome") == "No"), None)
-                if not yes_token or not no_token:
-                    continue
+        market_info = MarketInfo(
+            condition_id=condition_id,
+            yes_token_id=yes_token["token_id"],
+            no_token_id=no_token["token_id"],
+            asset=asset,
+            question=question,
+            close_timestamp=close_timestamp,
+        )
 
-                close_ts = m.get("endDate", "")
-                if isinstance(close_ts, str):
-                    # Try parsing ISO format
-                    import datetime
-                    try:
-                        dt = datetime.datetime.fromisoformat(close_ts.replace("Z", "+00:00"))
-                        close_timestamp = dt.timestamp()
-                    except ValueError:
-                        close_timestamp = time.time() + 900
-                else:
-                    close_timestamp = float(close_ts)
-
-                market_info = MarketInfo(
-                    condition_id=condition_id,
-                    yes_token_id=yes_token["token_id"],
-                    no_token_id=no_token["token_id"],
-                    asset=asset,
-                    question=question,
-                    close_timestamp=close_timestamp,
-                )
-
-                self._active_markets[condition_id] = MarketState(market=market_info)
-                logger.info("Discovered market: %s [%s] closes at %.0f",
-                            question[:60], asset.value, close_timestamp)
-
-            except Exception as exc:
-                logger.debug("Skipping market: %s", exc)
-
-        # Prune resolved/expired markets
-        now = time.time()
-        expired = [
-            cid for cid, state in self._active_markets.items()
-            if state.market.close_timestamp < now - 300  # 5 min grace after close
-        ]
-        for cid in expired:
-            del self._active_markets[cid]
-
-    def _is_target_market(self, question: str) -> bool:
-        q_lower = question.lower()
-        keywords = self._config.search_keywords or []
-        return any(kw.lower() in q_lower for kw in keywords)
-
-    @staticmethod
-    def _detect_asset(question: str) -> Asset | None:
-        q_upper = question.upper()
-        for asset in Asset:
-            if asset.value in q_upper:
-                return asset
-        # Also check full names
-        name_map = {"BITCOIN": Asset.BTC, "ETHEREUM": Asset.ETH, "SOLANA": Asset.SOL}
-        for name, asset in name_map.items():
-            if name in q_upper:
-                return asset
-        return None
+        self._active_markets[condition_id] = MarketState(market=market_info)
+        logger.info("Discovered 15m market: %s [%s] closes at %.0f",
+                     question[:60], asset.value, close_timestamp)
 
     # --- WebSocket feed ---
 
