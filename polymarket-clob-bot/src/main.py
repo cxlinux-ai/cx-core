@@ -148,7 +148,8 @@ class Bot:
             asyncio.create_task(self._heartbeat_loop(), name="heartbeat"),
         ]
 
-        logger.info("Bot running. Waiting for Phase 3 entry window...")
+        mode = "PAPER TRADING" if self._settings.paper_trading else "LIVE TRADING"
+        logger.info("Bot running in %s mode. Waiting for Phase 3 entry window...", mode)
 
         try:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -239,10 +240,34 @@ class Bot:
             entry_price = state.no_price
 
         logger.info(
-            "Executing: %s %s $%.2f @ %.4f (edge=%.3f)",
+            "%s: %s %s $%.2f @ %.4f (edge=%.3f)",
+            "PAPER" if self._settings.paper_trading else "LIVE",
             side_str, state.market.asset.value, decision.position_size_usdc,
             entry_price, decision.signal.edge,
         )
+
+        # CX Terminal: Paper trading — simulate without placing real orders
+        if self._settings.paper_trading:
+            self._active_trades[cid] = {
+                "order": None,
+                "side": side_str,
+                "entry_price": entry_price,
+                "size": decision.position_size_usdc,
+                "edge": decision.signal.edge,
+                "asset": state.market.asset.value,
+                "phase": decision.phase_info.phase.value,
+                "leader_confidence": max(state.yes_price, state.no_price),
+                "paper": True,
+            }
+            self._risk.add_position()
+            await self._telegram.alert_trade(
+                side=f"[PAPER] {side_str}",
+                asset=state.market.asset.value,
+                price=entry_price,
+                size=decision.position_size_usdc,
+                edge=decision.signal.edge,
+            )
+            return
 
         # Place market order
         order = await self._order_manager.place_market_order(

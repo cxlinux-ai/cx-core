@@ -74,6 +74,7 @@ class Settings:
     telegram: TelegramSettings = field(default_factory=TelegramSettings)
     risk: RiskSettings = field(default_factory=RiskSettings)
     data: DataSettings = field(default_factory=DataSettings)
+    paper_trading: bool = field(default_factory=lambda: _env_bool("PAPER_TRADING", False))
 
     def validate(self) -> list[str]:
         """Return a list of configuration warnings/errors."""
