@@ -92,6 +92,8 @@ class PolymarketFeed:
         current_slot = int(now // 900) * 900
         # Check current and next slot
         slots = [current_slot, current_slot + 900]
+        logger.info("Discovery: checking slots %s (now=%.0f, active=%d)",
+                     slots, now, len(self._active_markets))
 
         for slot_ts in slots:
             for asset, coin in self.ASSET_SLUG_MAP.items():
@@ -130,6 +132,7 @@ class PolymarketFeed:
             return
 
         if not markets_raw:
+            logger.debug("No market found for slug: %s", slug)
             return
 
         m = markets_raw[0] if isinstance(markets_raw, list) else markets_raw
@@ -152,9 +155,12 @@ class PolymarketFeed:
             yes_token_id = clob_token_ids[up_idx] if up_idx is not None else None
             no_token_id = clob_token_ids[down_idx] if down_idx is not None else None
         else:
+            logger.warning("Slug %s: no parseable tokens (tokens=%d outcomes=%d clobIds=%d)",
+                           slug, len(tokens), len(outcomes), len(clob_token_ids))
             return
 
         if not yes_token_id or not no_token_id:
+            logger.warning("Slug %s: missing token IDs (yes=%s no=%s)", slug, yes_token_id, no_token_id)
             return
 
         close_timestamp = float(slot_ts + 900)
