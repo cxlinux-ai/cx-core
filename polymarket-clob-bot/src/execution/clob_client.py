@@ -10,6 +10,7 @@ from functools import partial
 
 from py_clob_client.client import ClobClient as _PyClobClient
 from py_clob_client.clob_types import (
+    BalanceAllowanceParams,
     MarketOrderArgs,
     OrderArgs,
     OrderType,
@@ -98,9 +99,12 @@ class ClobClient:
             logger.warning("get_balance skipped — no L2 credentials")
             return 0.0
         try:
+            params = BalanceAllowanceParams(
+                signature_type=self._settings.signature_type,
+            )
             result = await self._run_sync(
                 self._client.get_balance_allowance,
-                self._settings.signature_type,
+                params,
             )
             if isinstance(result, dict):
                 balance = float(result.get("balance", 0))
