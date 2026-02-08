@@ -57,11 +57,18 @@ class ClobClient:
     def __init__(self, settings: PolymarketSettings) -> None:
         self._settings = settings
         self._client: _PyClobClient | None = None
-        self._loop = asyncio.get_event_loop()
+        self._has_creds = False
 
     async def initialize(self) -> bool:
         """Initialize the CLOB client and verify authentication."""
         try:
+            logger.info(
+                "CLOB init: host=%s chain=%d sig_type=%d funder=%s",
+                self._settings.api_host,
+                self._settings.chain_id,
+                self._settings.signature_type,
+                self._settings.funder_address or "none",
+            )
             self._client = _PyClobClient(
                 host=self._settings.api_host,
                 key=self._settings.private_key,
@@ -69,10 +76,17 @@ class ClobClient:
                 funder=self._settings.funder_address or None,
                 signature_type=self._settings.signature_type,
             )
-            # Derive API credentials — call create_or_derive first, then set
-            creds = await self._run_sync(self._client.create_or_derive_api_creds)
-            self._client.set_api_creds(creds)
-            logger.info("CLOB client authenticated successfully")
+            # Derive L2 API credentials — call create_or_derive first, then set
+            try:
+                creds = await self._run_sync(self._client.create_or_derive_api_creds)
+                if creds:
+                    self._client.set_api_creds(creds)
+                    self._has_creds = True
+                    logger.info("CLOB client authenticated successfully (L2 creds set)")
+                else:
+                    logger.warning("L2 cred derivation returned None — balance/order calls will be skipped")
+            except Exception as cred_exc:
+                logger.error("L2 cred derivation failed: %s", cred_exc)
             return True
         except Exception as exc:
             logger.error("Failed to initialize CLOB client: %s", exc)
@@ -80,10 +94,18 @@ class ClobClient:
 
     async def get_balance(self) -> float:
         """Get USDC balance."""
+        if not self._has_creds:
+            logger.warning("get_balance skipped — no L2 credentials")
+            return 0.0
         try:
-            result = await self._run_sync(self._client.get_balance_allowance)
+            result = await self._run_sync(
+                self._client.get_balance_allowance,
+                self._settings.signature_type,
+            )
             if isinstance(result, dict):
-                return float(result.get("balance", 0))
+                balance = float(result.get("balance", 0))
+                logger.info("Balance: $%.2f USDC", balance)
+                return balance
             return 0.0
         except Exception as exc:
             logger.error("Failed to get balance: %s", exc)
