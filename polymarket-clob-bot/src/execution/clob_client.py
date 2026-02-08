@@ -100,13 +100,12 @@ class ClobClient:
             logger.warning("get_balance skipped — no L2 credentials")
             return 0.0
         try:
-            params = BalanceAllowanceParams(
-                asset_type=AssetType.COLLATERAL,
-                signature_type=self._settings.signature_type,
-            )
             result = await self._run_sync(
-                self._client.get_balance_allowance,
-                params,
+                lambda: self._client.get_balance_allowance(
+                    params=BalanceAllowanceParams(
+                        asset_type=AssetType.COLLATERAL,
+                    )
+                )
             )
             if isinstance(result, dict):
                 balance = float(result.get("balance", 0))
