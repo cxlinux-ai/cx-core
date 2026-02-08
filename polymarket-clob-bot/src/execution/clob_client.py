@@ -10,6 +10,7 @@ from functools import partial
 
 from py_clob_client.client import ClobClient as _PyClobClient
 from py_clob_client.clob_types import (
+    AssetType,
     BalanceAllowanceParams,
     MarketOrderArgs,
     OrderArgs,
@@ -100,6 +101,7 @@ class ClobClient:
             return 0.0
         try:
             params = BalanceAllowanceParams(
+                asset_type=AssetType.COLLATERAL,
                 signature_type=self._settings.signature_type,
             )
             result = await self._run_sync(
