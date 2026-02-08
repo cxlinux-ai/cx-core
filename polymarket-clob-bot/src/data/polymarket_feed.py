@@ -138,12 +138,23 @@ class PolymarketFeed:
             return
 
         tokens = m.get("tokens", [])
-        if len(tokens) < 2:
+        outcomes = m.get("outcomes", [])
+        clob_token_ids = m.get("clobTokenIds", [])
+
+        # Gamma API returns tokens as either a nested array or separate fields
+        if tokens and len(tokens) >= 2:
+            yes_token_id = next((t["token_id"] for t in tokens if t.get("outcome") in ("Yes", "Up")), None)
+            no_token_id = next((t["token_id"] for t in tokens if t.get("outcome") in ("No", "Down")), None)
+        elif len(outcomes) >= 2 and len(clob_token_ids) >= 2:
+            # Gamma API format: outcomes=["Up","Down"], clobTokenIds=["id1","id2"]
+            up_idx = next((i for i, o in enumerate(outcomes) if o in ("Yes", "Up")), None)
+            down_idx = next((i for i, o in enumerate(outcomes) if o in ("No", "Down")), None)
+            yes_token_id = clob_token_ids[up_idx] if up_idx is not None else None
+            no_token_id = clob_token_ids[down_idx] if down_idx is not None else None
+        else:
             return
 
-        yes_token = next((t for t in tokens if t.get("outcome") in ("Yes", "Up")), None)
-        no_token = next((t for t in tokens if t.get("outcome") in ("No", "Down")), None)
-        if not yes_token or not no_token:
+        if not yes_token_id or not no_token_id:
             return
 
         close_timestamp = float(slot_ts + 900)
@@ -151,8 +162,8 @@ class PolymarketFeed:
 
         market_info = MarketInfo(
             condition_id=condition_id,
-            yes_token_id=yes_token["token_id"],
-            no_token_id=no_token["token_id"],
+            yes_token_id=yes_token_id,
+            no_token_id=no_token_id,
             asset=asset,
             question=question,
             close_timestamp=close_timestamp,
