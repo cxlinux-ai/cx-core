@@ -108,8 +108,9 @@ class ClobClient:
                 )
             )
             if isinstance(result, dict):
-                balance = float(result.get("balance", 0))
-                logger.info("Balance: $%.2f USDC", balance)
+                raw = float(result.get("balance", 0))
+                balance = raw / 1_000_000  # USDC has 6 decimals
+                logger.info("Balance: $%.4f USDC (raw=%s)", balance, raw)
                 return balance
             return 0.0
         except Exception as exc:
