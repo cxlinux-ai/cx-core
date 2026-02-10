@@ -84,6 +84,8 @@ pub mod resize;
 mod selection;
 pub mod spawn;
 pub mod telemetry;
+// CX Terminal: AI Chat Modal
+pub mod ai_chat;
 pub mod webgpu;
 use crate::spawn::SpawnWhere;
 use prevcursor::PrevCursorPos;
@@ -913,6 +915,28 @@ impl TermWindow {
             myself.subscribe_to_pane_updates();
             myself.emit_window_event("window-config-reloaded", None);
             myself.emit_status_event();
+
+            // CX Terminal: Attempt daemon connection in background
+            {
+                let window_for_daemon = window.clone();
+                promise::spawn::spawn(async move {
+                    // Check if daemon is available before attempting connection
+                    if crate::cx_daemon::is_daemon_available() {
+                        log::info!("CX daemon detected, attempting connection...");
+                        window_for_daemon.notify(TermWindowNotif::Apply(Box::new(|tw| {
+                            match crate::cx_daemon::CXDaemonClient::new() {
+                                client => {
+                                    log::info!("CX daemon client created");
+                                    *tw.cx_daemon_client.borrow_mut() = Some(client);
+                                }
+                            }
+                        })));
+                    } else {
+                        log::debug!("CX daemon not available, using local agents only");
+                    }
+                })
+                .detach();
+            }
         }
 
         crate::update::start_update_checker();
@@ -1326,36 +1350,55 @@ impl TermWindow {
                         self.set_pane_cwd(pane_id, path);
                     }
                 }
+                // CX Terminal: Route AI explain to chat panel
                 MuxNotification::Alert {
                     alert: Alert::CXAIExplain { text },
                     pane_id,
                 } => {
                     if self.window_contains_pane(pane_id) {
-                        log::debug!("CX AI Explain request: {} (pane {})", text, pane_id);
-                        // TODO: Route to AI panel when implemented
+                        log::info!("CX AI Explain request: {} (pane {})", text, pane_id);
+                        let modal = crate::termwindow::ai_chat::AIChatModal::new_with_query(
+                            self,
+                            format!("Explain: {}", text),
+                        );
+                        self.set_modal(Rc::new(modal));
+                        window.invalidate();
                     }
                 }
+                // CX Terminal: Route AI suggest to chat panel
                 MuxNotification::Alert {
                     alert: Alert::CXAISuggest { query },
                     pane_id,
                 } => {
                     if self.window_contains_pane(pane_id) {
-                        log::debug!("CX AI Suggest request: {} (pane {})", query, pane_id);
-                        // TODO: Route to AI panel when implemented
+                        log::info!("CX AI Suggest request: {} (pane {})", query, pane_id);
+                        let modal = crate::termwindow::ai_chat::AIChatModal::new_with_query(
+                            self,
+                            format!("Suggest: {}", query),
+                        );
+                        self.set_modal(Rc::new(modal));
+                        window.invalidate();
                     }
                 }
+                // CX Terminal: Route agent requests to agent runtime
                 MuxNotification::Alert {
                     alert: Alert::CXAgentRequest { name, command },
                     pane_id,
                 } => {
                     if self.window_contains_pane(pane_id) {
-                        log::debug!(
+                        log::info!(
                             "CX Agent request: {} - {} (pane {})",
                             name,
                             command,
                             pane_id
                         );
-                        // TODO: Route to agent system when implemented
+                        let request = crate::agents::AgentRequest::new(&name, &command);
+                        let response = self.agent_runtime.borrow().handle(request);
+                        if response.success {
+                            log::info!("Agent '{}' succeeded: {}", name, response.result);
+                        } else if let Some(ref err) = response.error {
+                            log::warn!("Agent '{}' failed: {}", name, err);
+                        }
                     }
                 }
 
@@ -3279,20 +3322,30 @@ impl TermWindow {
             InputSelector(args) => self.show_input_selector(args),
             Confirmation(args) => self.show_confirmation(args),
 
-            // CX Terminal: Show Telemetry Dashboard
+            // CX Terminal: Toggle AI Chat Panel
             ToggleAIPanel => {
-                use telemetry::TelemetryPanel;
-                let pane_id = pane.pane_id();
-                let modal = TelemetryPanel::new(pane_id);
-                self.set_modal(Rc::new(modal));
+                if self.modal.borrow().is_some() {
+                    self.cancel_modal();
+                } else {
+                    let modal = crate::termwindow::ai_chat::AIChatModal::new(self);
+                    self.set_modal(Rc::new(modal));
+                }
             }
+            // CX Terminal: Explain selected text with AI
             AIExplainSelection => {
-                // AI explain feature is via cx CLI
-                log::info!("Use 'cx explain' in terminal for AI explanations");
+                let text = self.selection_text(&pane);
+                if !text.is_empty() {
+                    let modal = crate::termwindow::ai_chat::AIChatModal::new_with_query(
+                        self,
+                        format!("Explain: {}", text),
+                    );
+                    self.set_modal(Rc::new(modal));
+                }
             }
+            // CX Terminal: Generate command with AI
             AIGenerateCommand => {
-                // AI generate feature is via cx CLI
-                log::info!("Use 'cx' in terminal for AI command generation");
+                let modal = crate::termwindow::ai_chat::AIChatModal::new(self);
+                self.set_modal(Rc::new(modal));
             }
         };
         Ok(PerformAssignmentResult::Handled)

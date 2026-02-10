@@ -6,8 +6,11 @@
 
 use crate::blocks::RectF as BlockRectF;
 use crate::quad::TripleLayerQuadAllocator;
+use crate::termwindow::box_model::*;
+use crate::utilsprites::RenderMetrics;
 use ::window::RectF;
 use anyhow::Context;
+use config::{Dimension, DimensionContext};
 use mux::tab::PositionedPane;
 use window::color::LinearRgba;
 
@@ -233,6 +236,115 @@ impl crate::TermWindow {
                     )
                     .context("action button")?;
                 }
+            }
+        }
+
+        // Second pass: Render text in block headers
+        // We use the box model Element system for text rendering
+        drop(managers);
+
+        let font = self.fonts.title_font()?;
+        let metrics = RenderMetrics::with_font_metrics(&font.metrics());
+
+        let managers = self.block_managers.borrow();
+        let manager = match managers.get(&pane_id) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        for layout in &layouts {
+            let block = match manager.get(layout.block_id) {
+                Some(b) => b,
+                None => continue,
+            };
+
+            let header_rect = &layout.header_rect;
+
+            // Build text for the header
+            let collapse_indicator = if block.collapsed { "\u{25b6} " } else { "\u{25bc} " };
+            let command_text = if block.command.is_empty() { "(unknown)" } else { &block.command };
+            let duration_text = block.duration_display();
+
+            let display_text = format!("{}{}", collapse_indicator, command_text);
+
+            // Determine status color for the collapse indicator
+            let status_color = match block.state {
+                crate::blocks::BlockState::Running => config.running_color,
+                crate::blocks::BlockState::Success => config.success_color,
+                crate::blocks::BlockState::Failed => config.failure_color,
+                crate::blocks::BlockState::Interrupted => config.interrupted_color,
+            };
+
+            // Create text element for command
+            let cmd_element = Element::new(
+                &font,
+                ElementContent::Text(display_text),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: LinearRgba::TRANSPARENT.into(),
+                text: config.header_fg.into(),
+            })
+            .display(DisplayType::Inline);
+
+            // Create duration element (right-aligned)
+            let dur_element = Element::new(
+                &font,
+                ElementContent::Text(format!(" {}", duration_text)),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: LinearRgba::TRANSPARENT.into(),
+                text: status_color.mul_alpha(0.8).into(),
+            })
+            .display(DisplayType::Inline);
+
+            // Wrap in a container positioned at the header
+            let container = Element::new(
+                &font,
+                ElementContent::Children(vec![cmd_element, dur_element]),
+            )
+            .colors(ElementColors {
+                border: BorderColor::default(),
+                bg: LinearRgba::TRANSPARENT.into(),
+                text: config.header_fg.into(),
+            })
+            .padding(BoxDimension {
+                left: Dimension::Pixels(config.status_indicator_width + 8.0),
+                right: Dimension::Pixels(4.0),
+                top: Dimension::Pixels(2.0),
+                bottom: Dimension::Pixels(2.0),
+            })
+            .display(DisplayType::Block);
+
+            // Compute and render the element at the header position
+            if let Some(render_state) = self.render_state.as_ref() {
+                let computed = self.compute_element(
+                    &LayoutContext {
+                        height: DimensionContext {
+                            dpi: self.dimensions.dpi as f32,
+                            pixel_max: header_rect.height,
+                            pixel_cell: metrics.cell_size.height as f32,
+                        },
+                        width: DimensionContext {
+                            dpi: self.dimensions.dpi as f32,
+                            pixel_max: header_rect.width,
+                            pixel_cell: metrics.cell_size.width as f32,
+                        },
+                        bounds: euclid::rect(
+                            header_rect.x,
+                            header_rect.y,
+                            header_rect.width,
+                            header_rect.height,
+                        ),
+                        metrics: &metrics,
+                        gl_state: render_state,
+                        zindex: 10,
+                    },
+                    &container,
+                )?;
+
+                self.render_element(&computed, render_state, None)?;
             }
         }
 

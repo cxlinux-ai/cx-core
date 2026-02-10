@@ -340,6 +340,55 @@ impl DaemonResponse {
     }
 }
 
+// CX Terminal: Bridge between AI panel and daemon protocol contexts
+
+impl From<crate::ai::TerminalContext> for TerminalContext {
+    fn from(ai_ctx: crate::ai::TerminalContext) -> Self {
+        Self {
+            recent_commands: ai_ctx.recent_commands,
+            cwd: ai_ctx.cwd,
+            last_error: ai_ctx.last_error,
+            environment: ai_ctx.environment.into(),
+            terminal_id: None,
+            selection: None,
+        }
+    }
+}
+
+impl From<crate::ai::EnvironmentInfo> for EnvironmentInfo {
+    fn from(ai_env: crate::ai::EnvironmentInfo) -> Self {
+        Self {
+            os: ai_env.os,
+            shell: ai_env.shell,
+            user: ai_env.user,
+            hostname: ai_env.hostname,
+            git_info: None,
+        }
+    }
+}
+
+impl From<TerminalContext> for crate::ai::TerminalContext {
+    fn from(daemon_ctx: TerminalContext) -> Self {
+        Self {
+            recent_commands: daemon_ctx.recent_commands,
+            cwd: daemon_ctx.cwd,
+            last_error: daemon_ctx.last_error,
+            environment: daemon_ctx.environment.into(),
+        }
+    }
+}
+
+impl From<EnvironmentInfo> for crate::ai::EnvironmentInfo {
+    fn from(daemon_env: EnvironmentInfo) -> Self {
+        Self {
+            os: daemon_env.os,
+            shell: daemon_env.shell,
+            user: daemon_env.user,
+            hostname: daemon_env.hostname,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
