@@ -223,95 +223,187 @@ class PolymarketFeed:
         """Subscribe to orderbook channels for a single market on the live WebSocket."""
         if not self._ws:
             return
+        new_tokens = []
         for token_id in [market.yes_token_id, market.no_token_id]:
             if token_id not in self._subscribed_tokens:
-                try:
-                    sub_msg = json.dumps({
-                        "type": "subscribe",
-                        "channel": "orderbook",
-                        "market": token_id,
-                    })
-                    await self._ws.send(sub_msg)
-                    self._subscribed_tokens.add(token_id)
-                    logger.debug("Subscribed to orderbook: %s", token_id[:16])
-                except Exception as exc:
-                    logger.warning("Failed to subscribe %s: %s", token_id[:16], exc)
+                new_tokens.append(token_id)
+                self._subscribed_tokens.add(token_id)
+
+        if new_tokens:
+            try:
+                # Polymarket market channel format: {"assets_ids": [...], "type": "market"}
+                sub_msg = json.dumps({
+                    "assets_ids": new_tokens,
+                    "type": "market",
+                })
+                await self._ws.send(sub_msg)
+                logger.info("Subscribed to %d token orderbooks", len(new_tokens))
+            except Exception as exc:
+                logger.warning("Failed to subscribe tokens: %s", exc)
+                for t in new_tokens:
+                    self._subscribed_tokens.discard(t)
 
     async def _subscribe_active(self, ws: websockets.WebSocketClientProtocol) -> None:
         """Subscribe to orderbook channels for all active markets."""
         self._subscribed_tokens.clear()
+        all_tokens = []
         for cid, state in self._active_markets.items():
-            await self._subscribe_market(state.market)
+            all_tokens.append(state.market.yes_token_id)
+            all_tokens.append(state.market.no_token_id)
+            self._subscribed_tokens.add(state.market.yes_token_id)
+            self._subscribed_tokens.add(state.market.no_token_id)
+
+        if all_tokens:
+            try:
+                sub_msg = json.dumps({
+                    "assets_ids": all_tokens,
+                    "type": "market",
+                })
+                await ws.send(sub_msg)
+                logger.info("Subscribed to %d token orderbooks (bulk)", len(all_tokens))
+            except Exception as exc:
+                logger.warning("Failed to bulk subscribe: %s", exc)
 
     async def _consume(self, ws: websockets.WebSocketClientProtocol) -> None:
         async for raw in ws:
             try:
                 msg = json.loads(raw)
-                msg_type = msg.get("type", "")
-                if msg_type in ("book", "orderbook_update"):
-                    await self._handle_orderbook(msg)
-                elif msg_type == "trade":
+                event_type = msg.get("event_type", msg.get("type", ""))
+
+                if event_type == "book":
+                    await self._handle_book(msg)
+                elif event_type == "price_change":
+                    await self._handle_price_change(msg)
+                elif event_type == "last_trade_price":
                     await self._handle_trade(msg)
+                elif event_type in ("error",):
+                    logger.warning("Polymarket WS error: %s", msg)
             except Exception as exc:
                 logger.debug("Error parsing Polymarket message: %s", exc)
 
-    async def _handle_orderbook(self, msg: dict) -> None:
-        """Process orderbook snapshot or delta."""
-        market_id = msg.get("market", "")
+    def _find_market_side(self, asset_id: str) -> tuple[MarketState | None, str]:
+        """Find which market and side (yes/no) an asset_id belongs to."""
+        for cid, state in self._active_markets.items():
+            if asset_id == state.market.yes_token_id:
+                return state, "yes"
+            elif asset_id == state.market.no_token_id:
+                return state, "no"
+        return None, ""
+
+    @staticmethod
+    def _parse_book_levels(levels_raw: list) -> list[tuple[float, float]]:
+        """Parse bid/ask levels from Polymarket format.
+
+        Polymarket returns levels as either:
+        - {"price": "0.55", "size": "100"} (dict format)
+        - ["0.55", "100"] (array format)
+        """
+        levels: list[tuple[float, float]] = []
+        for item in levels_raw:
+            try:
+                if isinstance(item, dict):
+                    price = float(item.get("price", 0))
+                    size = float(item.get("size", 0))
+                elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                    price = float(item[0])
+                    size = float(item[1])
+                else:
+                    continue
+                if size > 0:
+                    levels.append((price, size))
+            except (ValueError, TypeError, IndexError):
+                continue
+        return levels
+
+    async def _handle_book(self, msg: dict) -> None:
+        """Process full orderbook snapshot (event_type=book)."""
+        asset_id = msg.get("asset_id", msg.get("market", ""))
+        state, side = self._find_market_side(asset_id)
+        if state is None:
+            return
+
+        now = time.time()
+        bids = self._parse_book_levels(msg.get("bids", []))
+        asks = self._parse_book_levels(msg.get("asks", []))
+
+        # Sort bids descending, asks ascending
+        bids.sort(key=lambda x: x[0], reverse=True)
+        asks.sort(key=lambda x: x[0])
+
+        if side == "yes":
+            state.yes_bids = bids or state.yes_bids
+            state.yes_asks = asks or state.yes_asks
+            if bids and asks:
+                state.yes_price = (bids[0][0] + asks[0][0]) / 2
+                logger.debug("Book update YES %s: bid=%.3f ask=%.3f mid=%.3f",
+                             state.market.asset.value, bids[0][0], asks[0][0], state.yes_price)
+        else:
+            state.no_bids = bids or state.no_bids
+            state.no_asks = asks or state.no_asks
+            if bids and asks:
+                state.no_price = (bids[0][0] + asks[0][0]) / 2
+                logger.debug("Book update NO %s: bid=%.3f ask=%.3f mid=%.3f",
+                             state.market.asset.value, bids[0][0], asks[0][0], state.no_price)
+
+        state.last_update = now
+
+        snapshot = OrderbookSnapshot(
+            timestamp=now,
+            source="polymarket",
+            asset=state.market.asset.value,
+            bids=bids,
+            asks=asks,
+        )
+        await self._store.add_orderbook(snapshot)
+
+    async def _handle_price_change(self, msg: dict) -> None:
+        """Process price change event (event_type=price_change)."""
+        changes = msg.get("price_changes", [msg])
         now = time.time()
 
-        # Find which market/side this belongs to
-        for cid, state in self._active_markets.items():
-            if market_id == state.market.yes_token_id:
-                side = "yes"
-            elif market_id == state.market.no_token_id:
-                side = "no"
+        for change in changes:
+            asset_id = change.get("asset_id", change.get("market", ""))
+            state, side = self._find_market_side(asset_id)
+            if state is None:
+                continue
+
+            # price_change events may include best_bid, best_ask, or price
+            best_bid = change.get("best_bid")
+            best_ask = change.get("best_ask")
+            price = change.get("price")
+
+            if best_bid is not None and best_ask is not None:
+                mid = (float(best_bid) + float(best_ask)) / 2
+            elif price is not None:
+                mid = float(price)
             else:
                 continue
 
-            bids_raw = msg.get("bids", [])
-            asks_raw = msg.get("asks", [])
-            bids = [(float(b["price"]), float(b["size"])) for b in bids_raw if float(b.get("size", 0)) > 0]
-            asks = [(float(a["price"]), float(a["size"])) for a in asks_raw if float(a.get("size", 0)) > 0]
-
             if side == "yes":
-                state.yes_bids = bids or state.yes_bids
-                state.yes_asks = asks or state.yes_asks
-                if bids and asks:
-                    state.yes_price = (bids[0][0] + asks[0][0]) / 2
+                state.yes_price = mid
             else:
-                state.no_bids = bids or state.no_bids
-                state.no_asks = asks or state.no_asks
-                if bids and asks:
-                    state.no_price = (bids[0][0] + asks[0][0]) / 2
+                state.no_price = mid
 
             state.last_update = now
-
-            # Store as orderbook snapshot
-            snapshot = OrderbookSnapshot(
-                timestamp=now,
-                source="polymarket",
-                asset=state.market.asset.value,
-                bids=bids,
-                asks=asks,
-            )
-            await self._store.add_orderbook(snapshot)
-            break
+            logger.debug("Price change %s %s: %.3f", side.upper(), state.market.asset.value, mid)
 
     async def _handle_trade(self, msg: dict) -> None:
-        """Process trade event."""
-        market_id = msg.get("market", "")
-        now = time.time()
+        """Process trade / last_trade_price event."""
+        asset_id = msg.get("asset_id", msg.get("market", ""))
+        state, side = self._find_market_side(asset_id)
+        if state is None:
+            return
 
-        for cid, state in self._active_markets.items():
-            if market_id in (state.market.yes_token_id, state.market.no_token_id):
-                trade = Trade(
-                    timestamp=now,
-                    source="polymarket",
-                    asset=state.market.asset.value,
-                    price=float(msg.get("price", 0)),
-                    quantity=float(msg.get("size", 0)),
-                    is_buyer_maker=msg.get("side", "") == "sell",
-                )
-                await self._store.add_trade(trade)
-                break
+        now = time.time()
+        price = float(msg.get("price", msg.get("last_trade_price", 0)))
+        size = float(msg.get("size", msg.get("amount", 0)))
+
+        trade = Trade(
+            timestamp=now,
+            source="polymarket",
+            asset=state.market.asset.value,
+            price=price,
+            quantity=size,
+            is_buyer_maker=msg.get("side", "") == "sell",
+        )
+        await self._store.add_trade(trade)
