@@ -144,6 +144,18 @@ class PolymarketFeed:
         outcomes = m.get("outcomes", [])
         clob_token_ids = m.get("clobTokenIds", [])
 
+        # Gamma API sometimes returns these as JSON strings instead of arrays
+        if isinstance(outcomes, str):
+            try:
+                outcomes = json.loads(outcomes)
+            except (json.JSONDecodeError, TypeError):
+                outcomes = []
+        if isinstance(clob_token_ids, str):
+            try:
+                clob_token_ids = json.loads(clob_token_ids)
+            except (json.JSONDecodeError, TypeError):
+                clob_token_ids = []
+
         # Gamma API returns tokens as either a nested array or separate fields
         if tokens and len(tokens) >= 2:
             yes_token_id = next((t["token_id"] for t in tokens if t.get("outcome") in ("Yes", "Up")), None)
