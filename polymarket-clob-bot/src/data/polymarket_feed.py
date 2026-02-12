@@ -265,9 +265,19 @@ class PolymarketFeed:
                 logger.warning("Failed to bulk subscribe: %s", exc)
 
     async def _consume(self, ws: websockets.WebSocketClientProtocol) -> None:
+        msg_count = 0
         async for raw in ws:
             try:
                 msg = json.loads(raw)
+                msg_count += 1
+
+                # Log first 10 raw messages to diagnose format
+                if msg_count <= 10:
+                    # Truncate large fields for readability
+                    log_msg = {k: (str(v)[:80] + "..." if len(str(v)) > 80 else v)
+                               for k, v in msg.items()}
+                    logger.info("WS msg #%d: %s", msg_count, json.dumps(log_msg, default=str))
+
                 event_type = msg.get("event_type", msg.get("type", ""))
 
                 if event_type == "book":
@@ -276,10 +286,10 @@ class PolymarketFeed:
                     await self._handle_price_change(msg)
                 elif event_type == "last_trade_price":
                     await self._handle_trade(msg)
-                elif event_type in ("error",):
-                    logger.warning("Polymarket WS error: %s", msg)
+                elif event_type not in ("", "subscribed"):
+                    logger.info("Unhandled WS event_type=%s keys=%s", event_type, list(msg.keys()))
             except Exception as exc:
-                logger.debug("Error parsing Polymarket message: %s", exc)
+                logger.warning("Error parsing Polymarket message: %s raw=%s", exc, raw[:200])
 
     def _find_market_side(self, asset_id: str) -> tuple[MarketState | None, str]:
         """Find which market and side (yes/no) an asset_id belongs to."""
