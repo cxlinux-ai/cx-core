@@ -47,6 +47,7 @@ class PolymarketFeed:
         self._running = False
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._active_markets: dict[str, MarketState] = {}
+        self._subscribed_tokens: set[str] = set()
         self._reconnect_delay = 1.0
 
     @property
@@ -191,6 +192,9 @@ class PolymarketFeed:
         logger.info("Discovered 15m market: %s [%s] closes at %.0f",
                      question[:60], asset.value, close_timestamp)
 
+        # Subscribe on the live WebSocket if connected
+        await self._subscribe_market(market_info)
+
     # --- WebSocket feed ---
 
     async def _ws_loop(self) -> None:
@@ -215,16 +219,29 @@ class PolymarketFeed:
                 await asyncio.sleep(self._reconnect_delay)
                 self._reconnect_delay = min(self._reconnect_delay * 2, 60.0)
 
+    async def _subscribe_market(self, market: MarketInfo) -> None:
+        """Subscribe to orderbook channels for a single market on the live WebSocket."""
+        if not self._ws:
+            return
+        for token_id in [market.yes_token_id, market.no_token_id]:
+            if token_id not in self._subscribed_tokens:
+                try:
+                    sub_msg = json.dumps({
+                        "type": "subscribe",
+                        "channel": "orderbook",
+                        "market": token_id,
+                    })
+                    await self._ws.send(sub_msg)
+                    self._subscribed_tokens.add(token_id)
+                    logger.debug("Subscribed to orderbook: %s", token_id[:16])
+                except Exception as exc:
+                    logger.warning("Failed to subscribe %s: %s", token_id[:16], exc)
+
     async def _subscribe_active(self, ws: websockets.WebSocketClientProtocol) -> None:
         """Subscribe to orderbook channels for all active markets."""
+        self._subscribed_tokens.clear()
         for cid, state in self._active_markets.items():
-            for token_id in [state.market.yes_token_id, state.market.no_token_id]:
-                sub_msg = json.dumps({
-                    "type": "subscribe",
-                    "channel": "orderbook",
-                    "market": token_id,
-                })
-                await ws.send(sub_msg)
+            await self._subscribe_market(state.market)
 
     async def _consume(self, ws: websockets.WebSocketClientProtocol) -> None:
         async for raw in ws:
