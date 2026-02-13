@@ -1,0 +1,23 @@
+# Core
+aiohttp>=3.9
+websockets>=12.0
+python-dotenv>=1.0
+
+# Polymarket
+py-clob-client>=0.9
+
+# Telegram
+python-telegram-bot>=20.0
+
+# AI / LLM
+anthropic>=0.40
+
+# Data / Analysis
+numpy>=1.24
+matplotlib>=3.7
+
+# Web onboarding
+flask>=3.0
+
+# Blockchain
+web3>=6.0
