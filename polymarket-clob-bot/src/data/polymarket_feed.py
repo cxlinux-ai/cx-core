@@ -1,4 +1,4 @@
-"""Polymarket CLOB WebSocket feed — orderbook, trades, market events."""
+"""Polymarket CLOB feed — REST API polling for orderbook prices + Gamma API discovery."""
 
 from __future__ import annotations
 
@@ -9,15 +9,13 @@ import time
 from dataclasses import dataclass, field
 
 import aiohttp
-import websockets
-from websockets.exceptions import ConnectionClosed
 
 from config.markets import Asset, MarketConfig, MarketInfo
 from src.data.data_store import DataStore, OrderbookSnapshot, Trade
 
 logger = logging.getLogger(__name__)
 
-POLYMARKET_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+CLOB_API = "https://clob.polymarket.com"
 
 
 @dataclass
@@ -35,7 +33,9 @@ class MarketState:
 
 
 class PolymarketFeed:
-    """Connects to Polymarket CLOB WebSocket and Gamma API for market discovery."""
+    """Discovers 15-min markets via Gamma API, polls CLOB REST for prices."""
+
+    PRICE_POLL_INTERVAL = 5.0  # Seconds between orderbook polls
 
     def __init__(
         self,
@@ -45,27 +45,31 @@ class PolymarketFeed:
         self._store = store
         self._config = market_config or MarketConfig()
         self._running = False
-        self._ws: websockets.WebSocketClientProtocol | None = None
         self._active_markets: dict[str, MarketState] = {}
-        self._subscribed_tokens: set[str] = set()
-        self._reconnect_delay = 1.0
+        self._session: aiohttp.ClientSession | None = None
 
     @property
     def active_markets(self) -> dict[str, MarketState]:
         return dict(self._active_markets)
 
     async def start(self) -> None:
-        """Run market discovery and WebSocket feed concurrently."""
+        """Run market discovery and price polling concurrently."""
         self._running = True
-        await asyncio.gather(
-            self._discovery_loop(),
-            self._ws_loop(),
-        )
+        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        try:
+            await asyncio.gather(
+                self._discovery_loop(),
+                self._price_poll_loop(),
+            )
+        finally:
+            if self._session:
+                await self._session.close()
 
     async def stop(self) -> None:
         self._running = False
-        if self._ws:
-            await self._ws.close()
+        if self._session:
+            await self._session.close()
+            self._session = None
 
     # CX Terminal: Slug-based 15-min market discovery
     # 15-min crypto markets use slugs like "btc-updown-15m-{timestamp}"
@@ -192,113 +196,137 @@ class PolymarketFeed:
         logger.info("Discovered 15m market: %s [%s] closes at %.0f",
                      question[:60], asset.value, close_timestamp)
 
-        # Subscribe on the live WebSocket if connected
-        await self._subscribe_market(market_info)
+    # --- REST API price polling ---
 
-    # --- WebSocket feed ---
+    async def _price_poll_loop(self) -> None:
+        """Poll CLOB REST API for orderbook prices on active markets."""
+        # Wait for discovery to populate some markets
+        await asyncio.sleep(3)
+        logger.info("Polymarket price polling started (every %.0fs)", self.PRICE_POLL_INTERVAL)
 
-    async def _ws_loop(self) -> None:
-        """Connect to Polymarket WebSocket and consume orderbook updates."""
         while self._running:
             try:
-                logger.info("Connecting to Polymarket WebSocket")
-                async with websockets.connect(
-                    POLYMARKET_WS_URL, ping_interval=30, ping_timeout=15
-                ) as ws:
-                    self._ws = ws
-                    self._reconnect_delay = 1.0
-                    logger.info("Polymarket WebSocket connected — monitoring 15-min markets")
-                    await self._subscribe_active(ws)
-                    await self._consume(ws)
-            except ConnectionClosed as exc:
-                logger.warning("Polymarket WebSocket closed: %s", exc)
+                await self._poll_all_books()
             except Exception as exc:
-                logger.error("Polymarket WebSocket error: %s", exc)
+                logger.error("Price poll error: %s", exc)
+            await asyncio.sleep(self.PRICE_POLL_INTERVAL)
 
-            if self._running:
-                await asyncio.sleep(self._reconnect_delay)
-                self._reconnect_delay = min(self._reconnect_delay * 2, 60.0)
-
-    async def _subscribe_market(self, market: MarketInfo) -> None:
-        """Subscribe to orderbook channels for a single market on the live WebSocket."""
-        if not self._ws:
+    async def _poll_all_books(self) -> None:
+        """Fetch orderbooks for all active market tokens via CLOB REST API."""
+        if not self._active_markets or not self._session:
             return
-        new_tokens = []
-        for token_id in [market.yes_token_id, market.no_token_id]:
-            if token_id not in self._subscribed_tokens:
-                new_tokens.append(token_id)
-                self._subscribed_tokens.add(token_id)
 
-        if new_tokens:
-            try:
-                # Polymarket market channel format: {"assets_ids": [...], "type": "market"}
-                sub_msg = json.dumps({
-                    "assets_ids": new_tokens,
-                    "type": "market",
-                })
-                await self._ws.send(sub_msg)
-                logger.info("Subscribed to %d token orderbooks", len(new_tokens))
-            except Exception as exc:
-                logger.warning("Failed to subscribe tokens: %s", exc)
-                for t in new_tokens:
-                    self._subscribed_tokens.discard(t)
-
-    async def _subscribe_active(self, ws: websockets.WebSocketClientProtocol) -> None:
-        """Subscribe to orderbook channels for all active markets."""
-        self._subscribed_tokens.clear()
-        all_tokens = []
+        # Collect all token IDs to fetch
+        token_requests = []
         for cid, state in self._active_markets.items():
-            all_tokens.append(state.market.yes_token_id)
-            all_tokens.append(state.market.no_token_id)
-            self._subscribed_tokens.add(state.market.yes_token_id)
-            self._subscribed_tokens.add(state.market.no_token_id)
+            token_requests.append({"token_id": state.market.yes_token_id})
+            token_requests.append({"token_id": state.market.no_token_id})
 
-        if all_tokens:
-            try:
-                sub_msg = json.dumps({
-                    "assets_ids": all_tokens,
-                    "type": "market",
-                })
-                await ws.send(sub_msg)
-                logger.info("Subscribed to %d token orderbooks (bulk)", len(all_tokens))
-            except Exception as exc:
-                logger.warning("Failed to bulk subscribe: %s", exc)
+        # Use batch endpoint POST /books (up to 15 per request)
+        try:
+            async with self._session.post(
+                f"{CLOB_API}/books",
+                json=token_requests,
+                headers={"Content-Type": "application/json"},
+            ) as resp:
+                if resp.status != 200:
+                    # Fall back to individual requests
+                    logger.debug("Batch /books returned %d, falling back to individual", resp.status)
+                    await self._poll_individual_books()
+                    return
+                books = await resp.json()
+        except Exception as exc:
+            logger.debug("Batch /books failed: %s — falling back to individual", exc)
+            await self._poll_individual_books()
+            return
 
-    async def _consume(self, ws: websockets.WebSocketClientProtocol) -> None:
-        msg_count = 0
-        async for raw in ws:
-            try:
-                msg = json.loads(raw)
-                msg_count += 1
+        # Process batch response
+        if isinstance(books, list):
+            for book in books:
+                await self._process_book(book)
+        elif isinstance(books, dict):
+            # Might be a single book or keyed by token_id
+            if "asset_id" in books:
+                await self._process_book(books)
+            else:
+                for token_id, book in books.items():
+                    if isinstance(book, dict):
+                        await self._process_book(book)
 
-                # Log first 10 raw messages to diagnose format
-                if msg_count <= 10:
-                    # Truncate large fields for readability
-                    log_msg = {k: (str(v)[:80] + "..." if len(str(v)) > 80 else v)
-                               for k, v in msg.items()}
-                    logger.info("WS msg #%d: %s", msg_count, json.dumps(log_msg, default=str))
+    async def _poll_individual_books(self) -> None:
+        """Fallback: fetch each token's orderbook individually."""
+        if not self._session:
+            return
 
-                event_type = msg.get("event_type", msg.get("type", ""))
-
-                if event_type == "book":
-                    await self._handle_book(msg)
-                elif event_type == "price_change":
-                    await self._handle_price_change(msg)
-                elif event_type == "last_trade_price":
-                    await self._handle_trade(msg)
-                elif event_type not in ("", "subscribed"):
-                    logger.info("Unhandled WS event_type=%s keys=%s", event_type, list(msg.keys()))
-            except Exception as exc:
-                logger.warning("Error parsing Polymarket message: %s raw=%s", exc, raw[:200])
-
-    def _find_market_side(self, asset_id: str) -> tuple[MarketState | None, str]:
-        """Find which market and side (yes/no) an asset_id belongs to."""
         for cid, state in self._active_markets.items():
-            if asset_id == state.market.yes_token_id:
-                return state, "yes"
-            elif asset_id == state.market.no_token_id:
-                return state, "no"
-        return None, ""
+            for token_id in [state.market.yes_token_id, state.market.no_token_id]:
+                try:
+                    async with self._session.get(
+                        f"{CLOB_API}/book",
+                        params={"token_id": token_id},
+                    ) as resp:
+                        if resp.status == 200:
+                            book = await resp.json()
+                            await self._process_book(book)
+                except Exception as exc:
+                    logger.debug("Individual /book failed for %s: %s", token_id[:16], exc)
+
+    async def _process_book(self, book: dict) -> None:
+        """Process a single orderbook response and update market state."""
+        asset_id = book.get("asset_id", book.get("market", ""))
+        if not asset_id:
+            return
+
+        # Find which market and side
+        state: MarketState | None = None
+        side = ""
+        for cid, s in self._active_markets.items():
+            if asset_id == s.market.yes_token_id:
+                state, side = s, "yes"
+                break
+            elif asset_id == s.market.no_token_id:
+                state, side = s, "no"
+                break
+
+        if state is None:
+            return
+
+        now = time.time()
+        bids = self._parse_book_levels(book.get("bids", []))
+        asks = self._parse_book_levels(book.get("asks", []))
+
+        # Sort bids descending, asks ascending
+        bids.sort(key=lambda x: x[0], reverse=True)
+        asks.sort(key=lambda x: x[0])
+
+        if side == "yes":
+            state.yes_bids = bids or state.yes_bids
+            state.yes_asks = asks or state.yes_asks
+            if bids and asks:
+                state.yes_price = (bids[0][0] + asks[0][0]) / 2
+        else:
+            state.no_bids = bids or state.no_bids
+            state.no_asks = asks or state.no_asks
+            if bids and asks:
+                state.no_price = (bids[0][0] + asks[0][0]) / 2
+
+        state.last_update = now
+
+        if bids and asks:
+            logger.info("Book %s %s: bid=%.3f ask=%.3f mid=%.3f",
+                        side.upper(), state.market.asset.value,
+                        bids[0][0], asks[0][0],
+                        state.yes_price if side == "yes" else state.no_price)
+
+        # Store snapshot
+        snapshot = OrderbookSnapshot(
+            timestamp=now,
+            source="polymarket",
+            asset=state.market.asset.value,
+            bids=bids,
+            asks=asks,
+        )
+        await self._store.add_orderbook(snapshot)
 
     @staticmethod
     def _parse_book_levels(levels_raw: list) -> list[tuple[float, float]]:
@@ -324,96 +352,3 @@ class PolymarketFeed:
             except (ValueError, TypeError, IndexError):
                 continue
         return levels
-
-    async def _handle_book(self, msg: dict) -> None:
-        """Process full orderbook snapshot (event_type=book)."""
-        asset_id = msg.get("asset_id", msg.get("market", ""))
-        state, side = self._find_market_side(asset_id)
-        if state is None:
-            return
-
-        now = time.time()
-        bids = self._parse_book_levels(msg.get("bids", []))
-        asks = self._parse_book_levels(msg.get("asks", []))
-
-        # Sort bids descending, asks ascending
-        bids.sort(key=lambda x: x[0], reverse=True)
-        asks.sort(key=lambda x: x[0])
-
-        if side == "yes":
-            state.yes_bids = bids or state.yes_bids
-            state.yes_asks = asks or state.yes_asks
-            if bids and asks:
-                state.yes_price = (bids[0][0] + asks[0][0]) / 2
-                logger.debug("Book update YES %s: bid=%.3f ask=%.3f mid=%.3f",
-                             state.market.asset.value, bids[0][0], asks[0][0], state.yes_price)
-        else:
-            state.no_bids = bids or state.no_bids
-            state.no_asks = asks or state.no_asks
-            if bids and asks:
-                state.no_price = (bids[0][0] + asks[0][0]) / 2
-                logger.debug("Book update NO %s: bid=%.3f ask=%.3f mid=%.3f",
-                             state.market.asset.value, bids[0][0], asks[0][0], state.no_price)
-
-        state.last_update = now
-
-        snapshot = OrderbookSnapshot(
-            timestamp=now,
-            source="polymarket",
-            asset=state.market.asset.value,
-            bids=bids,
-            asks=asks,
-        )
-        await self._store.add_orderbook(snapshot)
-
-    async def _handle_price_change(self, msg: dict) -> None:
-        """Process price change event (event_type=price_change)."""
-        changes = msg.get("price_changes", [msg])
-        now = time.time()
-
-        for change in changes:
-            asset_id = change.get("asset_id", change.get("market", ""))
-            state, side = self._find_market_side(asset_id)
-            if state is None:
-                continue
-
-            # price_change events may include best_bid, best_ask, or price
-            best_bid = change.get("best_bid")
-            best_ask = change.get("best_ask")
-            price = change.get("price")
-
-            if best_bid is not None and best_ask is not None:
-                mid = (float(best_bid) + float(best_ask)) / 2
-            elif price is not None:
-                mid = float(price)
-            else:
-                continue
-
-            if side == "yes":
-                state.yes_price = mid
-            else:
-                state.no_price = mid
-
-            state.last_update = now
-            logger.debug("Price change %s %s: %.3f", side.upper(), state.market.asset.value, mid)
-
-    async def _handle_trade(self, msg: dict) -> None:
-        """Process trade / last_trade_price event."""
-        asset_id = msg.get("asset_id", msg.get("market", ""))
-        state, side = self._find_market_side(asset_id)
-        if state is None:
-            return
-
-        now = time.time()
-        price = float(msg.get("price", msg.get("last_trade_price", 0)))
-        size = float(msg.get("size", msg.get("amount", 0)))
-
-        trade = Trade(
-            timestamp=now,
-            source="polymarket",
-            asset=state.market.asset.value,
-            price=price,
-            quantity=size,
-            is_buyer_maker=msg.get("side", "") == "sell",
-        )
-        await self._store.add_trade(trade)
