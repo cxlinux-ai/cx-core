@@ -161,10 +161,13 @@ class LateEntryStrategy:
 
         if should_trade:
             leader_price = max(yes_price, no_price)
+            # Use the price of the side we're buying as entry price for Kelly odds
+            entry_price = yes_price if signal.direction == Direction.BUY_YES else no_price
             position_size = self._risk.compute_position_size(
                 edge=signal.edge,
                 win_probability=edge_result.fair_value_yes if signal.direction == Direction.BUY_YES else edge_result.fair_value_no,
                 max_position=self._config.max_position_usdc,
+                entry_price=entry_price,
             )
             if position_size < 1.0:  # Minimum viable position
                 should_trade = False

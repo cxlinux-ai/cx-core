@@ -75,19 +75,20 @@ class RiskManager:
         edge: float,
         win_probability: float,
         max_position: float,
+        entry_price: float = 0.0,
     ) -> float:
         """Compute position size using fractional Kelly criterion.
 
         Kelly formula: f* = (bp - q) / b
-        where b = odds, p = win prob, q = 1 - p
+        where b = payout odds (1/entry_price - 1), p = win prob, q = 1 - p
         """
-        if edge <= 0 or win_probability <= 0.5:
+        if edge <= 0 or win_probability <= 0.01 or entry_price <= 0:
             return 0.0
 
-        # Kelly sizing
-        # For binary outcomes at Polymarket: payoff is 1/price - 1
-        # Simplified: edge-proportional sizing
-        b = (1.0 / win_probability) - 1.0  # odds
+        # Kelly sizing for binary prediction markets:
+        # b = payout odds at the market price we're buying at
+        # p = estimated true probability of winning (fair value)
+        b = (1.0 / entry_price) - 1.0  # actual payout odds
         q = 1.0 - win_probability
         kelly_fraction = (b * win_probability - q) / b if b > 0 else 0.0
 
