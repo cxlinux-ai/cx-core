@@ -17,8 +17,8 @@ CX Terminal is an **AI-native terminal emulator** built on WezTerm, specifically
 
 CX Terminal is **not** the "Cortex" system administration CLI tool. The following components are **not part of this repository**:
 
-- `cortex` command-line tool
-- `cortex wizard`, `cortex config`, `cortex install` commands
+- `cx` command-line tool
+- `cx wizard`, `cx config`, `cx install` commands
 - Python-based system administration scripts
 - Docker sandbox management
 - Package installation automation
@@ -56,12 +56,12 @@ GitHub issues should relate to:
 - Documentation updates
 - WezTerm integration bugs
 
-Issues referencing "cortex" CLI commands, Python files, or system administration features likely belong to a different repository or are outdated from a previous project iteration.
+Issues referencing "cx" CLI commands, Python files, or system administration features likely belong to a different repository or are outdated from a previous project iteration.
 
 ## Related Projects
 
 If you're looking for CX Linux system administration tools, they may be located in:
-- A separate `cortex` repository
+- A separate `cx` repository
 - The main CX Linux distribution repository
 - Integrated into the `cx-daemon` service
 

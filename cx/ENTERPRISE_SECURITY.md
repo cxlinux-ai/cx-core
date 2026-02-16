@@ -202,9 +202,9 @@ pip install cryptography>=41.0.0 rich>=13.0.0 psutil>=5.8.0
 # Automatic setup on first run
 manager = SystemAlertManager()
 # Creates:
-# - ~/.cortex/alerts.db (secure permissions)
-# - ~/.cortex/alert_encryption.key (secure permissions)
-# - ~/.cortex/alert_manager.log (audit log)
+# - ~/.cx/alerts.db (secure permissions)
+# - ~/.cx/alert_encryption.key (secure permissions)
+# - ~/.cx/alert_manager.log (audit log)
 ```
 
 ## 🧪 Testing
@@ -213,7 +213,7 @@ manager = SystemAlertManager()
 
 ```bash
 # Run comprehensive security tests
-cd ~/cortex
+cd ~/cx
 python3 -m pytest tests/test_system_alert_manager_enterprise.py -v
 
 # Test categories:
