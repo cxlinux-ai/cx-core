@@ -7,15 +7,15 @@ After analyzing the open issues in cxlinux-ai/cx, there's a clear mismatch betwe
 ## Issues to Close with Explanation
 
 ### Security Issues (Not Applicable)
-- **#671**: References `cortex/do_runner/diagnosis.py` - file doesn't exist in terminal emulator
+- **#671**: References `cx/do_runner/diagnosis.py` - file doesn't exist in terminal emulator
 - **#674**: References `cli.py` and `docker_sandbox.py` - files don't exist in terminal emulator
 
 ### CLI/System Admin Issues (Not Applicable)
-- **#547**: API key reconfiguration wizard for "cortex wizard" - not part of terminal emulator
-- **#371**: Offline mode export for "CORTEX_PROVIDER" - not part of terminal emulator
-- **#267**: Tiered approval modes for "cortex config" - not part of terminal emulator
-- **#51**: Real-time system health monitor for "cortex monitor" - not part of terminal emulator
-- **#445**: Network config validator for "cortex" tool - not part of terminal emulator
+- **#547**: API key reconfiguration wizard for "cx wizard" - not part of terminal emulator
+- **#371**: Offline mode export for "CX_PROVIDER" - not part of terminal emulator
+- **#267**: Tiered approval modes for "cx config" - not part of terminal emulator
+- **#51**: Real-time system health monitor for "cx monitor" - not part of terminal emulator
+- **#445**: Network config validator for "cx" tool - not part of terminal emulator
 
 ### Documentation Issue (Needs Adaptation)
 - **#619**: BSL license documentation - relevant but needs adaptation for CX Terminal context
@@ -40,7 +40,7 @@ If system administration features are desired in the terminal:
 ```
 This issue references the "Cortex" CLI system administration tool, but this repository contains CX Terminal - a Rust-based terminal emulator built on WezTerm.
 
-The files/commands referenced in this issue (cortex wizard, cli.py, etc.) do not exist in the current codebase.
+The files/commands referenced in this issue (cx wizard, cli.py, etc.) do not exist in the current codebase.
 
 See docs/PROJECT_SCOPE.md for clarification of what CX Terminal includes.
 
