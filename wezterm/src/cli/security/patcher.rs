@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) 2026 CX Linux
  * Licensed under the Business Source License 1.1
  * You may not use this file except in compliance with the License.
