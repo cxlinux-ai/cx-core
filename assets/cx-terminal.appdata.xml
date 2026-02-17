@@ -2,13 +2,13 @@
 <component type="desktop-application">
   <content_rating type="oars-1.0" />
   <id>org.cxlinux.cx-terminal</id>
-  <metadata_license>CC0-1.0</metadata_license>
-  <project_license>BSL-1.1 AND MIT</project_license>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
   <name>CX Terminal</name>
-  <summary>AI-native GPU-accelerated terminal for CX Linux</summary>
+  <summary>A GPU-accelerated cross-platform terminal emulator and multiplexer</summary>
   <description>
     <p>
-      CX Terminal is an AI-native terminal emulator with support for modern features such as
+      CX Terminal is a terminal emulator with support for modern features such as
       fonts with ligatures, hyperlinks, multiple windows, tabs and split panes.
     </p>
 
@@ -18,24 +18,65 @@
     </p>
 
     <p>
-      Built for CX Linux with AI integration, voice commands, and
-      seamless integration with the CX ecosystem.
+      Integrated ssh allows using multiple tabs and panes without requiring
+      tmux to be installed on the remote host, and remote CX Terminal multiplexer
+      support allows tmux+mosh style workflows without using tmux or mosh,
+      while providing a fully native GUI locally.
     </p>
   </description>
 
-  <launchable type="desktop-id">org.cxlinux.cx-terminal.desktop</launchable>
+  <launchable type="desktop-id">cx-terminal.desktop</launchable>
 
-  <url type="homepage">https://cxlinux.com/</url>
+  <url type="homepage">https://cxlinux.org/cx-terminal</url>
+  <url type="help">https://cxlinux.org/cx-terminal/docs</url>
   <url type="bugtracker">https://github.com/cxlinux/cx-terminal/issues</url>
+  <url type="donation">https://github.com/sponsors/cxlinux</url>
 
-  <developer_name>CX Linux</developer_name>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Use background image attachments</caption>
+      <image>https://wezterm.org/screenshots/wezterm-vday-screenshot.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Ligatures in VIM</caption>
+      <image>https://wezterm.org/screenshots/two.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Multiple windows, tabs and panes are supported</caption>
+      <video>https://wezterm.org/screenshots/wezterm-tabs.mp4</video>
+    </screenshot>
+    <screenshot>
+      <caption>Quickselect makes mouseless selection fast and convenient</caption>
+      <image>https://wezterm.org/screenshots/wezterm-quick-select.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Dynamically change color schemes via escape sequences</caption>
+      <video>https://wezterm.org/screenshots/wezterm-dynamic-colors.mp4</video>
+    </screenshot>
+    <screenshot>
+      <caption>Use gradients as background image attachments</caption>
+      <image>https://wezterm.org/screenshots/radial-gradient.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Compose multiple background layers with parallax scrolling</caption>
+      <video>https://wezterm.org/screenshots/wezterm-parallax-2.mp4</video>
+    </screenshot>
+    <screenshot>
+      <caption>Split the screen into panes and use mouse-less pane selection mode to navigate them</caption>
+      <image>https://wezterm.org/screenshots/pane-select.png</image>
+    </screenshot>
+  </screenshots>
+
+  <developer_name>Wez Furlong</developer_name>
 
   <releases>
-    <release version="0.1.0" date="2025-01-23">
+    <release version="20220807-113146-c2fee766" date="2022-08-07">
       <description>
         <p>
-          Initial release of CX Terminal, forked from WezTerm with
-          CX Linux branding and AI integration points.
+          This release of CX Terminal introduces GPU-accelerated rendering,
+          cross-platform support, tabbed and split-pane multiplexing, and
+          Lua-based configuration, along with performance improvements and
+          various bug fixes.
         </p>
       </description>
     </release>

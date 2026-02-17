@@ -106,7 +106,7 @@ async fn show_notif_impl(notif: ToastNotification) -> Result<(), Box<dyn std::er
         .notify(
             "wezterm",
             0,
-            "org.wezfurlong.wezterm",
+            "org.cxlinux.cx-terminal",
             &notif.title,
             &notif.message,
             if notif.url.is_some() {

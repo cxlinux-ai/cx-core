@@ -91,7 +91,7 @@ cargo build --release
 
 CX Terminal uses a distributed architecture to ensure low latency and high security:
 
-- **Frontend:** GPU-accelerated terminal core (based on WezTerm).
+- **Frontend:** GPU-accelerated terminal core (based on [WezTerm](https://github.com/wez/wezterm) by @wez).
 - **AI Panel:** Custom Rust-based UI for LLM orchestration.
 - **Daemon (cx-daemon):** A background service handling privileged OS tasks.
 - **IPC Layer:** 4-byte length-prefixed JSON-RPC over Unix sockets.
