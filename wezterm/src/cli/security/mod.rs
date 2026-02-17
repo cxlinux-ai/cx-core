@@ -223,7 +223,7 @@ impl std::str::FromStr for OutputFormat {
 }
 
 /// Patching strategy
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub enum PatchStrategy {
     /// Only patch critical vulnerabilities (CVSS >= 9.0)
     #[default]
@@ -253,7 +253,7 @@ impl std::str::FromStr for PatchStrategy {
 }
 
 /// Schedule frequency
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleFrequency {
     Daily,
     Weekly,
