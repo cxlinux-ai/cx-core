@@ -29,12 +29,12 @@ cargo build --release
 
 | Directory | Description |
 |-----------|-------------|
-| `wezterm-gui/src/ai/` | AI panel and LLM providers |
-| `wezterm-gui/src/blocks/` | Command blocks system |
-| `wezterm-gui/src/agents/` | CX Linux agent system |
-| `wezterm-gui/src/voice/` | Voice capture and transcription |
-| `wezterm-gui/src/learning/` | ML workflow learning |
-| `wezterm/src/cli/` | CLI commands (ask, install, setup, etc.) |
+| `cx-terminal-gui/src/ai/` | AI panel and LLM providers |
+| `cx-terminal-gui/src/blocks/` | Command blocks system |
+| `cx-terminal-gui/src/agents/` | CX Linux agent system |
+| `cx-terminal-gui/src/voice/` | Voice capture and transcription |
+| `cx-terminal-gui/src/learning/` | ML workflow learning |
+| `cx-terminal/src/cli/` | CLI commands (ask, install, setup, etc.) |
 | `term/` | Core terminal model (escape sequences, etc.) |
 | `config/` | Configuration and Lua bindings |
 | `shell-integration/` | Shell scripts for CX features |
@@ -72,13 +72,13 @@ When adding CX-specific features:
 
 ### AI Commands
 
-The AI CLI commands are in `wezterm/src/cli/`:
+The AI CLI commands are in `cx-terminal/src/cli/`:
 - `ask.rs` - Main AI query command
 - `shortcuts.rs` - Convenience commands (install, setup, what, fix, explain)
 
 ### Command Blocks
 
-The blocks system is in `wezterm-gui/src/blocks/`:
+The blocks system is in `cx-terminal-gui/src/blocks/`:
 - `block.rs` - Block data structure
 - `manager.rs` - Block lifecycle management
 - `parser.rs` - OSC sequence parsing

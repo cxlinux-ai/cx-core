@@ -16,12 +16,12 @@ mod daemonize;
 
 #[derive(Debug, Parser)]
 #[command(
-    about = "Wez's Terminal Emulator\nhttp://github.com/wezterm/wezterm",
+    about = "CX Terminal - AI-Native Terminal\nhttps://github.com/cxlinux-ai/cx",
     version = config::wezterm_version(),
     trailing_var_arg = true,
 )]
 struct Opt {
-    /// Skip loading wezterm.lua
+    /// Skip loading cx.lua or wezterm.lua
     #[arg(long, short = 'n')]
     skip_config: bool,
 
