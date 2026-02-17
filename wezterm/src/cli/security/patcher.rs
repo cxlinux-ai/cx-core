@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::process::Command;
 
+use super::database::{PatchRecord, PatchStatus, SecurityDatabase};
+use super::scanner::{self, ScanSummary, Severity, VulnerablePackage};
 use super::{PatchCommand, PatchStrategy};
-use super::scanner::{self, Severity, ScanSummary, VulnerablePackage};
-use super::database::{SecurityDatabase, PatchRecord, PatchStatus};
 
 /// Patch plan for a single package
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,10 +56,16 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
 
     // Load configuration
     let config = load_patcher_config()?;
-    let whitelist: HashSet<String> = cmd.whitelist.iter().cloned()
+    let whitelist: HashSet<String> = cmd
+        .whitelist
+        .iter()
+        .cloned()
         .chain(config.whitelist.iter().cloned())
         .collect();
-    let blacklist: HashSet<String> = cmd.blacklist.iter().cloned()
+    let blacklist: HashSet<String> = cmd
+        .blacklist
+        .iter()
+        .cloned()
         .chain(config.blacklist.iter().cloned())
         .collect();
 
@@ -110,7 +116,9 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
         }
 
         // Get highest severity
-        let max_severity = vp.vulnerabilities.iter()
+        let max_severity = vp
+            .vulnerabilities
+            .iter()
             .map(|v| &v.severity)
             .max()
             .cloned()
@@ -132,8 +140,12 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
         };
 
         if !should_patch && !whitelist.contains(&vp.package.name) {
-            println!("⏭️  Skipping {} ({} severity, strategy: {:?})",
-                vp.package.name, max_severity.label(), cmd.strategy);
+            println!(
+                "⏭️  Skipping {} ({} severity, strategy: {:?})",
+                vp.package.name,
+                max_severity.label(),
+                cmd.strategy
+            );
             result.skipped += 1;
             continue;
         }
@@ -143,10 +155,16 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
 
         if let Some(ref target) = target_version {
             // Check if fix version is available
-            let has_fix = vp.vulnerabilities.iter()
-                .any(|v| v.fixed_version.as_ref().map(|f| target >= f).unwrap_or(false));
+            let has_fix = vp.vulnerabilities.iter().any(|v| {
+                v.fixed_version
+                    .as_ref()
+                    .map(|f| target >= f)
+                    .unwrap_or(false)
+            });
 
-            let vuln_ids: Vec<String> = vp.vulnerabilities.iter()
+            let vuln_ids: Vec<String> = vp
+                .vulnerabilities
+                .iter()
                 .flat_map(|v| {
                     if !v.aliases.is_empty() {
                         v.aliases.clone()
@@ -163,10 +181,15 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
                 vulnerabilities_fixed: vuln_ids,
                 severity: max_severity,
                 safe_to_apply: has_fix,
-                reason: if has_fix { None } else { Some("Update may not fully fix vulnerability".into()) },
+                reason: if has_fix {
+                    None
+                } else {
+                    Some("Update may not fully fix vulnerability".into())
+                },
             };
 
-            println!("{} {} {} → {}",
+            println!(
+                "{} {} {} → {}",
                 max_severity.emoji(),
                 plan.package_name,
                 plan.current_version,
@@ -203,7 +226,10 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
     if cmd.apply {
         // Confirm unless --yes
         if !cmd.yes {
-            println!("⚠️  This will modify {} packages. Continue? [y/N] ", result.planned);
+            println!(
+                "⚠️  This will modify {} packages. Continue? [y/N] ",
+                result.planned
+            );
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if !input.trim().eq_ignore_ascii_case("y") {
@@ -255,7 +281,9 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
         }
 
         println!();
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
         println!("✅ Patching complete:");
         println!("   Applied: {}", result.applied);
         println!("   Failed:  {}", result.failed);
@@ -269,7 +297,10 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
         }
     } else {
         println!("ℹ️  Run with --apply to execute these patches.");
-        println!("   Example: cx security patch --scan-and-patch --strategy {:?} --apply", cmd.strategy);
+        println!(
+            "   Example: cx security patch --scan-and-patch --strategy {:?} --apply",
+            cmd.strategy
+        );
     }
 
     Ok(())
@@ -278,9 +309,7 @@ pub fn run_patch(cmd: PatchCommand) -> Result<()> {
 /// Get available update version for a package
 fn get_available_update(package_name: &str) -> Result<Option<String>> {
     // First, update package cache (silently)
-    let _ = Command::new("apt-get")
-        .args(["update", "-qq"])
-        .output();
+    let _ = Command::new("apt-get").args(["update", "-qq"]).output();
 
     // Check for available updates
     let output = Command::new("apt-cache")
@@ -312,9 +341,7 @@ fn get_available_update(package_name: &str) -> Result<Option<String>> {
 
     // Return candidate if it's different from installed
     match (candidate_version, installed_version) {
-        (Some(candidate), Some(installed)) if candidate != installed => {
-            Ok(Some(candidate))
-        }
+        (Some(candidate), Some(installed)) if candidate != installed => Ok(Some(candidate)),
         _ => Ok(None),
     }
 }
@@ -428,15 +455,18 @@ fn load_patcher_config() -> Result<PatcherConfig> {
 /// Rollback a previously applied patch
 pub fn rollback_patch(patch_id: &str) -> Result<()> {
     let db = SecurityDatabase::open()?;
-    let patch = db.get_patch(patch_id)?
+    let patch = db
+        .get_patch(patch_id)?
         .ok_or_else(|| anyhow::anyhow!("Patch record not found: {}", patch_id))?;
 
     if !patch.rollback_available {
         anyhow::bail!("Rollback not available for this patch");
     }
 
-    println!("🔄 Rolling back {} from {} to {}",
-        patch.package_name, patch.to_version, patch.from_version);
+    println!(
+        "🔄 Rolling back {} from {} to {}",
+        patch.package_name, patch.to_version, patch.from_version
+    );
 
     // Install the previous version
     let status = Command::new("apt-get")

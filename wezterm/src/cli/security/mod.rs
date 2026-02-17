@@ -36,13 +36,13 @@
 //! cx security schedule create monthly-patch --frequency monthly --enable-patch
 //! ```
 
-pub mod scanner;
-pub mod patcher;
-pub mod scheduler;
 pub mod database;
+pub mod patcher;
+pub mod scanner;
+pub mod scheduler;
 
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
 /// Security vulnerability management commands
 #[derive(Debug, Parser, Clone)]
@@ -214,7 +214,10 @@ impl std::str::FromStr for OutputFormat {
             "table" => Ok(OutputFormat::Table),
             "json" => Ok(OutputFormat::Json),
             "summary" => Ok(OutputFormat::Summary),
-            _ => Err(anyhow::anyhow!("Unknown format: {}. Use table, json, or summary", s)),
+            _ => Err(anyhow::anyhow!(
+                "Unknown format: {}. Use table, json, or summary",
+                s
+            )),
         }
     }
 }
@@ -241,7 +244,10 @@ impl std::str::FromStr for PatchStrategy {
             "high_and_above" | "high" => Ok(PatchStrategy::HighAndAbove),
             "all" => Ok(PatchStrategy::All),
             "automatic" | "auto" => Ok(PatchStrategy::Automatic),
-            _ => Err(anyhow::anyhow!("Unknown strategy: {}. Use critical_only, high_and_above, all, or automatic", s)),
+            _ => Err(anyhow::anyhow!(
+                "Unknown strategy: {}. Use critical_only, high_and_above, all, or automatic",
+                s
+            )),
         }
     }
 }
@@ -262,7 +268,10 @@ impl std::str::FromStr for ScheduleFrequency {
             "daily" => Ok(ScheduleFrequency::Daily),
             "weekly" => Ok(ScheduleFrequency::Weekly),
             "monthly" => Ok(ScheduleFrequency::Monthly),
-            _ => Err(anyhow::anyhow!("Unknown frequency: {}. Use daily, weekly, or monthly", s)),
+            _ => Err(anyhow::anyhow!(
+                "Unknown frequency: {}. Use daily, weekly, or monthly",
+                s
+            )),
         }
     }
 }

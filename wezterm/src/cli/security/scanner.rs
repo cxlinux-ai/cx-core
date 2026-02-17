@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
+use super::database::{ScanResult, VulnerabilityCache, VulnerabilityRecord};
 use super::{OutputFormat, ScanCommand, StatusCommand};
-use super::database::{VulnerabilityCache, ScanResult, VulnerabilityRecord};
 
 /// CVSS severity thresholds
 const CVSS_CRITICAL: f32 = 9.0;
@@ -129,8 +129,7 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>> {
         return get_packages_from_apt_cache();
     }
 
-    let file = fs::File::open(&dpkg_status)
-        .context("Failed to open /var/lib/dpkg/status")?;
+    let file = fs::File::open(&dpkg_status).context("Failed to open /var/lib/dpkg/status")?;
     let reader = BufReader::new(file);
 
     let mut packages = Vec::new();
@@ -145,8 +144,7 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>> {
         let line = line?;
 
         if line.is_empty() {
-            if !current_package.name.is_empty()
-                && current_package.status.contains("installed") {
+            if !current_package.name.is_empty() && current_package.status.contains("installed") {
                 packages.push(current_package.clone());
             }
             current_package = InstalledPackage {
@@ -170,8 +168,7 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>> {
     }
 
     // Don't forget the last package
-    if !current_package.name.is_empty()
-        && current_package.status.contains("installed") {
+    if !current_package.name.is_empty() && current_package.status.contains("installed") {
         packages.push(current_package);
     }
 
@@ -181,7 +178,10 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>> {
 /// Fallback: get packages from apt-cache
 fn get_packages_from_apt_cache() -> Result<Vec<InstalledPackage>> {
     let output = Command::new("dpkg-query")
-        .args(["-W", "-f=${Package}\t${Version}\t${Architecture}\t${Status}\n"])
+        .args([
+            "-W",
+            "-f=${Package}\t${Version}\t${Architecture}\t${Status}\n",
+        ])
         .output()
         .context("Failed to run dpkg-query")?;
 
@@ -211,11 +211,16 @@ fn get_packages_from_apt_cache() -> Result<Vec<InstalledPackage>> {
 }
 
 /// Query OSV API for vulnerabilities
-pub fn query_osv(package: &InstalledPackage, cache: &mut VulnerabilityCache) -> Result<Vec<Vulnerability>> {
+pub fn query_osv(
+    package: &InstalledPackage,
+    cache: &mut VulnerabilityCache,
+) -> Result<Vec<Vulnerability>> {
     // Check cache first
     let cache_key = format!("{}:{}", package.name, package.version);
     if let Some(cached) = cache.get(&cache_key) {
-        if cached.timestamp.elapsed().unwrap_or(Duration::MAX) < Duration::from_secs(CACHE_DURATION_SECS) {
+        if cached.timestamp.elapsed().unwrap_or(Duration::MAX)
+            < Duration::from_secs(CACHE_DURATION_SECS)
+        {
             return Ok(cached.vulnerabilities.clone());
         }
     }
@@ -258,23 +263,38 @@ fn parse_osv_response(response: &serde_json::Value) -> Vec<Vulnerability> {
 
     if let Some(vulns) = response.get("vulns").and_then(|v| v.as_array()) {
         for vuln in vulns {
-            let id = vuln.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let summary = vuln.get("summary").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let details = vuln.get("details").and_then(|v| v.as_str()).map(String::from);
+            let id = vuln
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let summary = vuln
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let details = vuln
+                .get("details")
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             // Extract CVSS score from severity array
             let (severity, cvss_score) = extract_severity(vuln);
 
             // Extract aliases (CVE numbers)
-            let aliases: Vec<String> = vuln.get("aliases")
+            let aliases: Vec<String> = vuln
+                .get("aliases")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter()
-                    .filter_map(|a| a.as_str().map(String::from))
-                    .collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|a| a.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             // Extract fixed version
-            let fixed_version = vuln.get("affected")
+            let fixed_version = vuln
+                .get("affected")
                 .and_then(|v| v.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|a| a.get("ranges"))
@@ -283,7 +303,8 @@ fn parse_osv_response(response: &serde_json::Value) -> Vec<Vulnerability> {
                 .and_then(|r| r.get("events"))
                 .and_then(|v| v.as_array())
                 .and_then(|events| {
-                    events.iter()
+                    events
+                        .iter()
                         .find(|e| e.get("fixed").is_some())
                         .and_then(|e| e.get("fixed"))
                         .and_then(|v| v.as_str())
@@ -291,15 +312,24 @@ fn parse_osv_response(response: &serde_json::Value) -> Vec<Vulnerability> {
                 });
 
             // Extract references
-            let references: Vec<String> = vuln.get("references")
+            let references: Vec<String> = vuln
+                .get("references")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter()
-                    .filter_map(|r| r.get("url").and_then(|u| u.as_str()).map(String::from))
-                    .collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|r| r.get("url").and_then(|u| u.as_str()).map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
 
-            let published = vuln.get("published").and_then(|v| v.as_str()).map(String::from);
-            let modified = vuln.get("modified").and_then(|v| v.as_str()).map(String::from);
+            let published = vuln
+                .get("published")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let modified = vuln
+                .get("modified")
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             vulnerabilities.push(Vulnerability {
                 id,
@@ -397,8 +427,13 @@ pub fn run_scan(cmd: ScanCommand) -> Result<()> {
         // Show progress
         if idx % progress_interval == 0 || idx == total_packages - 1 {
             let pct = ((idx + 1) as f32 / total_packages as f32 * 100.0) as usize;
-            print!("\r🔍 Scanning: {}/{} ({}%) | Vulnerabilities found: {}",
-                idx + 1, total_packages, pct, summary.vulnerabilities_found);
+            print!(
+                "\r🔍 Scanning: {}/{} ({}%) | Vulnerabilities found: {}",
+                idx + 1,
+                total_packages,
+                pct,
+                summary.vulnerabilities_found
+            );
             std::io::Write::flush(&mut std::io::stdout())?;
         }
 
@@ -415,7 +450,8 @@ pub fn run_scan(cmd: ScanCommand) -> Result<()> {
 
             match ureq::post(OSV_API_URL)
                 .set("Content-Type", "application/json")
-                .send_json(&query) {
+                .send_json(&query)
+            {
                 Ok(resp) => {
                     let body: serde_json::Value = resp.into_json()?;
                     parse_osv_response(&body)
@@ -429,7 +465,8 @@ pub fn run_scan(cmd: ScanCommand) -> Result<()> {
         summary.scanned_packages += 1;
 
         // Filter by severity if requested
-        let filtered_vulns: Vec<_> = vulns.into_iter()
+        let filtered_vulns: Vec<_> = vulns
+            .into_iter()
             .filter(|v| {
                 if cmd.critical {
                     v.severity == Severity::Critical
@@ -500,7 +537,10 @@ fn print_summary(summary: &ScanSummary) {
     println!("   🟢 Low:      {}", summary.low_count);
     println!();
     println!("   Total packages scanned: {}", summary.scanned_packages);
-    println!("   Vulnerable packages: {}", summary.vulnerable_packages.len());
+    println!(
+        "   Vulnerable packages: {}",
+        summary.vulnerable_packages.len()
+    );
     println!("   Scan duration: {}ms", summary.scan_duration_ms);
     println!();
 }
@@ -513,22 +553,23 @@ fn print_table_results(summary: &ScanSummary) {
     }
 
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("{:<30} {:<15} {:<8} {:<15} {}",
-        "PACKAGE", "VERSION", "SEV", "CVE", "SUMMARY");
+    println!(
+        "{:<30} {:<15} {:<8} {:<15} {}",
+        "PACKAGE", "VERSION", "SEV", "CVE", "SUMMARY"
+    );
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     for vp in &summary.vulnerable_packages {
         for vuln in &vp.vulnerabilities {
-            let cve = vuln.aliases.first()
-                .map(|s| s.as_str())
-                .unwrap_or(&vuln.id);
+            let cve = vuln.aliases.first().map(|s| s.as_str()).unwrap_or(&vuln.id);
             let summary_text = if vuln.summary.len() > 40 {
                 format!("{}...", &vuln.summary[..37])
             } else {
                 vuln.summary.clone()
             };
 
-            println!("{:<30} {:<15} {} {:<6} {:<15} {}",
+            println!(
+                "{:<30} {:<15} {} {:<6} {:<15} {}",
                 truncate(&vp.package.name, 30),
                 truncate(&vp.package.version, 15),
                 vuln.severity.emoji(),
@@ -544,12 +585,15 @@ fn print_table_results(summary: &ScanSummary) {
 /// Print detailed results with full CVE information
 fn print_detailed_results(summary: &ScanSummary) {
     for vp in &summary.vulnerable_packages {
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
         println!("📦 {} ({})", vp.package.name, vp.package.version);
         println!();
 
         for vuln in &vp.vulnerabilities {
-            println!("   {} {} - {}",
+            println!(
+                "   {} {} - {}",
                 vuln.severity.emoji(),
                 vuln.id,
                 vuln.aliases.join(", ")
@@ -595,7 +639,10 @@ pub fn show_status(cmd: StatusCommand) -> Result<()> {
     if let Some(last_scan) = db.get_last_scan()? {
         println!("📅 Last Scan: {}", last_scan.timestamp);
         println!("   Packages scanned: {}", last_scan.packages_scanned);
-        println!("   Vulnerabilities found: {}", last_scan.vulnerabilities_found);
+        println!(
+            "   Vulnerabilities found: {}",
+            last_scan.vulnerabilities_found
+        );
 
         if cmd.verbose {
             println!();
@@ -616,7 +663,8 @@ pub fn show_status(cmd: StatusCommand) -> Result<()> {
     if !schedules.is_empty() {
         println!("📆 Active Schedules:");
         for schedule in &schedules {
-            println!("   • {} ({:?}) - Last run: {}",
+            println!(
+                "   • {} ({:?}) - Last run: {}",
                 schedule.name,
                 schedule.frequency,
                 schedule.last_run.as_deref().unwrap_or("Never")
@@ -634,10 +682,9 @@ pub fn show_status(cmd: StatusCommand) -> Result<()> {
         println!("🔧 Pending Patches: {}", pending.len());
         if cmd.verbose {
             for patch in pending.iter().take(10) {
-                println!("   • {} {} → {}",
-                    patch.package_name,
-                    patch.current_version,
-                    patch.fixed_version
+                println!(
+                    "   • {} {} → {}",
+                    patch.package_name, patch.current_version, patch.fixed_version
                 );
             }
             if pending.len() > 10 {

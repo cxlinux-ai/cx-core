@@ -13,15 +13,15 @@
 //! - Vulnerability cache
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use super::scanner::{Vulnerability, VulnerablePackage, ScanSummary, InstalledPackage, Severity};
+use super::scanner::{InstalledPackage, ScanSummary, Severity, Vulnerability, VulnerablePackage};
 use super::scheduler::Schedule;
-use super::{ScheduleFrequency, PatchStrategy};
+use super::{PatchStrategy, ScheduleFrequency};
 
 /// Get the database directory
 fn get_db_dir() -> PathBuf {
@@ -52,8 +52,7 @@ impl SecurityDatabase {
         std::fs::create_dir_all(&db_dir)?;
 
         let db_path = get_db_path();
-        let conn = Connection::open(&db_path)
-            .context("Failed to open security database")?;
+        let conn = Connection::open(&db_path).context("Failed to open security database")?;
 
         let db = Self { conn };
         db.initialize_tables()?;
@@ -63,7 +62,8 @@ impl SecurityDatabase {
 
     /// Initialize database tables
     fn initialize_tables(&self) -> Result<()> {
-        self.conn.execute_batch(r#"
+        self.conn.execute_batch(
+            r#"
             -- Scan results table
             CREATE TABLE IF NOT EXISTS scan_results (
                 id TEXT PRIMARY KEY,
@@ -139,7 +139,8 @@ impl SecurityDatabase {
             CREATE INDEX IF NOT EXISTS idx_scan_timestamp ON scan_results(timestamp);
             CREATE INDEX IF NOT EXISTS idx_patch_package ON patch_history(package_name);
             CREATE INDEX IF NOT EXISTS idx_schedule_name ON schedules(name);
-        "#)?;
+        "#,
+        )?;
 
         Ok(())
     }
@@ -227,7 +228,7 @@ impl SecurityDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, timestamp, packages_scanned, vulnerabilities_found,
              critical_count, high_count, medium_count, low_count, duration_ms
-             FROM scan_results ORDER BY timestamp DESC LIMIT 1"
+             FROM scan_results ORDER BY timestamp DESC LIMIT 1",
         )?;
 
         let result = stmt.query_row([], |row| {
@@ -259,47 +260,54 @@ impl SecurityDatabase {
         };
 
         let mut stmt = self.conn.prepare(
-            "SELECT id, package_name, package_version FROM vulnerable_packages WHERE scan_id = ?1"
+            "SELECT id, package_name, package_version FROM vulnerable_packages WHERE scan_id = ?1",
         )?;
 
-        let packages: Vec<(String, String, String)> = stmt.query_map([&last_scan.id], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?.filter_map(|r| r.ok()).collect();
+        let packages: Vec<(String, String, String)> = stmt
+            .query_map([&last_scan.id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         let mut result = Vec::new();
 
         for (vp_id, pkg_name, pkg_version) in packages {
             let mut vuln_stmt = self.conn.prepare(
                 "SELECT vuln_id, aliases, summary, severity, cvss_score, fixed_version
-                 FROM vulnerabilities WHERE vuln_package_id = ?1"
+                 FROM vulnerabilities WHERE vuln_package_id = ?1",
             )?;
 
-            let vulns: Vec<Vulnerability> = vuln_stmt.query_map([&vp_id], |row| {
-                let aliases_json: String = row.get(1)?;
-                let aliases: Vec<String> = serde_json::from_str(&aliases_json).unwrap_or_default();
-                let severity_str: String = row.get(3)?;
-                let severity = match severity_str.as_str() {
-                    "Critical" => Severity::Critical,
-                    "High" => Severity::High,
-                    "Medium" => Severity::Medium,
-                    "Low" => Severity::Low,
-                    _ => Severity::Unknown,
-                };
+            let vulns: Vec<Vulnerability> = vuln_stmt
+                .query_map([&vp_id], |row| {
+                    let aliases_json: String = row.get(1)?;
+                    let aliases: Vec<String> =
+                        serde_json::from_str(&aliases_json).unwrap_or_default();
+                    let severity_str: String = row.get(3)?;
+                    let severity = match severity_str.as_str() {
+                        "Critical" => Severity::Critical,
+                        "High" => Severity::High,
+                        "Medium" => Severity::Medium,
+                        "Low" => Severity::Low,
+                        _ => Severity::Unknown,
+                    };
 
-                Ok(Vulnerability {
-                    id: row.get(0)?,
-                    aliases,
-                    summary: row.get(2)?,
-                    details: None,
-                    severity,
-                    cvss_score: row.get(4)?,
-                    affected_versions: Vec::new(),
-                    fixed_version: row.get(5)?,
-                    references: Vec::new(),
-                    published: None,
-                    modified: None,
-                })
-            })?.filter_map(|r| r.ok()).collect();
+                    Ok(Vulnerability {
+                        id: row.get(0)?,
+                        aliases,
+                        summary: row.get(2)?,
+                        details: None,
+                        severity,
+                        cvss_score: row.get(4)?,
+                        affected_versions: Vec::new(),
+                        fixed_version: row.get(5)?,
+                        references: Vec::new(),
+                        published: None,
+                        modified: None,
+                    })
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
 
             result.push(VulnerablePackage {
                 package: InstalledPackage {
@@ -319,17 +327,20 @@ impl SecurityDatabase {
     pub fn get_pending_patches(&self) -> Result<Vec<PendingPatch>> {
         let mut stmt = self.conn.prepare(
             "SELECT package_name, current_version, fixed_version, severity
-             FROM pending_patches"
+             FROM pending_patches",
         )?;
 
-        let patches: Vec<PendingPatch> = stmt.query_map([], |row| {
-            Ok(PendingPatch {
-                package_name: row.get(0)?,
-                current_version: row.get(1)?,
-                fixed_version: row.get(2)?,
-                severity: row.get(3)?,
-            })
-        })?.filter_map(|r| r.ok()).collect();
+        let patches: Vec<PendingPatch> = stmt
+            .query_map([], |row| {
+                Ok(PendingPatch {
+                    package_name: row.get(0)?,
+                    current_version: row.get(1)?,
+                    fixed_version: row.get(2)?,
+                    severity: row.get(3)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(patches)
     }
@@ -362,7 +373,7 @@ impl SecurityDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, package_name, from_version, to_version, vulnerabilities_fixed,
              status, applied_at, rollback_available
-             FROM patch_history WHERE id = ?1"
+             FROM patch_history WHERE id = ?1",
         )?;
 
         let result = stmt.query_row([id], |row| {
@@ -432,7 +443,7 @@ impl SecurityDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, frequency, enable_patch, patch_strategy, notify, created_at,
              last_run, next_run, timer_installed
-             FROM schedules WHERE name = ?1 OR id = ?1"
+             FROM schedules WHERE name = ?1 OR id = ?1",
         )?;
 
         let result = stmt.query_row([name_or_id], |row| {
@@ -477,38 +488,41 @@ impl SecurityDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, frequency, enable_patch, patch_strategy, notify, created_at,
              last_run, next_run, timer_installed
-             FROM schedules ORDER BY created_at"
+             FROM schedules ORDER BY created_at",
         )?;
 
-        let schedules: Vec<Schedule> = stmt.query_map([], |row| {
-            let freq_str: String = row.get(2)?;
-            let frequency = match freq_str.as_str() {
-                "Daily" => ScheduleFrequency::Daily,
-                "Weekly" => ScheduleFrequency::Weekly,
-                _ => ScheduleFrequency::Monthly,
-            };
+        let schedules: Vec<Schedule> = stmt
+            .query_map([], |row| {
+                let freq_str: String = row.get(2)?;
+                let frequency = match freq_str.as_str() {
+                    "Daily" => ScheduleFrequency::Daily,
+                    "Weekly" => ScheduleFrequency::Weekly,
+                    _ => ScheduleFrequency::Monthly,
+                };
 
-            let strategy_str: String = row.get(4)?;
-            let patch_strategy = match strategy_str.as_str() {
-                "CriticalOnly" => PatchStrategy::CriticalOnly,
-                "HighAndAbove" => PatchStrategy::HighAndAbove,
-                "All" => PatchStrategy::All,
-                _ => PatchStrategy::Automatic,
-            };
+                let strategy_str: String = row.get(4)?;
+                let patch_strategy = match strategy_str.as_str() {
+                    "CriticalOnly" => PatchStrategy::CriticalOnly,
+                    "HighAndAbove" => PatchStrategy::HighAndAbove,
+                    "All" => PatchStrategy::All,
+                    _ => PatchStrategy::Automatic,
+                };
 
-            Ok(Schedule {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                frequency,
-                enable_patch: row.get(3)?,
-                patch_strategy,
-                notify: row.get(5)?,
-                created_at: row.get(6)?,
-                last_run: row.get(7)?,
-                next_run: row.get(8)?,
-                timer_installed: row.get(9)?,
-            })
-        })?.filter_map(|r| r.ok()).collect();
+                Ok(Schedule {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    frequency,
+                    enable_patch: row.get(3)?,
+                    patch_strategy,
+                    notify: row.get(5)?,
+                    created_at: row.get(6)?,
+                    last_run: row.get(7)?,
+                    next_run: row.get(8)?,
+                    timer_installed: row.get(9)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(schedules)
     }
@@ -525,7 +539,8 @@ impl SecurityDatabase {
 
     /// Delete a schedule
     pub fn delete_schedule(&self, id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM schedules WHERE id = ?1", [id])?;
+        self.conn
+            .execute("DELETE FROM schedules WHERE id = ?1", [id])?;
         Ok(())
     }
 }
@@ -654,9 +669,12 @@ impl VulnerabilityCache {
 
     /// Set cached vulnerabilities
     pub fn set(&mut self, key: &str, vulnerabilities: Vec<Vulnerability>) {
-        self.data.insert(key.to_string(), CacheEntry {
-            vulnerabilities,
-            timestamp: SystemTime::now(),
-        });
+        self.data.insert(
+            key.to_string(),
+            CacheEntry {
+                vulnerabilities,
+                timestamp: SystemTime::now(),
+            },
+        );
     }
 }

@@ -15,8 +15,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use super::{ScheduleCommand, ScheduleSubCommand, ScheduleCreateCommand, ScheduleFrequency, PatchStrategy};
 use super::database::SecurityDatabase;
+use super::{
+    PatchStrategy, ScheduleCommand, ScheduleCreateCommand, ScheduleFrequency, ScheduleSubCommand,
+};
 
 /// Schedule record stored in database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,13 +88,23 @@ fn create_schedule(cmd: ScheduleCreateCommand) -> Result<()> {
     println!("✅ Schedule created: {}", cmd.name);
     println!();
     println!("   Frequency:  {:?}", cmd.frequency);
-    println!("   Patching:   {}", if cmd.enable_patch { "Enabled" } else { "Scan only" });
+    println!(
+        "   Patching:   {}",
+        if cmd.enable_patch {
+            "Enabled"
+        } else {
+            "Scan only"
+        }
+    );
     if cmd.enable_patch {
         println!("   Strategy:   {:?}", cmd.strategy);
     }
     println!("   Notify:     {}", if cmd.notify { "Yes" } else { "No" });
     println!();
-    println!("ℹ️  Run 'cx security schedule install-timer {}' to activate systemd timer", cmd.name);
+    println!(
+        "ℹ️  Run 'cx security schedule install-timer {}' to activate systemd timer",
+        cmd.name
+    );
 
     Ok(())
 }
@@ -112,19 +124,26 @@ fn list_schedules() -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<20} {:<10} {:<12} {:<10} {:<20}",
-        "NAME", "FREQUENCY", "PATCHING", "TIMER", "LAST RUN");
+    println!(
+        "{:<20} {:<10} {:<12} {:<10} {:<20}",
+        "NAME", "FREQUENCY", "PATCHING", "TIMER", "LAST RUN"
+    );
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     for schedule in &schedules {
-        let timer_status = if schedule.timer_installed { "Active" } else { "Inactive" };
+        let timer_status = if schedule.timer_installed {
+            "Active"
+        } else {
+            "Inactive"
+        };
         let patch_status = if schedule.enable_patch {
             format!("{:?}", schedule.patch_strategy)
         } else {
             "Scan only".into()
         };
 
-        println!("{:<20} {:<10} {:<12} {:<10} {:<20}",
+        println!(
+            "{:<20} {:<10} {:<12} {:<10} {:<20}",
             truncate(&schedule.name, 20),
             format!("{:?}", schedule.frequency),
             patch_status,
@@ -141,7 +160,8 @@ fn list_schedules() -> Result<()> {
 fn run_schedule_now(id: &str) -> Result<()> {
     let db = SecurityDatabase::open()?;
 
-    let schedule = db.get_schedule(id)?
+    let schedule = db
+        .get_schedule(id)?
         .ok_or_else(|| anyhow::anyhow!("Schedule '{}' not found", id))?;
 
     println!("🚀 Running schedule: {}", schedule.name);
@@ -197,7 +217,8 @@ fn run_schedule_now(id: &str) -> Result<()> {
 fn delete_schedule(id: &str) -> Result<()> {
     let db = SecurityDatabase::open()?;
 
-    let schedule = db.get_schedule(id)?
+    let schedule = db
+        .get_schedule(id)?
         .ok_or_else(|| anyhow::anyhow!("Schedule '{}' not found", id))?;
 
     // Remove timer if installed
@@ -215,7 +236,8 @@ fn delete_schedule(id: &str) -> Result<()> {
 fn install_timer(id: &str) -> Result<()> {
     let db = SecurityDatabase::open()?;
 
-    let mut schedule = db.get_schedule(id)?
+    let mut schedule = db
+        .get_schedule(id)?
         .ok_or_else(|| anyhow::anyhow!("Schedule '{}' not found", id))?;
 
     println!("⏱️  Installing systemd timer for: {}", schedule.name);
@@ -234,14 +256,12 @@ fn install_timer(id: &str) -> Result<()> {
     // Create service unit
     let service_content = generate_service_unit(&schedule, use_user_mode);
     let service_path = timer_dir.join(format!("{}.service", unit_name));
-    fs::write(&service_path, service_content)
-        .context("Failed to write service unit")?;
+    fs::write(&service_path, service_content).context("Failed to write service unit")?;
 
     // Create timer unit
     let timer_content = generate_timer_unit(&schedule);
     let timer_path = timer_dir.join(format!("{}.timer", unit_name));
-    fs::write(&timer_path, timer_content)
-        .context("Failed to write timer unit")?;
+    fs::write(&timer_path, timer_content).context("Failed to write timer unit")?;
 
     // Reload systemd and enable timer
     let systemctl_args: Vec<&str> = if use_user_mode {
@@ -289,7 +309,8 @@ fn install_timer(id: &str) -> Result<()> {
 fn remove_timer(id: &str) -> Result<()> {
     let db = SecurityDatabase::open()?;
 
-    let mut schedule = db.get_schedule(id)?
+    let mut schedule = db
+        .get_schedule(id)?
         .ok_or_else(|| anyhow::anyhow!("Schedule '{}' not found", id))?;
 
     if !schedule.timer_installed {
@@ -348,8 +369,7 @@ fn remove_timer(id: &str) -> Result<()> {
 fn generate_service_unit(schedule: &Schedule, use_user_mode: bool) -> String {
     let mut args = vec!["security", "schedule", "run", &schedule.name];
 
-    let exec_path = std::env::current_exe()
-        .unwrap_or_else(|_| PathBuf::from("/usr/bin/cx"));
+    let exec_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("/usr/bin/cx"));
 
     format!(
         r#"[Unit]
@@ -371,7 +391,11 @@ WantedBy={wanted_by}
         exec = exec_path.display(),
         args = args.join(" "),
         user_section = if use_user_mode { "" } else { "User=root" },
-        wanted_by = if use_user_mode { "default.target" } else { "multi-user.target" }
+        wanted_by = if use_user_mode {
+            "default.target"
+        } else {
+            "multi-user.target"
+        }
     )
 }
 
@@ -450,7 +474,13 @@ fn is_root() -> bool {
 /// Sanitize name for use in systemd unit names
 fn sanitize_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }
