@@ -15,7 +15,7 @@ CX Terminal is an **AI-native terminal emulator** built on WezTerm, specifically
 
 ## What CX Terminal Is NOT
 
-CX Terminal is **not** the "Cortex" system administration CLI tool. The following components are **not part of this repository**:
+CX Terminal is a terminal emulator. The following components are **not part of this repository**:
 
 - `cx` command-line tool
 - `cx wizard`, `cx config`, `cx install` commands

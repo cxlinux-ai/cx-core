@@ -2,7 +2,7 @@
 
 ## Issues Analysis
 
-After analyzing the open issues in cxlinux-ai/cx, there's a clear mismatch between the current CX Terminal codebase (Rust-based terminal emulator) and the issues which reference a "Cortex" CLI system administration tool (Python-based).
+After analyzing the open issues in cxlinux-ai/cx, there's a clear mismatch between the current CX Terminal codebase (Rust-based terminal emulator) and the issues which reference a legacy CLI tool (Python-based).
 
 ## Issues to Close with Explanation
 
@@ -23,7 +23,7 @@ After analyzing the open issues in cxlinux-ai/cx, there's a clear mismatch betwe
 ## Recommended Actions
 
 1. **Close irrelevant issues** with explanation and link to PROJECT_SCOPE.md
-2. **Update #619** to focus on CX Terminal BSL documentation rather than "Cortex"
+2. **Update #619** to focus on CX Terminal BSL documentation with updated branding
 3. **Create new issues** for actual terminal emulator features needed
 4. **Update README** to clarify project scope
 
@@ -38,7 +38,7 @@ If system administration features are desired in the terminal:
 ## Resolution Messages Template
 
 ```
-This issue references the "Cortex" CLI system administration tool, but this repository contains CX Terminal - a Rust-based terminal emulator built on WezTerm.
+This issue references the legacy CLI tool, but this repository contains CX Terminal - a Rust-based terminal emulator built on WezTerm.
 
 The files/commands referenced in this issue (cx wizard, cli.py, etc.) do not exist in the current codebase.
 
