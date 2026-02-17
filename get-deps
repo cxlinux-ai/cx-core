@@ -91,6 +91,7 @@ fedora_deps() {
     'alsa-lib-devel' \
     'clang' \
     'clang-devel' \
+    'cmake' \
     'flatpak-builder' \
     'fontconfig-devel' \
     'gcc' \
