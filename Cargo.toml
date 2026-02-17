@@ -78,6 +78,7 @@ csscolorparser = "0.6"
 deltae = "0.3"
 dhat = "0.3"
 dirs-next = "2.0"
+dirs = "5.0"
 dns-lookup = "2.0"
 downcast-rs = "1.0"
 dwrote = "0.11"
@@ -127,6 +128,9 @@ k9 = "0.12.0"
 lazy_static = "1.4"
 leb128 = "0.2"
 lfucache = { path = "lfucache" }
+# CX Linux AI - Native LLM inference
+llama-cpp-2 = "0.1"
+hf-hub = { version = "0.3", features = ["tokio"] }
 libc = "0.2"
 libflate = "2"
 libloading = "0.8"

@@ -14,6 +14,7 @@ You may not use this file except in compliance with the License.
 
 mod chat;
 mod claude;
+mod llamacpp;
 mod ollama;
 mod panel;
 mod provider;
@@ -21,6 +22,7 @@ mod widget;
 
 pub use chat::{ChatHistory, ChatMessage, ChatRole};
 pub use claude::ClaudeProvider;
+pub use llamacpp::{LlamaCppProvider, CX_SYSTEM_PROMPT};
 pub use ollama::{create_local_provider, OllamaProvider};
 pub use panel::{AIPanel, AIPanelState, EnvironmentInfo, TerminalContext};
 pub use provider::{AIError, AIProvider, AIProviderConfig};
@@ -97,7 +99,7 @@ impl AIConfig {
                 config.api_key = std::env::var("OPENAI_API_KEY").ok();
             }
             AIProviderType::CXLinux => {
-                config.api_key = std::env::var("CX_AI_API_KEY").ok();
+                // No API key needed - native inference
             }
             _ => {}
         }
@@ -105,15 +107,15 @@ impl AIConfig {
         // Set appropriate system prompt
         config.system_prompt = Some(match provider {
             AIProviderType::CXLinux => {
-                "You are CX AI, the intelligent assistant for CX Linux. \
-                 Help users with command-line tasks, system administration, and CX-specific features. \
-                 Provide practical, actionable solutions with proper Linux commands."
+                // Use the unified system prompt from the fine-tuned model
+                CX_SYSTEM_PROMPT.to_string()
             }
             _ => {
                 "You are a helpful Linux terminal assistant. \
                  Provide concise, practical help with command-line tasks and system administration."
+                    .to_string()
             }
-        }.to_string());
+        });
 
         config
     }
@@ -126,8 +128,12 @@ impl AIConfig {
 
         match self.provider {
             AIProviderType::None => false,
-            AIProviderType::Claude | AIProviderType::OpenAI | AIProviderType::CXLinux => {
+            AIProviderType::Claude | AIProviderType::OpenAI => {
                 self.api_key.is_some() && !self.api_key.as_ref().unwrap().is_empty()
+            }
+            AIProviderType::CXLinux => {
+                // Native inference - just check if model is available
+                LlamaCppProvider::is_model_available()
             }
             AIProviderType::Local => self.api_endpoint.is_some(),
             AIProviderType::Custom => {
@@ -154,7 +160,9 @@ impl AIConfig {
                     AIProviderType::None => "No AI provider configured".to_string(),
                     AIProviderType::Claude => "ANTHROPIC_API_KEY not set".to_string(),
                     AIProviderType::OpenAI => "OPENAI_API_KEY not set".to_string(),
-                    AIProviderType::CXLinux => "CX_AI_API_KEY not set".to_string(),
+                    AIProviderType::CXLinux => {
+                        "CX Linux model not found. Run 'cx ai download' to install.".to_string()
+                    }
                     AIProviderType::Local => "Ollama not running on localhost:11434".to_string(),
                     AIProviderType::Custom => "Custom endpoint not configured".to_string(),
                 })
@@ -195,12 +203,12 @@ impl AIProviderStatus {
 
 /// Detect the best available AI provider
 pub fn detect_best_provider() -> AIProviderType {
-    // Priority order: CX Linux > Claude > OpenAI > Local > None
+    // Priority order: Claude > OpenAI > Local (Ollama) > CX Linux (native fallback) > None
     let providers = [
-        AIProviderType::CXLinux,
         AIProviderType::Claude,
         AIProviderType::OpenAI,
         AIProviderType::Local,
+        AIProviderType::CXLinux,
     ];
 
     for &provider in &providers {
@@ -318,7 +326,7 @@ impl AIProviderType {
             Self::Claude => "claude-3-5-sonnet-20241022",
             Self::OpenAI => "gpt-4-turbo-preview",
             Self::Local => "llama3",
-            Self::CXLinux => "cx-assistant-v2",
+            Self::CXLinux => "cxlinux-ai-7b-Q4_K_M",
             Self::Custom => "",
         }
     }
@@ -328,7 +336,7 @@ impl AIProviderType {
             Self::Claude => Some("https://api.anthropic.com/v1/messages"),
             Self::OpenAI => Some("https://api.openai.com/v1/chat/completions"),
             Self::Local => Some("http://localhost:11434/api/generate"),
-            Self::CXLinux => Some("unix:///var/run/cx/ai.sock"),
+            Self::CXLinux => None, // Native inference, no endpoint needed
             _ => None,
         }
     }
@@ -347,7 +355,10 @@ impl AIProviderType {
                     .map(|output| output.status.success())
                     .unwrap_or(false)
             }
-            Self::CXLinux => std::env::var("CX_AI_API_KEY").is_ok(),
+            Self::CXLinux => {
+                // Check if model file exists in cache
+                LlamaCppProvider::is_model_available()
+            }
             Self::Custom => true, // Assume custom endpoint is configurable
         }
     }
@@ -426,9 +437,14 @@ pub fn create_provider(config: &AIConfig) -> Option<Box<dyn AIProvider>> {
         }
         AIProviderType::Local => Some(Box::new(OllamaProvider::new(provider_config))),
         AIProviderType::CXLinux => {
-            // CX Linux provider would communicate with local daemon
-            log::warn!("CX Linux provider not yet implemented");
-            None
+            // Native llama.cpp inference with the fine-tuned CX Linux model
+            match LlamaCppProvider::new(provider_config) {
+                Ok(provider) => Some(Box::new(provider)),
+                Err(e) => {
+                    log::warn!("Failed to create CX Linux provider: {}", e);
+                    None
+                }
+            }
         }
         AIProviderType::Custom => {
             // Custom uses Ollama-compatible API

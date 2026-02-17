@@ -46,6 +46,7 @@ config.workspace = true
 cpal.workspace = true
 dhat = {workspace=true, optional=true}
 dirs-next.workspace = true
+dirs.workspace = true
 downcast-rs.workspace = true
 emojis.workspace = true
 env-bootstrap.workspace = true
@@ -101,6 +102,11 @@ unicode-segmentation.workspace = true
 url-funcs.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["v4", "serde"] }
+
+# CX Linux AI - Native LLM inference
+llama-cpp-2.workspace = true
+hf-hub.workspace = true
+
 walkdir.workspace = true
 wezterm-bidi.workspace = true
 wezterm-blob-leases = { workspace=true, features=["simple_tempdir"] }
