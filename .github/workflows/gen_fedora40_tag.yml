@@ -41,6 +41,8 @@ jobs:
         with:
           submodules: "recursive"
       - name: "Install Rust"
+        env:
+          HOME: /root
         uses: dtolnay/rust-toolchain@stable
       - name: "Compile with sccache"
         uses: mozilla-actions/sccache-action@v0.0.9
