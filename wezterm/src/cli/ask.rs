@@ -627,7 +627,7 @@ mod tests {
         };
 
         let result = ask_cmd.query_local("test query");
-        
+
         // If the model exists on this system, the test might succeed
         // We validate the error path when model is missing
         if result.is_err() {
@@ -655,9 +655,12 @@ mod tests {
 
         // Create a very long query (assuming ~1 token per 4 chars, need ~14000+ chars)
         let long_query = "word ".repeat(3000);
-        
+
         let result = ask_cmd.query_local(&long_query);
-        assert!(result.is_err(), "Expected error for long prompt or missing model");
+        assert!(
+            result.is_err(),
+            "Expected error for long prompt or missing model"
+        );
     }
 
     #[test]
@@ -689,7 +692,7 @@ mod tests {
         const MAX_RESPONSE_TOKENS: usize = 512;
         const TOTAL_CONTEXT: usize = 4096;
         let max_prompt_tokens = TOTAL_CONTEXT - MAX_RESPONSE_TOKENS;
-        
+
         assert_eq!(max_prompt_tokens, 3584, "Max prompt tokens should be 3584");
         assert_eq!(MAX_RESPONSE_TOKENS, 512, "Response tokens should be 512");
         assert_eq!(TOTAL_CONTEXT, 4096, "Total context should be 4096");

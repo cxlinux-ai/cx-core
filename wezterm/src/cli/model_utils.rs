@@ -20,12 +20,14 @@ pub const MODEL_FILENAME: &str = "cxlinux-ai-7b-Q4_K_M.gguf";
 /// Get the cache directory for CX Linux models
 pub fn model_cache_dir() -> PathBuf {
     let cache_dir = dirs::cache_dir()
-        .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".cache")))
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join(".cache"))
+        })
         .unwrap_or_else(|| PathBuf::from("/tmp"));
-    
-    cache_dir
-        .join("cx-linux")
-        .join("models")
+
+    cache_dir.join("cx-linux").join("models")
 }
 
 /// Get the full path to the model file
