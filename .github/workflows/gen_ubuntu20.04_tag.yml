@@ -17,6 +17,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       SCCACHE_GHA_ENABLED: "true"
+      HOME: "/root"
       RUSTC_WRAPPER: "sccache"
 
     steps:
@@ -49,8 +50,6 @@ jobs:
         with:
           submodules: "recursive"
       - name: "Install Rust"
-        env:
-          HOME: /root
         uses: dtolnay/rust-toolchain@stable
       - name: "Compile with sccache"
         uses: mozilla-actions/sccache-action@v0.0.9
