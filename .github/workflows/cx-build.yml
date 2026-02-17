@@ -144,9 +144,9 @@ jobs:
         with:
           name: cx-terminal-${{ matrix.target }}
           path: |
-            target/${{ matrix.target }}/release/wezterm
-            target/${{ matrix.target }}/release/wezterm-gui
-            target/${{ matrix.target }}/release/wezterm-mux-server
+            target/${{ matrix.target }}/release/cx-terminal
+            target/${{ matrix.target }}/release/cx-terminal-gui
+            target/${{ matrix.target }}/release/cx-mux-server
 
   fmt:
     name: Rustfmt

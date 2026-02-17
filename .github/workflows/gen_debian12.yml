@@ -83,15 +83,15 @@ jobs:
       - name: "Install System Deps"
         shell: bash
         run: "env CI=yes PATH=$PATH ./get-deps"
-      - name: "Build wezterm (Release mode)"
+      - name: "Build cx-terminal (Release mode)"
         shell: bash
         run: "cargo build -p cx-terminal --release"
-      - name: "Build wezterm-gui (Release mode)"
+      - name: "Build cx-terminal-gui (Release mode)"
         shell: bash
         run: "cargo build -p cx-terminal-gui --release"
-      - name: "Build wezterm-mux-server (Release mode)"
+      - name: "Build cx-mux-server (Release mode)"
         shell: bash
-        run: "cargo build -p wezterm-mux-server --release"
+        run: "cargo build -p cx-mux-server --release"
       - name: "Build strip-ansi-escapes (Release mode)"
         shell: bash
         run: "cargo build -p strip-ansi-escapes --release"
@@ -111,5 +111,5 @@ jobs:
         with:
           name: "debian12"
           path: |
-            wezterm-*.deb
-            wezterm-*.xz
+            cx-terminal-*.deb
+            cx-terminal-*.xz

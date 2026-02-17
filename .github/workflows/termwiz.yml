@@ -10,7 +10,7 @@ on:
     paths:
       - "termwiz/**"
       - "bidi/**"
-      - "wezterm-dynamic/**"
+      - "cx-dynamic/**"
       - "color-types/**"
       - "filedescriptor/**"
       - "vtparse/**"
@@ -21,7 +21,7 @@ on:
     paths:
       - "termwiz/**"
       - "bidi/**"
-      - "wezterm-dynamic/**"
+      - "cx-dynamic/**"
       - "color-types/**"
       - "filedescriptor/**"
       - "vtparse/**"

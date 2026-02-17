@@ -108,9 +108,9 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/release/wezterm dist/cx-terminal
-          cp target/release/wezterm-gui dist/cx-terminal-gui
-          cp target/release/wezterm-mux-server dist/cx-mux-server
+          cp target/release/cx-terminal dist/cx-terminal
+          cp target/release/cx-terminal-gui dist/cx-terminal-gui
+          cp target/release/cx-mux-server dist/cx-mux-server
           cp -r shell-integration dist/
           cp -r examples dist/
           cp README.md LICENSE.md dist/
@@ -144,9 +144,9 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/release/wezterm dist/cx-terminal
-          cp target/release/wezterm-gui dist/cx-terminal-gui
-          cp target/release/wezterm-mux-server dist/cx-mux-server
+          cp target/release/cx-terminal dist/cx-terminal
+          cp target/release/cx-terminal-gui dist/cx-terminal-gui
+          cp target/release/cx-mux-server dist/cx-mux-server
           cp -r shell-integration dist/
           cp -r examples dist/
           cp README.md LICENSE.md dist/
@@ -180,9 +180,9 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/release/wezterm dist/cx-terminal
-          cp target/release/wezterm-gui dist/cx-terminal-gui
-          cp target/release/wezterm-mux-server dist/cx-mux-server
+          cp target/release/cx-terminal dist/cx-terminal
+          cp target/release/cx-terminal-gui dist/cx-terminal-gui
+          cp target/release/cx-mux-server dist/cx-mux-server
           cp -r shell-integration dist/
           cp -r examples dist/
           cp README.md LICENSE.md dist/

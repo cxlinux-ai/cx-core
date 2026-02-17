@@ -58,12 +58,12 @@ jobs:
       - name: "Build cx-terminal-gui (Release mode ARM)"
         shell: bash
         run: "cargo build --target aarch64-apple-darwin -p cx-terminal-gui --release"
-      - name: "Build wezterm-mux-server (Release mode Intel)"
+      - name: "Build cx-mux-server (Release mode Intel)"
         shell: bash
-        run: "cargo build --target x86_64-apple-darwin -p wezterm-mux-server --release"
-      - name: "Build wezterm-mux-server (Release mode ARM)"
+        run: "cargo build --target x86_64-apple-darwin -p cx-mux-server --release"
+      - name: "Build cx-mux-server (Release mode ARM)"
         shell: bash
-        run: "cargo build --target aarch64-apple-darwin -p wezterm-mux-server --release"
+        run: "cargo build --target aarch64-apple-darwin -p cx-mux-server --release"
       - name: "Build strip-ansi-escapes (Release mode Intel)"
         shell: bash
         run: "cargo build --target x86_64-apple-darwin -p strip-ansi-escapes --release"
