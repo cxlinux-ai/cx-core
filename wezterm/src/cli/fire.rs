@@ -26,8 +26,8 @@ use clap::Parser;
 
 #[cfg(feature = "hrm")]
 use hrm_ai::{
-    fire::{AgentTerminationService, TerminationConfig},
     database::AgentRepository,
+    fire::{AgentTerminationService, TerminationConfig},
     theme::SovereignTheme,
 };
 
@@ -63,9 +63,13 @@ impl FireCommand {
 
         #[cfg(not(feature = "hrm"))]
         {
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
             println!("  🔒 HRM AI Premium Feature");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
             println!();
             println!("  The 'fire' command requires the HRM AI premium module.");
             println!();
@@ -79,7 +83,9 @@ impl FireCommand {
             println!("    • Enterprise compliance automation");
             println!();
             println!("  License: BSL 1.1 (Business Source License)");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
             Ok(())
         }
     }
@@ -87,8 +93,8 @@ impl FireCommand {
 
 #[cfg(feature = "hrm")]
 fn run_fire_with_hrm(cmd: FireCommand) -> Result<()> {
-    use tokio::runtime::Runtime;
     use std::time::Duration;
+    use tokio::runtime::Runtime;
 
     let rt = Runtime::new()?;
     rt.block_on(async {
@@ -156,7 +162,9 @@ fn run_fire_with_hrm(cmd: FireCommand) -> Result<()> {
         println!();
         println!("  🔥 Initiating graceful shutdown...");
 
-        let reason = cmd.reason.unwrap_or_else(|| "Manual termination".to_string());
+        let reason = cmd
+            .reason
+            .unwrap_or_else(|| "Manual termination".to_string());
         let result = service.terminate_agent(&cmd.agent_id, &reason).await?;
 
         if result.success {
@@ -169,7 +177,10 @@ fn run_fire_with_hrm(cmd: FireCommand) -> Result<()> {
             println!();
 
             if result.tasks_migrated > 0 {
-                println!("  📋 {} pending tasks migrated to other agents", result.tasks_migrated);
+                println!(
+                    "  📋 {} pending tasks migrated to other agents",
+                    result.tasks_migrated
+                );
             }
         } else {
             theme.print_error("Termination failed");

@@ -32,8 +32,8 @@ pub mod shortcuts;
 pub mod snapshot;
 
 // HRM AI: Premium agent management (optional feature)
-pub mod hire;
 pub mod fire;
+pub mod hire;
 
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
@@ -223,7 +223,10 @@ Outputs the pane-id for the newly created pane on success"
     Hire(hire::HireCommand),
 
     /// Terminate an AI agent (HRM AI premium feature)
-    #[command(name = "fire", about = "Terminate an AI agent (requires --features hrm)")]
+    #[command(
+        name = "fire",
+        about = "Terminate an AI agent (requires --features hrm)"
+    )]
     Fire(fire::FireCommand),
 }
 

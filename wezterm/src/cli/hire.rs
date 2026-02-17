@@ -23,8 +23,8 @@ use clap::Parser;
 
 #[cfg(feature = "hrm")]
 use hrm_ai::{
-    hire::{AgentHiringService, HireConfig},
     agent::AgentStatus,
+    hire::{AgentHiringService, HireConfig},
     theme::SovereignTheme,
 };
 
@@ -92,9 +92,13 @@ impl HireCommand {
 
         #[cfg(not(feature = "hrm"))]
         {
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
             println!("  🔒 HRM AI Premium Feature");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
             println!();
             println!("  The 'hire' command requires the HRM AI premium module.");
             println!();
@@ -108,7 +112,9 @@ impl HireCommand {
             println!("    • Enterprise compliance automation");
             println!();
             println!("  License: BSL 1.1 (Business Source License)");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
             Ok(())
         }
     }
@@ -166,18 +172,24 @@ fn run_hire_with_hrm(cmd: HireCommand) -> Result<()> {
 
         // Generate agent name if not provided
         let agent_name = cmd.name.unwrap_or_else(|| {
-            format!("{}-{}", cmd.agent_type, &uuid::Uuid::new_v4().to_string()[..8])
+            format!(
+                "{}-{}",
+                cmd.agent_type,
+                &uuid::Uuid::new_v4().to_string()[..8]
+            )
         });
 
         // Deploy agent
         println!("  🚀 Deploying agent...");
 
-        let agent = service.hire_agent(
-            &agent_name,
-            &cmd.agent_type.to_string(),
-            &cmd.server,
-            cmd.capabilities.unwrap_or_default(),
-        ).await?;
+        let agent = service
+            .hire_agent(
+                &agent_name,
+                &cmd.agent_type.to_string(),
+                &cmd.server,
+                cmd.capabilities.unwrap_or_default(),
+            )
+            .await?;
 
         println!();
         theme.print_success(&format!("Agent deployed: {}", agent.id));
