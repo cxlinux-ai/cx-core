@@ -36,6 +36,12 @@ pub mod snapshot;
 // CX Security: Vulnerability management
 pub mod security;
 
+// HRM AI: Premium agent management (optional feature)
+#[cfg(feature = "hrm")]
+pub mod fire;
+#[cfg(feature = "hrm")]
+pub mod hire;
+
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
     #[command(name = "table", about = "multi line space separated table")]
@@ -226,6 +232,20 @@ Outputs the pane-id for the newly created pane on success"
     /// Security vulnerability scanning and patching
     #[command(name = "security", about = "Security vulnerability management")]
     Security(security::SecurityCommand),
+
+    // HRM AI: Premium agent management commands
+    /// Deploy an AI agent to a server (HRM AI premium feature)
+    #[cfg(feature = "hrm")]
+    #[command(name = "hire", about = "Deploy an AI agent (requires --features hrm)")]
+    Hire(hire::HireCommand),
+
+    /// Terminate an AI agent (HRM AI premium feature)
+    #[cfg(feature = "hrm")]
+    #[command(
+        name = "fire",
+        about = "Terminate an AI agent (requires --features hrm)"
+    )]
+    Fire(fire::FireCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -309,6 +329,17 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         }
         // CX Security commands don't need the mux client
         CliSubCommand::Security(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        // HRM AI commands don't need the mux client
+        #[cfg(feature = "hrm")]
+        CliSubCommand::Hire(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        #[cfg(feature = "hrm")]
+        CliSubCommand::Fire(cmd) => {
             drop(client);
             cmd.run()
         }
