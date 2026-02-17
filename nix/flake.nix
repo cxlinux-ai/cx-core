@@ -56,6 +56,8 @@
             ncurses # tic for terminfo
             pkg-config
             python3
+            cmake  # Required for llama-cpp-sys build
+            llvmPackages.libclang  # Required for bindgen in llama-cpp-sys
           ]
           ++ lib.optional stdenv.isDarwin perl;
 
@@ -134,6 +136,9 @@
 
           # Disable cargo-auditable until https://github.com/rust-secure-code/cargo-auditable/issues/124 is fixed
           auditable = false;
+
+          # Required for llama-cpp-sys bindgen
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
 
           preFixup =
             lib.optionalString stdenv.isLinux /* bash */ ''

@@ -66,8 +66,16 @@ jobs:
         run: "git config --global --add safe.directory /__w/cx-core/cx-core"
       - name: "checkout repo"
         uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
+      - name: "Checkout submodules with retry"
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            echo "Attempt $i: Updating submodules..."
+            git submodule update --init --recursive && break
+            echo "Attempt $i failed, retrying in 10 seconds..."
+            sleep 10
+          done
+
       - name: "Install Rust"
         uses: dtolnay/rust-toolchain@stable
       - name: "Compile with sccache"

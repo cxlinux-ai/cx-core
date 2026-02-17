@@ -35,8 +35,20 @@ jobs:
     steps:
       - name: "checkout repo"
         uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
+
+      - name: "Checkout submodules with retry"
+        shell: pwsh
+        run: |
+          $maxRetries = 3
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            Write-Host "Attempt $i: Updating submodules..."
+            git submodule update --init --recursive
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Host "Attempt $i failed, retrying in 10 seconds..."
+            Start-Sleep -Seconds 10
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: "Install Rust"
         uses: dtolnay/rust-toolchain@stable
         with:
