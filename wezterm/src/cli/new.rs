@@ -1,3 +1,10 @@
+/*
+Copyright (c) 2026 AI Venture Holdings LLC
+Licensed under the Business Source License 1.1
+You may not use this file except in compliance with the License.
+*/
+
+
 //! CX Terminal: Create new projects from templates
 //!
 //! This module provides the `new` command for creating new projects
