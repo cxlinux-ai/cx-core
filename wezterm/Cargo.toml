@@ -38,6 +38,7 @@ smol.workspace = true
 tabout.workspace = true
 tempfile.workspace = true
 termwiz-funcs.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 termwiz.workspace = true
 textwrap.workspace  =true
 umask.workspace = true

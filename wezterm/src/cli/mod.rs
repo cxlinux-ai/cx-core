@@ -29,6 +29,7 @@ pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
 pub mod daemon;
+pub mod license;
 pub mod model_utils;
 pub mod new;
 pub mod shortcuts;
@@ -233,6 +234,15 @@ Outputs the pane-id for the newly created pane on success"
     #[command(name = "snapshots")]
     Snapshots(snapshot::SnapshotsCommand),
 
+    // CX License: License management
+    /// Activate a CX Linux license
+    #[command(name = "activate", about = "Activate a CX Linux license key")]
+    Activate(ActivateCommand),
+
+    /// Show license status
+    #[command(name = "license", about = "Show current license status")]
+    License(LicenseCommand),
+
     // CX Security: Vulnerability Management
     /// Security vulnerability scanning and patching
     #[command(name = "security", about = "Security vulnerability management")]
@@ -251,6 +261,71 @@ Outputs the pane-id for the newly created pane on success"
         about = "Terminate an AI agent (requires --features hrm)"
     )]
     Fire(fire::FireCommand),
+}
+
+/// Command to activate a license key
+#[derive(Debug, Parser, Clone)]
+pub struct ActivateCommand {
+    /// The license key to activate
+    #[arg(help = "License key (e.g., CX-PRO-XXXX-XXXX-XXXX-XXXX)")]
+    pub license_key: String,
+}
+
+impl ActivateCommand {
+    pub async fn run(&self) -> anyhow::Result<()> {
+        println!("Activating license: {}...", self.license_key);
+        
+        match license::activate_license(&self.license_key).await {
+            Ok(info) => {
+                println!("\n✅ License activated successfully!\n");
+                println!("  Tier: {}", info.tier);
+                println!("  Email: {}", info.customer_email);
+                if let Some(org) = info.organization {
+                    println!("  Organization: {}", org);
+                }
+                println!("  Expires: {}", info.expires_at);
+                println!("  Days remaining: {}", info.days_remaining);
+                println!("  Systems: {}/{}", info.systems_used, info.systems_allowed);
+                println!("\nFeatures: {}", info.features.join(", "));
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("\n❌ Activation failed: {}", e);
+                Err(anyhow!(e))
+            }
+        }
+    }
+}
+
+/// Command to show license status
+#[derive(Debug, Parser, Clone)]
+pub struct LicenseCommand;
+
+impl LicenseCommand {
+    pub async fn run(&self) -> anyhow::Result<()> {
+        match license::check_license().await {
+            Ok(info) => {
+                println!("\n📄 CX Linux License Status\n");
+                println!("  License: {}", info.license_key);
+                println!("  Tier: {}", info.tier.to_uppercase());
+                println!("  Email: {}", info.customer_email);
+                if let Some(org) = info.organization {
+                    println!("  Organization: {}", org);
+                }
+                println!("  Expires: {}", info.expires_at);
+                println!("  Days remaining: {}", info.days_remaining);
+                println!("  Devices: {}/{}", info.systems_used, info.systems_allowed);
+                println!("  This device: {}", if info.device_activated { "✅ Activated" } else { "❌ Not activated" });
+                println!("\nFeatures: {}", info.features.join(", "));
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("\n❌ No valid license: {}", e);
+                eprintln!("\nTo activate a license, run: cx activate <LICENSE_KEY>");
+                Err(anyhow!(e))
+            }
+        }
+    }
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -319,6 +394,15 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::Daemon(cmd) => {
             drop(client);
             cmd.run()
+        }
+        // CX License commands don't need the mux client
+        CliSubCommand::Activate(cmd) => {
+            drop(client);
+            cmd.run().await
+        }
+        CliSubCommand::License(cmd) => {
+            drop(client);
+            cmd.run().await
         }
         // CX Security commands don't need the mux client
         CliSubCommand::Security(cmd) => {

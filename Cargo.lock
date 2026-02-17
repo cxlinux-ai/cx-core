@@ -1448,6 +1448,7 @@ dependencies = [
  "mux",
  "portable-pty",
  "promise",
+ "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",
