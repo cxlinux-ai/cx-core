@@ -865,3 +865,4 @@ fn delegate_to_gui(saver: UmaskSaver) -> anyhow::Result<()> {
         std::process::exit(code);
     }
 }
+// trigger rebuild
