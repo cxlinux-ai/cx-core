@@ -50,7 +50,6 @@ wezterm-term.workspace = true
 rusqlite = { workspace = true, features = ["bundled"] }
 ureq = { version = "2.9", features = ["json"] }
 uuid = { version = "1.6", features = ["v4"] }
-dirs = "5.0"
 
 # HRM AI - Optional premium agent management (enable with --features hrm)
 hrm-ai = { git = "https://github.com/mikejmorgan-ai/hrm-ai-standalone.git", optional = true }
