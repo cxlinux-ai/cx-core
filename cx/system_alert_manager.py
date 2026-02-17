@@ -49,7 +49,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(Path.home() / ".cortex" / "alert_manager.log"),
+        logging.FileHandler(Path.home() / ".cx" / "alert_manager.log"),
         logging.StreamHandler()
     ]
 )
@@ -69,7 +69,7 @@ class SecurityConfig:
 
     def _get_or_create_encryption_key(self) -> bytes:
         """Get or create encryption key for sensitive data."""
-        key_file = Path.home() / ".cortex" / "alert_encryption.key"
+        key_file = Path.home() / ".cx" / "alert_encryption.key"
 
         if key_file.exists():
             try:
@@ -372,7 +372,7 @@ class SystemAlertManager:
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize the alert manager with enterprise security features."""
         # Set up configuration directory
-        self.config_dir = Path.home() / ".cortex"
+        self.config_dir = Path.home() / ".cx"
         self.config_dir.mkdir(exist_ok=True, mode=0o700)  # Secure directory permissions
 
         # Database path with secure permissions
