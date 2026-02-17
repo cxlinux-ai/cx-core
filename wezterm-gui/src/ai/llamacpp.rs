@@ -12,6 +12,7 @@ You may not use this file except in compliance with the License.
 use super::provider::{AIError, AIProvider, AIProviderConfig, AIResponse, AIResponseStream};
 use super::{ChatMessage, ChatRole};
 use std::future::Future;
+use std::hash::BuildHasher;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
