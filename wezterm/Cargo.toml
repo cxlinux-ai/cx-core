@@ -62,5 +62,5 @@ cc.workspace = true
 embed-resource.workspace = true
 
 [[bin]]
-name = "wezterm"
+name = "cx-terminal"
 path = "src/main.rs"
