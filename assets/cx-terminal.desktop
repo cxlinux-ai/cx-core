@@ -2,7 +2,7 @@
 Name=CX Terminal
 Comment=CX Terminal Emulator
 Keywords=shell;prompt;command;commandline;cmd;
-Icon=cx-terminal
+Icon=org.cxlinux.cx-terminal
 StartupWMClass=org.cxlinux.cx-terminal
 TryExec=cx-terminal
 Exec=cx-terminal start --cwd .

@@ -10,8 +10,8 @@ install -Dsm755 -t AppDir/usr/bin target/release/cx-terminal
 install -Dsm755 -t AppDir/usr/bin target/release/cx-terminal-gui
 install -Dsm755 -t AppDir/usr/bin target/release/strip-ansi-escapes
 install -Dm644 assets/icon/terminal.png AppDir/usr/share/icons/hicolor/128x128/apps/org.cxlinux.cx-terminal.png
-install -Dm644 assets/cx-terminal.desktop AppDir/usr/share/applications/org.wezfurlong.cx-terminal.desktop
-install -Dm644 assets/cx-terminal.appdata.xml AppDir/usr/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
+install -Dm644 assets/cx-terminal.desktop AppDir/usr/share/applications/org.cxlinux.cx-terminal.desktop
+install -Dm644 assets/cx-terminal.appdata.xml AppDir/usr/share/metainfo/org.cxlinux.cx-terminal.appdata.xml
 install -Dm644 assets/cx-terminal-nautilus.py AppDir/usr/share/nautilus-python/extensions/cx-terminal-nautilus.py
 
 [ -x /tmp/linuxdeploy ] || ( curl -L 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' -o /tmp/linuxdeploy && chmod +x /tmp/linuxdeploy )
