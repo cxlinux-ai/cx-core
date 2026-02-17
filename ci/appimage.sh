@@ -5,14 +5,14 @@ set -e
 
 mkdir AppDir
 
-install -Dsm755 -t AppDir/usr/bin target/release/wezterm-mux-server
-install -Dsm755 -t AppDir/usr/bin target/release/wezterm
-install -Dsm755 -t AppDir/usr/bin target/release/wezterm-gui
+install -Dsm755 -t AppDir/usr/bin target/release/cx-mux-server
+install -Dsm755 -t AppDir/usr/bin target/release/cx-terminal
+install -Dsm755 -t AppDir/usr/bin target/release/cx-terminal-gui
 install -Dsm755 -t AppDir/usr/bin target/release/strip-ansi-escapes
-install -Dm644 assets/icon/terminal.png AppDir/usr/share/icons/hicolor/128x128/apps/org.wezfurlong.wezterm.png
-install -Dm644 assets/wezterm.desktop AppDir/usr/share/applications/org.wezfurlong.wezterm.desktop
-install -Dm644 assets/wezterm.appdata.xml AppDir/usr/share/metainfo/org.wezfurlong.wezterm.appdata.xml
-install -Dm644 assets/wezterm-nautilus.py AppDir/usr/share/nautilus-python/extensions/wezterm-nautilus.py
+install -Dm644 assets/icon/terminal.png AppDir/usr/share/icons/hicolor/128x128/apps/org.cxlinux.cx-terminal.png
+install -Dm644 assets/cx-terminal.desktop AppDir/usr/share/applications/org.wezfurlong.cx-terminal.desktop
+install -Dm644 assets/cx-terminal.appdata.xml AppDir/usr/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
+install -Dm644 assets/cx-terminal-nautilus.py AppDir/usr/share/nautilus-python/extensions/cx-terminal-nautilus.py
 
 [ -x /tmp/linuxdeploy ] || ( curl -L 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' -o /tmp/linuxdeploy && chmod +x /tmp/linuxdeploy )
 
@@ -23,11 +23,11 @@ distver=$(lsb_release -rs 2>/dev/null || sh -c "source /etc/os-release && echo \
 # Embed appropriate update info
 # https://github.com/AppImage/AppImageSpec/blob/master/draft.md#github-releases
 if [[ "$BUILD_REASON" == "Schedule" ]] ; then
-  UPDATE="gh-releases-zsync|wez|wezterm|nightly|WezTerm-*.AppImage.zsync"
-  OUTPUT=WezTerm-nightly-$distro$distver.AppImage
+  UPDATE="gh-releases-zsync|cxlinux-ai|cx-core|nightly|CXTerminal-*.AppImage.zsync"
+  OUTPUT=CXTerminal-nightly-$distro$distver.AppImage
 else
-  UPDATE="gh-releases-zsync|wez|wezterm|latest|WezTerm-*.AppImage.zsync"
-  OUTPUT=WezTerm-$TAG_NAME-$distro$distver.AppImage
+  UPDATE="gh-releases-zsync|cxlinux-ai|cx-core|latest|CXTerminal-*.AppImage.zsync"
+  OUTPUT=CXTerminal-$TAG_NAME-$distro$distver.AppImage
 fi
 
 # Munge the path so that it finds our appstreamcli wrapper
@@ -39,10 +39,10 @@ OUTPUT="$OUTPUT" \
   --exclude-library='libwayland-client.so.0' \
   --appdir AppDir \
   --output appimage \
-  --desktop-file assets/wezterm.desktop
+  --desktop-file assets/cx-terminal.desktop
 
 # Update the AUR build file.  We only really want to use this for tagged
 # builds but it doesn't hurt to generate it always here.
 SHA256=$(sha256sum $OUTPUT | cut -d' ' -f1)
 sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/PKGBUILD.template > PKGBUILD
-sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/wezterm-linuxbrew.rb.template > wezterm-linuxbrew.rb
+sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/cx-terminal-linuxbrew.rb.template > cx-terminal-linuxbrew.rb
