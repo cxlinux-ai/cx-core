@@ -1,23 +1,23 @@
 <p align="center">
-  <img src="assets/icon/cx-terminal-icon.svg" alt="CX Terminal Logo" width="200" />
+  <img src="assets/icon/cx-terminal-icon.svg" alt="CX Linux Logo" width="200" />
 </p>
 
-<h1 align="center">CX AI Terminal</h1>
+<h1 align="center">CX Linux</h1>
 
 <p align="center">
-  <strong>The AI-Native Terminal for CX Linux</strong><br>
+  <strong>The AI-Native Linux Distribution</strong><br>
   Agentic system administration, real-time context awareness, and seamless AI orchestration.
 </p>
 
 <p align="center">
-  <a href="https://github.com/cxlinux-ai/cx/actions">
-    <img src="https://github.com/cxlinux-ai/cx/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
+  <a href="https://github.com/cxlinux-ai/cx-core/actions">
+    <img src="https://github.com/cxlinux-ai/cx-core/actions/workflows/ci.yml/badge.svg" alt="Build Status" />
   </a>
-  <a href="https://github.com/cxlinux-ai/cx/blob/main/LICENSE.md">
+  <a href="https://github.com/cxlinux-ai/cx-core/releases">
+    <img src="https://img.shields.io/badge/version-v0.2.0-brightgreen.svg" alt="Version" />
+  </a>
+  <a href="https://github.com/cxlinux-ai/cx-core/blob/main/LICENSE.md">
     <img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" />
-  </a>
-  <a href="https://github.com/cxlinux-ai/cx/releases">
-    <img src="https://img.shields.io/badge/version-0.1.0--alpha-orange.svg" alt="Version" />
   </a>
   <a href="https://discord.gg/uCqHvxjU83">
     <img src="https://img.shields.io/discord/1234567890?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord" />
@@ -25,97 +25,135 @@
 </p>
 
 <p align="center">
+  <a href="#installation">Installation</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#safety--security">Safety</a> •
-  <a href="#contributing">Contributing</a>
+  <a href="#supported-platforms">Platforms</a> •
+  <a href="#license">License</a>
 </p>
 
 ---
 
-## What is CX AI Terminal?
+## What is CX Linux?
 
-CX AI Terminal is not just a terminal emulator; it is the primary interface for **CX Linux**. It integrates a specialized AI side-panel that shares a "nervous system" with your OS via a dedicated IPC daemon. It understands your intent, captures your voice, and learns from your unique workflow.
+CX Linux is an AI-native operating system that simplifies system administration through natural language. It provides an intelligent terminal interface that understands your intent, automates complex tasks, and learns from your workflow.
+
+---
+
+## 🚀 Installation
+
+### APT Repository (Recommended)
 
 ```bash
-# Real-time AI intervention (Ctrl+Space)
-cx ask "Why is my build failing?"
+# Add CX Linux repository
+curl -fsSL https://repo.cxlinux.com/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/cxlinux.gpg
+echo "deb [signed-by=/etc/apt/keyrings/cxlinux.gpg] https://repo.cxlinux.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cxlinux.list
 
-# Agentic command execution
-cx ask --do "Optimize my NVIDIA drivers for training"
+# Install CX Terminal
+sudo apt update && sudo apt install cx-terminal
+```
 
-# Voice-to-Command
-# [Capture Audio] -> "Create a new git branch for the audio feature"
+### Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/cxlinux-ai/cx-core.git
+cd cx-core
+
+# Build
+cargo build --release
+
+# Install
+sudo cp target/release/cx /usr/local/bin/
 ```
 
 ---
 
-## 🚀 Key Features
+## ✨ Features
 
-| Feature | Description |
+| Command | Description |
 |---------|-------------|
-| **AI Side-Panel** | Integrated LLM panel (Ctrl+Space) with full terminal context. |
-| **Audio Intelligence** | Native voice capture via `cpal` for hands-free operations. |
-| **Daemon IPC** | Secure Unix socket communication for OS-level agentic tasks. |
-| **ML Workflow Learning** | Local TF-IDF and N-gram models that learn your command patterns. |
-| **Command Blocks** | Visual output grouping with interactive AI diagnosis for errors. |
-| **Hardware-Aware** | Optimized for Mac Studio (M2/M3) and NVIDIA/AMD GPU environments. |
+| `cx ask` | Ask questions in natural language, get intelligent responses |
+| `cx status` | System health check and status overview |
+| `cx demo` | Interactive demo of CX Linux capabilities |
+
+### Core Capabilities
+
+- **Natural Language Interface**: Execute complex tasks with simple commands
+- **AI Side-Panel**: Integrated LLM panel (Ctrl+Space) with full terminal context
+- **Voice Support**: Hands-free operations via native audio capture
+- **Workflow Learning**: Local models that learn your command patterns
+- **Command Blocks**: Visual output grouping with interactive AI diagnosis
 
 ---
 
-## 🛠️ Quick Start
+## 🖥️ Supported Platforms
 
-### Prerequisites
-- **OS:** CX Linux / Ubuntu 22.04+ / macOS (M-Series)
-- **Rust:** 1.75+ (Stable)
-- **Daemon:** `cx-daemon` must be running for agentic features.
+| Distribution | Versions |
+|--------------|----------|
+| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS |
+| **Debian** | 11 (Bullseye), 12 (Bookworm) |
+| **Fedora** | 39, 40, 41 |
+| **CentOS** | Stream 9 |
 
-### Installation
+---
+
+## 🏁 Quick Start
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/cxlinux-ai/cx.git
-cd cx
+# Check system status
+cx status
 
-# 2. Build the terminal
-cargo build --release
+# Ask a question
+cx ask "How do I install Docker?"
 
-# 3. Launch the AI-Native experience
-./target/release/cx-terminal-gui
+# Run the interactive demo
+cx demo
 ```
 
 ---
 
 ## 🏗️ Architecture
 
-CX Terminal uses a distributed architecture to ensure low latency and high security:
-
-- **Frontend:** GPU-accelerated terminal core (based on [WezTerm](https://github.com/wez/wezterm) by @wez).
-- **AI Panel:** Custom Rust-based UI for LLM orchestration.
-- **Daemon (cx-daemon):** A background service handling privileged OS tasks.
-- **IPC Layer:** 4-byte length-prefixed JSON-RPC over Unix sockets.
+- **Frontend**: GPU-accelerated terminal (based on [WezTerm](https://github.com/wez/wezterm))
+- **AI Engine**: Custom Rust-based LLM orchestration
+- **Daemon**: Background service for privileged OS tasks
+- **IPC Layer**: Length-prefixed JSON-RPC over Unix sockets
 
 ---
 
 ## 🛡️ Safety & Security
 
-- **Sandboxed Execution:** AI-generated commands run in isolated environments.
-- **Dry-Run Validation:** View AI plans before they touch your system.
-- **Local-First ML:** Your command history and learning models never leave your machine.
-- **Audit Logging:** Full SQLite-backed history in `~/.cx/history.db`.
+- **Sandboxed Execution**: AI-generated commands run in isolated environments
+- **Dry-Run Mode**: Preview AI plans before execution
+- **Local-First ML**: Command history and models stay on your machine
+- **Audit Logging**: Full history in `~/.cx/history.db`
 
 ---
 
-## 🤝 Contributing
+## 📦 Related Repositories
 
-We offer a **Bounty Program** for merged PRs:
-- **Small ():** Bug fixes, UI tweaks.
-- **Medium ():** New AI tool integrations, performance gains.
-- **Large (+):** Major architectural improvements.
+| Repository | Description |
+|------------|-------------|
+| [cx-commercial](https://github.com/cxlinux-ai/cx-commercial) | Enterprise features and licensing |
+| [cx-infrastructure](https://github.com/cxlinux-ai/cx-infrastructure) | System diagnostics and repair tools |
+| [cx-web](https://github.com/cxlinux-ai/cx-web) | Official website |
+| [cx-docs](https://github.com/cxlinux-ai/cx-docs) | Documentation |
+
+---
+
+## 📄 License
+
+**Business Source License 1.1 (BSL 1.1)**
+
+- Free for personal and non-commercial use
+- Commercial use requires a license
+- Converts to **Apache 2.0** on **January 15, 2032**
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 
 <p align="center">
-  <sub>Built with love by the CX Linux team.</sub>
+  <sub>Built by <a href="https://cxlinux.com">CX Linux</a> • AI Venture Holdings LLC</sub>
 </p>
