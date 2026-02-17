@@ -145,5 +145,5 @@ k9.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "net", "io-util"] }
 
 [[bin]]
-name = "wezterm-gui"
+name = "cx-terminal-gui"
 path = "src/main.rs"
