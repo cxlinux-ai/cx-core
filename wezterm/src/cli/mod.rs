@@ -33,6 +33,9 @@ pub mod new;
 pub mod shortcuts;
 pub mod snapshot;
 
+// CX Security: Vulnerability management
+pub mod security;
+
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
     #[command(name = "table", about = "multi line space separated table")]
@@ -218,6 +221,11 @@ Outputs the pane-id for the newly created pane on success"
     /// List or manage snapshots
     #[command(name = "snapshots")]
     Snapshots(snapshot::SnapshotsCommand),
+
+    // CX Security: Vulnerability Management
+    /// Security vulnerability scanning and patching
+    #[command(name = "security", about = "Security vulnerability management")]
+    Security(security::SecurityCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -296,6 +304,11 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             cmd.run()
         }
         CliSubCommand::Snapshots(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        // CX Security commands don't need the mux client
+        CliSubCommand::Security(cmd) => {
             drop(client);
             cmd.run()
         }

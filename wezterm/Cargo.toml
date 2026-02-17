@@ -45,6 +45,12 @@ wezterm-client.workspace = true
 wezterm-gui-subcommands.workspace = true
 wezterm-term.workspace = true
 
+# CX Security dependencies
+rusqlite = { workspace = true, features = ["bundled"] }
+ureq = { version = "2.9", features = ["json"] }
+uuid = { version = "1.6", features = ["v4"] }
+dirs = "5.0"
+
 [target."cfg(unix)".dependencies]
 termios.workspace = true
 
