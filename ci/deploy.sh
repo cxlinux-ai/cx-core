@@ -43,13 +43,13 @@ case $OSTYPE in
     mkdir -p "$zipdir/$APP_BUNDLE/Contents/Resources"
     cp -r assets/shell-integration/* "$zipdir/$APP_BUNDLE/Contents/Resources"
     cp -r assets/shell-completion "$zipdir/$APP_BUNDLE/Contents/Resources"
-    tic -xe wezterm -o "$zipdir/$APP_BUNDLE/Contents/Resources/terminfo" termwiz/data/wezterm.terminfo
+    tic -xe cx-terminal -o "$zipdir/$APP_BUNDLE/Contents/Resources/terminfo" termwiz/data/cx-terminal.terminfo
 
     # CX Terminal: Updated binary names
     # Map: old name -> new name (for copying into bundle)
     declare -A BIN_MAP=(
       ["cx-terminal"]="cx-terminal"
-      ["wezterm-mux-server"]="wezterm-mux-server"
+      ["cx-mux-server"]="cx-mux-server"
       ["cx-terminal-gui"]="cx-terminal-gui"
       ["strip-ansi-escapes"]="strip-ansi-escapes"
     )
@@ -136,7 +136,7 @@ case $OSTYPE in
     set -x
 
     SHA256=$(shasum -a 256 $zipname | cut -d' ' -f1)
-    sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/wezterm-homebrew-macos.rb.template > cx-terminal.rb
+    sed -e "s/@TAG@/$TAG_NAME/g" -e "s/@SHA256@/$SHA256/g" < ci/cx-terminal-homebrew-macos.rb.template > cx-terminal.rb
 
     ;;
   msys)
@@ -150,11 +150,11 @@ case $OSTYPE in
     fi
     rm -rf $zipdir $zipname
     mkdir $zipdir
-    cp $TARGET_DIR/release/wezterm.exe \
-      $TARGET_DIR/release/wezterm-mux-server.exe \
-      $TARGET_DIR/release/wezterm-gui.exe \
+    cp $TARGET_DIR/release/cx-terminal.exe \
+      $TARGET_DIR/release/cx-mux-server.exe \
+      $TARGET_DIR/release/cx-terminal-gui.exe \
       $TARGET_DIR/release/strip-ansi-escapes.exe \
-      $TARGET_DIR/release/wezterm.pdb \
+      $TARGET_DIR/release/cx-terminal.pdb \
       assets/windows/conhost/conpty.dll \
       assets/windows/conhost/OpenConsole.exe \
       assets/windows/angle/libEGL.dll \
@@ -195,7 +195,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source ~/.cargo/env
 
 cargo build --release \
-      -p wezterm-gui -p wezterm -p wezterm-mux-server \
+      -p cx-terminal-gui -p cx-terminal -p cx-mux-server \
       -p strip-ansi-escapes
 BUILDEOFEOF
 )
@@ -209,7 +209,7 @@ BuildRequires: mesa-libEGL-devel
 %if 0%{?fedora} >= 41
 BuildRequires: openssl-devel-engine
 %endif
-Source0: wezterm-${TAR_NAME}.tar.gz
+Source0: cx-terminal-${TAR_NAME}.tar.gz
 BREQEOF
 )
         else
@@ -223,52 +223,52 @@ BUILDEOFEOF
         fi
 
         # Generate single spec with subpackages
-        cat > wezterm.spec <<EOF
-Name: wezterm
+        cat > cx-terminal.spec <<EOF
+Name: cx-terminal
 Version: ${WEZTERM_RPM_VERSION}
 Release: ${SPEC_RELEASE}
 Packager: Wez Furlong <wez@wezfurlong.org>
 License: MIT
-URL: https://wezterm.org/
+URL: https://cxlinux.ai/
 Summary: Wez's Terminal Emulator.
 ${BUILD_REQUIRES}
-Requires: wezterm-common, wezterm-gui, wezterm-mux-server
+Requires: cx-terminal-common, cx-terminal-gui, cx-mux-server
 
 %global debug_package %{nil}
 
 %description
-wezterm is a terminal emulator with support for modern features
+CX Terminal is a terminal emulator with support for modern features
 such as fonts with ligatures, hyperlinks, tabs and multiple
 windows.
 
-# Subpackage: wezterm-common
-%package -n wezterm-common
+# Subpackage: cx-terminal-common
+%package -n cx-terminal-common
 Summary: Wez's Terminal Emulator - Common CLI components
 Requires: openssl
-%description -n wezterm-common
-wezterm-common provides the base CLI launcher and utilities shared by
-all wezterm components.
+%description -n cx-terminal-common
+cx-terminal-common provides the base CLI launcher and utilities shared by
+all CX Terminal components.
 
-# Subpackage: wezterm-gui
-%package -n wezterm-gui
+# Subpackage: cx-terminal-gui
+%package -n cx-terminal-gui
 Summary: Wez's Terminal Emulator - GUI and multiplexer
-Requires: wezterm-common
+Requires: cx-terminal-common
 %if 0%{?suse_version}
 Requires: dbus-1, fontconfig, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-egl1, libwayland-cursor0, Mesa-libEGL1, libxcb-keysyms1, libxcb-ewmh2, libxcb-icccm4
 %else
 Requires: dbus, fontconfig, libxcb, libxkbcommon, libxkbcommon-x11, libwayland-client, libwayland-egl, libwayland-cursor, mesa-libEGL, xcb-util-keysyms, xcb-util-wm
 %endif
-%description -n wezterm-gui
-wezterm-gui is a GPU-accelerated cross-platform terminal emulator with
+%description -n cx-terminal-gui
+cx-terminal-gui is a GPU-accelerated cross-platform terminal emulator with
 support for modern features such as fonts with ligatures, hyperlinks,
 tabs and multiple windows.
 
-# Subpackage: wezterm-mux-server
-%package -n wezterm-mux-server
+# Subpackage: cx-mux-server
+%package -n cx-mux-server
 Summary: Wez's Terminal Emulator - Multiplexer server (headless)
 Requires: openssl
-%description -n wezterm-mux-server
-wezterm-mux-server is a headless terminal multiplexer that can be used
+%description -n cx-mux-server
+cx-mux-server is a headless terminal multiplexer that can be used
 as a session manager for terminal sessions, without requiring X11,
 Wayland, or other GUI libraries.
 
@@ -278,39 +278,39 @@ ${BUILD_SECTION}
 set -x
 cd ${HERE}
 mkdir -p %{buildroot}/usr/bin %{buildroot}/etc/profile.d %{buildroot}/usr/share/icons/hicolor/128x128/apps %{buildroot}/usr/share/applications %{buildroot}/usr/share/metainfo %{buildroot}/usr/share/nautilus-python/extensions
-install -Dm755 assets/open-wezterm-here -t %{buildroot}/usr/bin
-install -Dsm755 $TARGET_DIR/release/wezterm -t %{buildroot}/usr/bin
-install -Dsm755 $TARGET_DIR/release/wezterm-gui -t %{buildroot}/usr/bin
-install -Dsm755 $TARGET_DIR/release/wezterm-mux-server -t %{buildroot}/usr/bin
+install -Dm755 assets/open-cx-terminal-here -t %{buildroot}/usr/bin
+install -Dsm755 $TARGET_DIR/release/cx-terminal -t %{buildroot}/usr/bin
+install -Dsm755 $TARGET_DIR/release/cx-terminal-gui -t %{buildroot}/usr/bin
+install -Dsm755 $TARGET_DIR/release/cx-mux-server -t %{buildroot}/usr/bin
 install -Dsm755 $TARGET_DIR/release/strip-ansi-escapes -t %{buildroot}/usr/bin
 install -Dm644 assets/shell-integration/* -t %{buildroot}/etc/profile.d
-install -Dm644 assets/shell-completion/zsh %{buildroot}/usr/share/zsh/site-functions/_wezterm
-install -Dm644 assets/shell-completion/bash %{buildroot}/etc/bash_completion.d/wezterm
-install -Dm644 assets/icon/terminal.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/org.wezfurlong.wezterm.png
-install -Dm644 assets/wezterm.desktop %{buildroot}/usr/share/applications/org.wezfurlong.wezterm.desktop
-install -Dm644 assets/wezterm.appdata.xml %{buildroot}/usr/share/metainfo/org.wezfurlong.wezterm.appdata.xml
-install -Dm644 assets/wezterm-nautilus.py %{buildroot}/usr/share/nautilus-python/extensions/wezterm-nautilus.py
+install -Dm644 assets/shell-completion/zsh %{buildroot}/usr/share/zsh/site-functions/_cx-terminal
+install -Dm644 assets/shell-completion/bash %{buildroot}/etc/bash_completion.d/cx-terminal
+install -Dm644 assets/icon/terminal.png %{buildroot}/usr/share/icons/hicolor/128x128/apps/org.cxlinux.cx-terminal.png
+install -Dm644 assets/cx-terminal.desktop %{buildroot}/usr/share/applications/org.wezfurlong.cx-terminal.desktop
+install -Dm644 assets/cx-terminal.appdata.xml %{buildroot}/usr/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
+install -Dm644 assets/cx-terminal-nautilus.py %{buildroot}/usr/share/nautilus-python/extensions/cx-terminal-nautilus.py
 
 %files
 # Main package (metapackage) has no files
 
-%files -n wezterm-common
-/usr/bin/wezterm
+%files -n cx-terminal-common
+/usr/bin/cx-terminal
 /usr/bin/strip-ansi-escapes
-/usr/share/zsh/site-functions/_wezterm
-/etc/bash_completion.d/wezterm
+/usr/share/zsh/site-functions/_cx-terminal
+/etc/bash_completion.d/cx-terminal
 /etc/profile.d/*
 
-%files -n wezterm-gui
-/usr/bin/open-wezterm-here
-/usr/bin/wezterm-gui
-/usr/share/icons/hicolor/128x128/apps/org.wezfurlong.wezterm.png
-/usr/share/applications/org.wezfurlong.wezterm.desktop
-/usr/share/metainfo/org.wezfurlong.wezterm.appdata.xml
-/usr/share/nautilus-python/extensions/wezterm-nautilus.py*
+%files -n cx-terminal-gui
+/usr/bin/open-cx-terminal-here
+/usr/bin/cx-terminal-gui
+/usr/share/icons/hicolor/128x128/apps/org.cxlinux.cx-terminal.png
+/usr/share/applications/org.wezfurlong.cx-terminal.desktop
+/usr/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
+/usr/share/nautilus-python/extensions/cx-terminal-nautilus.py*
 
-%files -n wezterm-mux-server
-/usr/bin/wezterm-mux-server
+%files -n cx-mux-server
+/usr/bin/cx-mux-server
 
 %changelog
 * Mon Oct 2 2023 Wez Furlong
@@ -318,23 +318,23 @@ install -Dm644 assets/wezterm-nautilus.py %{buildroot}/usr/share/nautilus-python
 EOF
 
         if test -n "${COPR_SRPM}" ; then
-          /usr/bin/rpmbuild -bs --rmspec wezterm.spec --verbose
-          mv $(rpm --eval '%{_srcrpmdir}')/wezterm-${TAR_NAME}*.src.rpm "${COPR_SRPM}"/
+          /usr/bin/rpmbuild -bs --rmspec cx-terminal.spec --verbose
+          mv $(rpm --eval '%{_srcrpmdir}')/cx-terminal-${TAR_NAME}*.src.rpm "${COPR_SRPM}"/
         else
-          /usr/bin/rpmbuild -bb --rmspec wezterm.spec --verbose
+          /usr/bin/rpmbuild -bb --rmspec cx-terminal.spec --verbose
         fi
 
         ;;
       Ubuntu*|Debian*|Pop)
         rm -rf pkg
-        mkdir -p pkg/debian/usr/bin pkg/debian/DEBIAN pkg/debian/usr/share/{applications,wezterm}
+        mkdir -p pkg/debian/usr/bin pkg/debian/DEBIAN pkg/debian/usr/share/{applications,cx-terminal}
 
         if [[ "$BUILD_REASON" == "Schedule" ]] ; then
-          pkgname=wezterm-nightly
-          conflicts=wezterm
+          pkgname=cx-terminal-nightly
+          conflicts=cx-terminal
         else
-          pkgname=wezterm
-          conflicts=wezterm-nightly
+          pkgname=cx-terminal
+          conflicts=cx-terminal-nightly
         fi
 
         cat > pkg/debian/control <<EOF
@@ -345,20 +345,20 @@ Architecture: $(dpkg-architecture -q DEB_BUILD_ARCH_CPU)
 Maintainer: Wez Furlong <wez@wezfurlong.org>
 Section: utils
 Priority: optional
-Homepage: https://wezterm.org/
+Homepage: https://cxlinux.ai/
 Description: Wez's Terminal Emulator.
- wezterm is a terminal emulator with support for modern features
+ CX Terminal is a terminal emulator with support for modern features
  such as fonts with ligatures, hyperlinks, tabs and multiple
  windows.
 Provides: x-terminal-emulator
-Source: https://wezterm.org/
+Source: https://cxlinux.ai/
 EOF
 
         cat > pkg/debian/postinst <<EOF
 #!/bin/sh
 set -e
 if [ "\$1" = "configure" ] ; then
-        update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/open-wezterm-here 20
+        update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/open-cx-terminal-here 20
 fi
 EOF
 
@@ -366,14 +366,14 @@ EOF
 #!/bin/sh
 set -e
 if [ "\$1" = "remove" ]; then
-	update-alternatives --remove x-terminal-emulator /usr/bin/open-wezterm-here
+	update-alternatives --remove x-terminal-emulator /usr/bin/open-cx-terminal-here
 fi
 EOF
 
-        install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/wezterm-mux-server
-        install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/wezterm-gui
-        install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/wezterm
-        install -Dm755 -t pkg/debian/usr/bin assets/open-wezterm-here
+        install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/cx-mux-server
+        install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/cx-terminal-gui
+        install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/cx-terminal
+        install -Dm755 -t pkg/debian/usr/bin assets/open-cx-terminal-here
         install -Dsm755 -t pkg/debian/usr/bin $TARGET_DIR/release/strip-ansi-escapes
 
         deps=$(cd pkg && dpkg-shlibdeps -O -e debian/usr/bin/*)
@@ -386,18 +386,18 @@ EOF
         echo $deps | sed -e 's/shlibs:Depends=/Depends: /' >> pkg/debian/DEBIAN/control
         cat pkg/debian/DEBIAN/control
 
-        install -Dm644 assets/icon/terminal.png pkg/debian/usr/share/icons/hicolor/128x128/apps/org.wezfurlong.wezterm.png
-        install -Dm644 assets/wezterm.desktop pkg/debian/usr/share/applications/org.wezfurlong.wezterm.desktop
-        install -Dm644 assets/wezterm.appdata.xml pkg/debian/usr/share/metainfo/org.wezfurlong.wezterm.appdata.xml
-        install -Dm644 assets/wezterm-nautilus.py pkg/debian/usr/share/nautilus-python/extensions/wezterm-nautilus.py
-        install -Dm644 assets/shell-completion/bash pkg/debian/usr/share/bash-completion/completions/wezterm
-        install -Dm644 assets/shell-completion/zsh pkg/debian/usr/share/zsh/functions/Completion/Unix/_wezterm
+        install -Dm644 assets/icon/terminal.png pkg/debian/usr/share/icons/hicolor/128x128/apps/org.cxlinux.cx-terminal.png
+        install -Dm644 assets/cx-terminal.desktop pkg/debian/usr/share/applications/org.wezfurlong.cx-terminal.desktop
+        install -Dm644 assets/cx-terminal.appdata.xml pkg/debian/usr/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
+        install -Dm644 assets/cx-terminal-nautilus.py pkg/debian/usr/share/nautilus-python/extensions/cx-terminal-nautilus.py
+        install -Dm644 assets/shell-completion/bash pkg/debian/usr/share/bash-completion/completions/cx-terminal
+        install -Dm644 assets/shell-completion/zsh pkg/debian/usr/share/zsh/functions/Completion/Unix/_cx-terminal
         install -Dm644 assets/shell-integration/* -t pkg/debian/etc/profile.d
 
         if [[ "$BUILD_REASON" == "Schedule" ]] ; then
-          debname=wezterm-nightly.$distro$distver
+          debname=cx-terminal-nightly.$distro$distver
         else
-          debname=wezterm-$TAG_NAME.$distro$distver
+          debname=cx-terminal-$TAG_NAME.$distro$distver
         fi
         arch=$(dpkg-architecture -q DEB_BUILD_ARCH_CPU)
         case $arch in
@@ -414,8 +414,8 @@ EOF
           $SUDO apt-get install ./$debname.deb
         fi
 
-        mv pkg/debian pkg/wezterm
-        tar cJf $debname.tar.xz -C pkg wezterm
+        mv pkg/debian pkg/cx-terminal
+        tar cJf $debname.tar.xz -C pkg cx-terminal
         rm -rf pkg
       ;;
     esac
@@ -428,7 +428,7 @@ EOF
         pkgver="${TAG_NAME#nightly-}"
         cat > APKBUILD <<EOF
 # Maintainer: Wez Furlong <wez@wezfurlong.org>
-pkgname=wezterm
+pkgname=cx-terminal
 pkgver=$(echo "$pkgver" | cut -d'-' -f1-2 | tr - .)
 _pkgver=$pkgver
 pkgrel=0
@@ -436,38 +436,38 @@ pkgdesc="A GPU-accelerated cross-platform terminal emulator and multiplexer writ
 license="MIT"
 arch="all"
 options="!check"
-url="https://wezterm.org/"
+url="https://cxlinux.ai/"
 makedepends="cmd:tic"
 source="
-  $TARGET_DIR/release/wezterm
-  $TARGET_DIR/release/wezterm-gui
-  $TARGET_DIR/release/wezterm-mux-server
-  assets/open-wezterm-here
-  assets/wezterm.desktop
-  assets/wezterm.appdata.xml
+  $TARGET_DIR/release/cx-terminal
+  $TARGET_DIR/release/cx-terminal-gui
+  $TARGET_DIR/release/cx-mux-server
+  assets/open-cx-terminal-here
+  assets/cx-terminal.desktop
+  assets/cx-terminal.appdata.xml
   assets/icon/terminal.png
-  assets/icon/wezterm-icon.svg
-  termwiz/data/wezterm.terminfo
+  assets/icon/cx-terminal-icon.svg
+  termwiz/data/cx-terminal.terminfo
 "
 builddir="\$srcdir"
 
 build() {
-  tic -x -o "\$builddir"/wezterm.terminfo "\$srcdir"/wezterm.terminfo
+  tic -x -o "\$builddir"/cx-terminal.terminfo "\$srcdir"/cx-terminal.terminfo
 }
 
 package() {
-  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/open-wezterm-here
-  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/wezterm
-  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/wezterm-gui
-  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/wezterm-mux-server
+  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/open-cx-terminal-here
+  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/cx-terminal
+  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/cx-terminal-gui
+  install -Dm755 -t "\$pkgdir"/usr/bin "\$srcdir"/cx-mux-server
 
-  install -Dm644 -t "\$pkgdir"/usr/share/applications "\$srcdir"/wezterm.desktop
-  install -Dm644 -t "\$pkgdir"/usr/share/metainfo "\$srcdir"/wezterm.appdata.xml
-  install -Dm644 "\$srcdir"/terminal.png "\$pkgdir"/usr/share/pixmaps/wezterm.png
-  install -Dm644 "\$srcdir"/wezterm-icon.svg "\$pkgdir"/usr/share/pixmaps/wezterm.svg
-  install -Dm644 "\$srcdir"/terminal.png "\$pkgdir"/usr/share/icons/hicolor/128x128/apps/wezterm.png
-  install -Dm644 "\$srcdir"/wezterm-icon.svg "\$pkgdir"/usr/share/icons/hicolor/scalable/apps/wezterm.svg
-  install -Dm644 "\$builddir"/wezterm.terminfo "\$pkgdir"/usr/share/terminfo/w/wezterm
+  install -Dm644 -t "\$pkgdir"/usr/share/applications "\$srcdir"/cx-terminal.desktop
+  install -Dm644 -t "\$pkgdir"/usr/share/metainfo "\$srcdir"/cx-terminal.appdata.xml
+  install -Dm644 "\$srcdir"/terminal.png "\$pkgdir"/usr/share/pixmaps/cx-terminal.png
+  install -Dm644 "\$srcdir"/cx-terminal-icon.svg "\$pkgdir"/usr/share/pixmaps/cx-terminal.svg
+  install -Dm644 "\$srcdir"/terminal.png "\$pkgdir"/usr/share/icons/hicolor/128x128/apps/cx-terminal.png
+  install -Dm644 "\$srcdir"/cx-terminal-icon.svg "\$pkgdir"/usr/share/icons/hicolor/scalable/apps/cx-terminal.svg
+  install -Dm644 "\$builddir"/cx-terminal.terminfo "\$pkgdir"/usr/share/terminfo/c/cx-terminal
 }
 EOF
         abuild -F checksum
