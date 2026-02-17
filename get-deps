@@ -45,13 +45,17 @@ alpine_deps() {
   APK="$SUDO apk"
   $APK add \
     'alpine-sdk' \
+    'alsa-lib-dev' \
     'bash' \
     'build-base' \
+    'clang' \
+    'clang-dev' \
     'coreutils' \
     'fontconfig-dev' \
     'libssh2-dev' \
     'libx11-dev' \
     'libxkbcommon-dev' \
+    'musl-dev' \
     'openssl-dev' \
     'pkgconf' \
     'python3' \
@@ -84,25 +88,29 @@ fedora_deps() {
   # Fedora 33 moved some perl bits around
   $YUM install -y 'perl-FindBin' 'perl-File-Compare' || true
   $YUM install -y \
-    'make' \
-    'gcc' \
-    'gcc-c++' \
+    'alsa-lib-devel' \
+    'clang' \
+    'clang-devel' \
     'flatpak-builder' \
     'fontconfig-devel' \
+    'gcc' \
+    'gcc-c++' \
+    'glibc-devel' \
+    'libxcb-devel' \
+    'libxkbcommon-devel' \
+    'libxkbcommon-x11-devel' \
+    'make' \
+    'mesa-libEGL-devel' \
     'openssl-devel' \
     'perl-interpreter' \
     'python3' \
     'python3-pip' \
-    'libxcb-devel' \
-    'libxkbcommon-devel' \
-    'libxkbcommon-x11-devel' \
-    'wayland-devel' \
-    'mesa-libEGL-devel' \
-    'xcb-util-devel' \
-    'xcb-util-keysyms-devel' \
-    'xcb-util-image-devel' \
-    'xcb-util-wm-devel' \
     'rpm-build' \
+    'wayland-devel' \
+    'xcb-util-devel' \
+    'xcb-util-image-devel' \
+    'xcb-util-keysyms-devel' \
+    'xcb-util-wm-devel' \
     'alsa-lib-devel'
 
   if test_flag; then
@@ -124,23 +132,27 @@ suse_deps() {
     RESOLVE="--allow-downgrade"
   fi
   $ZYPPER install $RESOLVE -yl \
-    'make' \
+    'alsa-devel' \
+    'clang' \
+    'clang-devel' \
+    'fontconfig-devel' \
     'gcc' \
     'gcc-c++' \
-    'fontconfig-devel' \
-    'libopenssl-devel' \
-    'perl' \
-    'python3' \
+    'glibc-devel' \
     'libxcb-devel' \
     'libxkbcommon-devel' \
     'libxkbcommon-x11-devel' \
-    'wayland-devel' \
+    'libopenssl-devel' \
+    'make' \
     'Mesa-libEGL-devel' \
+    'perl' \
+    'python3' \
+    'rpm-build' \
+    'wayland-devel' \
     'xcb-util-devel' \
-    'xcb-util-keysyms-devel' \
     'xcb-util-image-devel' \
-    'xcb-util-wm-devel' \
-    'rpm-build'
+    'xcb-util-keysyms-devel' \
+    'xcb-util-wm-devel'
 
   if test_flag; then
     $ZYPPER install $RESOLVE -yl 'openssh-server'
@@ -152,11 +164,15 @@ debian_deps() {
   apt-cache show 'libxcb-util-dev' > /dev/null 2>&1 && XCBUTIL="libxcb-util-dev" || XCBUTIL="libxcb-util0-dev"
   $APT install -y \
     'bsdutils' \
+    'clang' \
     'cmake' \
     'dpkg-dev' \
     'fakeroot' \
     'gcc' \
     'g++' \
+    'libasound2-dev' \
+    'libc6-dev' \
+    'libclang-dev' \
     'libegl1-mesa-dev' \
     'libssl-dev' \
     'libfontconfig1-dev' \
@@ -189,8 +205,10 @@ debian_deps() {
 arch_deps() {
   PACMAN="$SUDO pacman"
   $PACMAN -S --noconfirm --needed \
+    'alsa-lib' \
     'base-devel' \
     'cargo' \
+    'clang' \
     'cmake' \
     'fontconfig' \
     'git' \

@@ -24,11 +24,23 @@ mod tls_creds;
 mod zoom_pane;
 
 // CX Terminal: AI-powered commands
+pub mod ai;
 pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
 pub mod daemon;
+pub mod model_utils;
+pub mod new;
 pub mod shortcuts;
+
+// CX Security: Vulnerability management
+pub mod security;
+
+// HRM AI: Premium agent management (optional feature)
+#[cfg(feature = "hrm")]
+pub mod fire;
+#[cfg(feature = "hrm")]
+pub mod hire;
 
 #[derive(Debug, Parser, Clone, Copy)]
 enum CliOutputFormatKind {
@@ -172,6 +184,10 @@ Outputs the pane-id for the newly created pane on success"
     ZoomPane(zoom_pane::ZoomPane),
 
     // CX Terminal: AI-powered commands
+    /// Manage AI models and settings
+    #[command(name = "ai")]
+    AI(ai::AICommand),
+
     /// Ask AI a question or request a task
     #[command(name = "ask", trailing_var_arg = true)]
     Ask(ask::AskCommand),
@@ -199,6 +215,41 @@ Outputs the pane-id for the newly created pane on success"
     /// Manage the CX daemon
     #[command(name = "daemon")]
     Daemon(daemon::DaemonCommand),
+
+    /// Create a new project from a template
+    #[command(name = "new")]
+    New(new::NewCommand),
+
+    /// Save current workspace as a snapshot
+    #[command(name = "save")]
+    Save(snapshot::SaveCommand),
+
+    /// Restore a workspace from a snapshot
+    #[command(name = "restore")]
+    Restore(snapshot::RestoreCommand),
+
+    /// List or manage snapshots
+    #[command(name = "snapshots")]
+    Snapshots(snapshot::SnapshotsCommand),
+
+    // CX Security: Vulnerability Management
+    /// Security vulnerability scanning and patching
+    #[command(name = "security", about = "Security vulnerability management")]
+    Security(security::SecurityCommand),
+
+    // HRM AI: Premium agent management commands
+    /// Deploy an AI agent to a server (HRM AI premium feature)
+    #[cfg(feature = "hrm")]
+    #[command(name = "hire", about = "Deploy an AI agent (requires --features hrm)")]
+    Hire(hire::HireCommand),
+
+    /// Terminate an AI agent (HRM AI premium feature)
+    #[cfg(feature = "hrm")]
+    #[command(
+        name = "fire",
+        about = "Terminate an AI agent (requires --features hrm)"
+    )]
+    Fire(fire::FireCommand),
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
@@ -236,6 +287,10 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::RenameWorkspace(cmd) => cmd.run(client).await,
         CliSubCommand::ZoomPane(cmd) => cmd.run(client).await,
         // CX Terminal: AI commands don't need the mux client
+        CliSubCommand::AI(cmd) => {
+            drop(client);
+            cmd.run()
+        }
         CliSubCommand::Ask(cmd) => {
             drop(client);
             cmd.run()
@@ -261,6 +316,22 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             cmd.run()
         }
         CliSubCommand::Daemon(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        // CX Security commands don't need the mux client
+        CliSubCommand::Security(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        // HRM AI commands don't need the mux client
+        #[cfg(feature = "hrm")]
+        CliSubCommand::Hire(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        #[cfg(feature = "hrm")]
+        CliSubCommand::Fire(cmd) => {
             drop(client);
             cmd.run()
         }

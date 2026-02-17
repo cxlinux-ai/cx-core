@@ -183,6 +183,10 @@ enum SubCommand {
         about = "Manage the CX daemon (status, health, alerts)"
     )]
     Daemon(cli::daemon::DaemonCommand),
+
+    /// Manage AI models and settings
+    #[command(name = "ai", about = "Manage AI models (download, status, etc.)")]
+    AI(cli::ai::AICommand),
 }
 
 use termwiz::escape::osc::{
@@ -811,6 +815,7 @@ fn run() -> anyhow::Result<()> {
         SubCommand::Fix(cmd) => cmd.run(),
         SubCommand::Explain(cmd) => cmd.run(),
         SubCommand::Daemon(cmd) => cmd.run(),
+        SubCommand::AI(cmd) => cmd.run(),
     }
 }
 

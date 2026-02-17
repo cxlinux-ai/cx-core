@@ -4,7 +4,7 @@ use config::{GuiPosition, SshParameters};
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-pub const DEFAULT_WINDOW_CLASS: &str = "org.wezfurlong.wezterm";
+pub const DEFAULT_WINDOW_CLASS: &str = "org.cxlinux.cx-terminal";
 
 /// Helper for parsing config overrides
 pub fn name_equals_value(arg: &str) -> Result<(String, String), String> {
@@ -28,14 +28,14 @@ pub fn name_equals_value(arg: &str) -> Result<(String, String), String> {
 #[command(trailing_var_arg = true)]
 pub struct StartCommand {
     /// If true, do not connect to domains marked as connect_automatically
-    /// in your wezterm configuration file.
+    /// in your cx-terminal configuration file.
     #[arg(long = "no-auto-connect")]
     pub no_auto_connect: bool,
 
-    /// If enabled, don't try to ask an existing wezterm GUI instance
+    /// If enabled, don't try to ask an existing cx-terminal GUI instance
     /// to start the command.  Instead, always start the GUI in this
-    /// invocation of wezterm so that you can wait for the command
-    /// to complete by waiting for this wezterm process to finish.
+    /// invocation of cx-terminal so that you can wait for the command
+    /// to complete by waiting for this cx-terminal process to finish.
     #[arg(long = "always-new-process")]
     pub always_new_process: bool,
 
@@ -62,11 +62,11 @@ pub struct StartCommand {
     pub _cmd: bool,
 
     /// Override the default windowing system class.
-    /// The default is "org.wezfurlong.wezterm".
+    /// The default is "org.cxlinux.cx-terminal".
     /// Under X11 and Windows this changes the window class.
     /// Under Wayland this changes the app_id.
     /// This changes the class for all windows spawned by this
-    /// instance of wezterm, including error, update and ssh
+    /// instance of cx-terminal, including error, update and ssh
     /// authentication dialogs.
     #[arg(long = "class")]
     pub class: Option<String>,
@@ -95,14 +95,14 @@ pub struct StartCommand {
     pub domain: Option<String>,
 
     /// When used with --domain, if the domain already has running panes,
-    /// wezterm will simply attach and will NOT spawn the specified PROG.
-    /// If you omit --attach when using --domain, wezterm will attach
+    /// cx-terminal will simply attach and will NOT spawn the specified PROG.
+    /// If you omit --attach when using --domain, cx-terminal will attach
     /// AND then spawn PROG.
     #[arg(long, requires = "domain")]
     pub attach: bool,
 
     /// Instead of executing your shell, run PROG.
-    /// For example: `wezterm start -- bash -l` will spawn bash
+    /// For example: `cx-terminal start -- bash -l` will spawn bash
     /// as if it were a login shell. [aliases: -e]
     #[arg(value_parser, value_hint=ValueHint::CommandWithArguments, num_args=1..)]
     pub prog: Vec<OsString>,
@@ -120,14 +120,14 @@ pub struct SshCommand {
     pub user_at_host_and_port: SshParameters,
 
     /// Override specific SSH configuration options.
-    /// `wezterm ssh` is able to parse some (but not all!) options
+    /// `cx-terminal ssh` is able to parse some (but not all!) options
     /// from your `~/.ssh/config` and `/etc/ssh/ssh_config` files.
     /// This command line switch allows you to override or otherwise
     /// specify ssh_config style options.
     ///
     /// For example:
     ///
-    /// `wezterm ssh -oIdentityFile=/secret/id_ed25519 some-host`
+    /// `cx-terminal ssh -oIdentityFile=/secret/id_ed25519 some-host`
     #[arg(
         long = "ssh-option",
         short = 'o',
@@ -143,11 +143,11 @@ pub struct SshCommand {
     pub verbose: bool,
 
     /// Override the default windowing system class.
-    /// The default is "org.wezfurlong.wezterm".
+    /// The default is "org.cxlinux.cx-terminal".
     /// Under X11 and Windows this changes the window class.
     /// Under Wayland this changes the app_id.
     /// This changes the class for all windows spawned by this
-    /// instance of wezterm, including error, update and ssh
+    /// instance of cx-terminal, including error, update and ssh
     /// authentication dialogs.
     #[arg(long = "class")]
     pub class: Option<String>,
@@ -162,7 +162,7 @@ pub struct SshCommand {
     pub position: Option<GuiPosition>,
 
     /// Instead of executing your shell, run PROG.
-    /// For example: `wezterm ssh user@host -- bash -l` will spawn bash
+    /// For example: `cx-terminal ssh user@host -- bash -l` will spawn bash
     /// as if it were a login shell.
     #[arg(value_parser, value_hint=ValueHint::CommandWithArguments, num_args=1..)]
     pub prog: Vec<OsString>,
@@ -175,11 +175,11 @@ pub struct SerialCommand {
     pub baud: Option<usize>,
 
     /// Override the default windowing system class.
-    /// The default is "org.wezfurlong.wezterm".
+    /// The default is "org.cxlinux.cx-terminal".
     /// Under X11 and Windows this changes the window class.
     /// Under Wayland this changes the app_id.
     /// This changes the class for all windows spawned by this
-    /// instance of wezterm, including error, update and ssh
+    /// instance of cx-terminal, including error, update and ssh
     /// authentication dialogs.
     #[arg(long = "class")]
     pub class: Option<String>,
@@ -213,11 +213,11 @@ pub struct ConnectCommand {
     pub new_tab: bool,
 
     /// Override the default windowing system class.
-    /// The default is "org.wezfurlong.wezterm".
+    /// The default is "org.cxlinux.cx-terminal".
     /// Under X11 and Windows this changes the window class.
     /// Under Wayland this changes the app_id.
     /// This changes the class for all windows spawned by this
-    /// instance of wezterm, including error, update and ssh
+    /// instance of cx-terminal, including error, update and ssh
     /// authentication dialogs.
     #[arg(long = "class")]
     pub class: Option<String>,
@@ -237,7 +237,7 @@ pub struct ConnectCommand {
     pub position: Option<GuiPosition>,
 
     /// Instead of executing your shell, run PROG.
-    /// For example: `wezterm start -- bash -l` will spawn bash
+    /// For example: `cx-terminal start -- bash -l` will spawn bash
     /// as if it were a login shell.
     #[arg(value_parser, value_hint=ValueHint::CommandWithArguments, num_args=1..)]
     pub prog: Vec<OsString>,

@@ -67,7 +67,7 @@ class ThresholdMonitor:
         """Initialize threshold monitor."""
         # Set up configuration directory
         if config_dir is None:
-            self.config_dir = Path.home() / ".cortex"
+            self.config_dir = Path.home() / ".cx"
         else:
             self.config_dir = config_dir
 

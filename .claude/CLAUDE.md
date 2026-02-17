@@ -4,7 +4,7 @@
 CX Terminal is an AI-native terminal emulator forked from WezTerm. This is the primary interface for CX Linux.
 
 ## Branding Rules
-- Use "CX" not "Cortex" everywhere
+- Use "CX" branding consistently
 - Company: CX Linux
 - Email: support@cxlinux.com
 - License: BSL 1.1 for additions, MIT for WezTerm base

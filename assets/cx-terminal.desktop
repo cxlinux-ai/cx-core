@@ -1,9 +1,7 @@
 [Desktop Entry]
-Version=1.1
 Name=CX Terminal
-GenericName=Terminal
-Comment=AI-Native Terminal for CX Linux - Command blocks, AI assistance, Agents
-Keywords=shell;prompt;command;commandline;cmd;terminal;cx;ai;llm;assistant;
+Comment=CX Terminal Emulator
+Keywords=shell;prompt;command;commandline;cmd;
 Icon=cx-terminal
 StartupWMClass=org.cxlinux.cx-terminal
 TryExec=cx-terminal
@@ -11,8 +9,3 @@ Exec=cx-terminal start --cwd .
 Type=Application
 Categories=System;TerminalEmulator;Utility;
 Terminal=false
-Actions=new-window;
-
-[Desktop Action new-window]
-Name=New Window
-Exec=cx-terminal start
