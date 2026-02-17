@@ -67,6 +67,7 @@
             zlib
           ]
           ++ lib.optionals stdenv.isLinux [
+            alsa-lib  # Required for audio/voice features
             libxkbcommon
             wayland
 
