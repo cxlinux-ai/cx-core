@@ -15,7 +15,7 @@ clap.workspace = true
 llama-cpp-2.workspace = true
 hf-hub.workspace = true
 dirs.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["full"] }
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 codec.workspace = true
@@ -54,11 +54,10 @@ uuid = { version = "1.6", features = ["v4"] }
 # HRM AI - Optional premium agent management (enable with --features hrm)
 hrm-ai = { git = "https://github.com/mikejmorgan-ai/hrm-ai-standalone.git", optional = true }
 sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "postgres"], optional = true }
-tokio = { version = "1", features = ["full"], optional = true }
 
 [features]
 default = []
-hrm = ["dep:hrm-ai", "dep:sqlx", "dep:tokio"]
+hrm = ["dep:hrm-ai", "dep:sqlx"]
 
 [target."cfg(unix)".dependencies]
 termios.workspace = true
