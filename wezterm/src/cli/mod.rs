@@ -24,9 +24,11 @@ mod tls_creds;
 mod zoom_pane;
 
 // CX Terminal: AI-powered commands
+pub mod ai;
 pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
+pub mod model_utils;
 pub mod new;
 pub mod shortcuts;
 pub mod snapshot;
@@ -173,6 +175,10 @@ Outputs the pane-id for the newly created pane on success"
     ZoomPane(zoom_pane::ZoomPane),
 
     // CX Terminal: AI-powered commands
+    /// Manage AI models and settings
+    #[command(name = "ai")]
+    AI(ai::AICommand),
+
     /// Ask AI a question or request a task
     #[command(name = "ask", trailing_var_arg = true)]
     Ask(ask::AskCommand),
@@ -249,6 +255,10 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::RenameWorkspace(cmd) => cmd.run(client).await,
         CliSubCommand::ZoomPane(cmd) => cmd.run(client).await,
         // CX Terminal: AI commands don't need the mux client
+        CliSubCommand::AI(cmd) => {
+            drop(client);
+            cmd.run()
+        }
         CliSubCommand::Ask(cmd) => {
             drop(client);
             cmd.run()
