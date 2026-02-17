@@ -32,6 +32,7 @@ pub mod daemon;
 pub mod model_utils;
 pub mod new;
 pub mod shortcuts;
+pub mod snapshot;
 
 // CX Security: Vulnerability management
 pub mod security;
