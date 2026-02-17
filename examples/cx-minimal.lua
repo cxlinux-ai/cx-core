@@ -6,7 +6,7 @@ local cx = require 'cx'
 local config = cx.config_builder()
 
 -- That's it! CX Terminal will use sensible defaults:
--- - JetBrains Mono font at 14pt
+-- - System default font at 14pt (Menlo on macOS, DejaVu Sans Mono on Linux)
 -- - CX Dark color scheme
 -- - GPU acceleration enabled
 -- - 10000 lines scrollback
