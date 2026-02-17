@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2024-12-29",
+  "last_updated": "2026-02-17",
   "individuals": [
     {
       "name": "Mike Morgan",
@@ -9,10 +9,61 @@
         "mike@aiventureholdings.com",
         "mike@cxlinux.com",
         "allbots@llents.io",
-        "allbots@allbots.io"
+        "allbots@allbots.io",
+        "73376634+mikejmorgan-ai@users.noreply.github.com"
       ],
       "signed_date": "2024-12-29",
       "cla_version": "1.0"
+    },
+    {
+      "name": "Gary Xue",
+      "github_username": "0xBigotry7",
+      "emails": [
+        "garyxuejingzhou@gmail.com",
+        "h15629526027@gmail.com",
+        "your.email@example.com"
+      ],
+      "signed_date": "2026-02-17",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Suyash",
+      "github_username": "Suyashd999",
+      "emails": [
+        "109069262+Suyashd999@users.noreply.github.com"
+      ],
+      "signed_date": "2026-02-17",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Shreem J",
+      "github_username": "shreemj",
+      "emails": [
+        "shreemj8@gmail.com"
+      ],
+      "signed_date": "2026-02-17",
+      "cla_version": "1.0"
+    },
+    {
+      "name": "Claude (Anthropic AI)",
+      "github_username": "anthropic-bot",
+      "emails": [
+        "noreply@anthropic.com"
+      ],
+      "signed_date": "2026-02-17",
+      "cla_version": "1.0",
+      "note": "AI coding assistant - commits covered under Mike Morgan authorization"
+    },
+    {
+      "name": "GitHub Copilot",
+      "github_username": "Copilot",
+      "emails": [
+        "175728472+Copilot@users.noreply.github.com",
+        "198982749+Copilot@users.noreply.github.com"
+      ],
+      "signed_date": "2026-02-17",
+      "cla_version": "1.0",
+      "note": "AI coding assistant - commits covered under Mike Morgan authorization"
     }
   ],
   "corporations": {
