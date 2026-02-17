@@ -43,7 +43,7 @@ wezterm-term.workspace = true
 
 # HRM AI - Optional premium agent management (enable with --features hrm)
 hrm-ai = { git = "https://github.com/mikejmorgan-ai/hrm-ai-standalone.git", optional = true }
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres"], optional = true }
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "postgres"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 uuid = { version = "1.6", features = ["v4"], optional = true }
 
