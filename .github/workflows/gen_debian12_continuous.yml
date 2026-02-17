@@ -89,10 +89,10 @@ jobs:
         run: "env CI=yes PATH=$PATH ./get-deps"
       - name: "Build cx-terminal (Release mode)"
         shell: bash
-        run: "cargo build -p wezterm --release"
+        run: "cargo build -p cx-terminal --release"
       - name: "Build cx-terminal-gui (Release mode)"
         shell: bash
-        run: "cargo build -p wezterm-gui --release"
+        run: "cargo build -p cx-terminal-gui --release"
       - name: "Build cx-mux-server (Release mode)"
         shell: bash
         run: "cargo build -p wezterm-mux-server --release"

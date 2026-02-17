@@ -45,12 +45,12 @@ jobs:
         shell: cmd
         run: |
           PATH C:\Strawberry\perl\bin;%PATH%
-          cargo build -p wezterm --release
+          cargo build -p cx-terminal --release
       - name: "Build cx-terminal-gui (Release mode)"
         shell: cmd
         run: |
           PATH C:\Strawberry\perl\bin;%PATH%
-          cargo build -p wezterm-gui --release
+          cargo build -p cx-terminal-gui --release
       - name: "Build cx-mux-server (Release mode)"
         shell: cmd
         run: |
