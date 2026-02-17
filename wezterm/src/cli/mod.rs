@@ -336,6 +336,23 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             drop(client);
             cmd.run()
         }
+        // Workspace snapshot commands (don't need mux client)
+        CliSubCommand::New(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Save(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Restore(cmd) => {
+            drop(client);
+            cmd.run()
+        }
+        CliSubCommand::Snapshots(cmd) => {
+            drop(client);
+            cmd.run()
+        }
     }
 }
 
