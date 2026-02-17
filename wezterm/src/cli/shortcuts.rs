@@ -3,8 +3,6 @@ Copyright (c) 2026 AI Venture Holdings LLC
 Licensed under the Business Source License 1.1
 You may not use this file except in compliance with the License.
 */
-
-
 //! CX Terminal: Shortcut commands
 //!
 //! Simplified aliases for common AI-powered operations:
