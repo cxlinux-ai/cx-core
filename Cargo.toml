@@ -4,6 +4,7 @@ members = [
   "bidi/generate",
   "strip-ansi-escapes",
   "sync-color-schemes",
+  "cx-daemon",
   "deps/cairo",
   "wezterm",
   "wezterm-blob-leases",

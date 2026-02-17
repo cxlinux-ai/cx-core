@@ -20,6 +20,7 @@ clap_complete.workspace = true
 clap_complete_fig.workspace = true
 codec.workspace = true
 config.workspace = true
+cx-daemon = { path = "../cx-daemon" }
 env-bootstrap.workspace = true
 filedescriptor.workspace = true
 hostname.workspace = true
@@ -45,23 +46,20 @@ wezterm-client.workspace = true
 wezterm-gui-subcommands.workspace = true
 wezterm-term.workspace = true
 
-<<<<<<< ours
 # CX Security dependencies
 rusqlite = { workspace = true, features = ["bundled"] }
 ureq = { version = "2.9", features = ["json"] }
 uuid = { version = "1.6", features = ["v4"] }
 dirs = "5.0"
-=======
+
 # HRM AI - Optional premium agent management (enable with --features hrm)
 hrm-ai = { git = "https://github.com/mikejmorgan-ai/hrm-ai-standalone.git", optional = true }
 sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "postgres"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
-uuid = { version = "1.6", features = ["v4"], optional = true }
 
 [features]
 default = []
-hrm = ["dep:hrm-ai", "dep:sqlx", "dep:tokio", "dep:uuid"]
->>>>>>> theirs
+hrm = ["dep:hrm-ai", "dep:sqlx", "dep:tokio"]
 
 [target."cfg(unix)".dependencies]
 termios.workspace = true

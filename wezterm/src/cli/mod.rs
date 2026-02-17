@@ -28,10 +28,10 @@ pub mod ai;
 pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
+pub mod daemon;
 pub mod model_utils;
 pub mod new;
 pub mod shortcuts;
-pub mod snapshot;
 
 // CX Security: Vulnerability management
 pub mod security;
@@ -212,6 +212,10 @@ Outputs the pane-id for the newly created pane on success"
     #[command(name = "explain", trailing_var_arg = true)]
     Explain(shortcuts::ExplainCommand),
 
+    /// Manage the CX daemon
+    #[command(name = "daemon")]
+    Daemon(daemon::DaemonCommand),
+
     /// Create a new project from a template
     #[command(name = "new")]
     New(new::NewCommand),
@@ -311,19 +315,7 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             drop(client);
             cmd.run()
         }
-        CliSubCommand::New(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Save(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Restore(cmd) => {
-            drop(client);
-            cmd.run()
-        }
-        CliSubCommand::Snapshots(cmd) => {
+        CliSubCommand::Daemon(cmd) => {
             drop(client);
             cmd.run()
         }

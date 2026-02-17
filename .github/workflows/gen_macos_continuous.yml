@@ -64,16 +64,16 @@ jobs:
         run: "env CI=yes PATH=$PATH ./get-deps"
       - name: "Build cx-terminal (Release mode Intel)"
         shell: bash
-        run: "cargo build --target x86_64-apple-darwin -p wezterm --release"
+        run: "cargo build --target x86_64-apple-darwin -p cx-terminal --release"
       - name: "Build cx-terminal (Release mode ARM)"
         shell: bash
-        run: "cargo build --target aarch64-apple-darwin -p wezterm --release"
+        run: "cargo build --target aarch64-apple-darwin -p cx-terminal --release"
       - name: "Build cx-terminal-gui (Release mode Intel)"
         shell: bash
-        run: "cargo build --target x86_64-apple-darwin -p wezterm-gui --release"
+        run: "cargo build --target x86_64-apple-darwin -p cx-terminal-gui --release"
       - name: "Build cx-terminal-gui (Release mode ARM)"
         shell: bash
-        run: "cargo build --target aarch64-apple-darwin -p wezterm-gui --release"
+        run: "cargo build --target aarch64-apple-darwin -p cx-terminal-gui --release"
       - name: "Build wezterm-mux-server (Release mode Intel)"
         shell: bash
         run: "cargo build --target x86_64-apple-darwin -p wezterm-mux-server --release"

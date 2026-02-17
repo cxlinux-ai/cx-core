@@ -177,6 +177,13 @@ enum SubCommand {
     #[command(name = "explain", about = "Explain a command or concept")]
     Explain(cli::shortcuts::ExplainCommand),
 
+    /// Manage the CX daemon
+    #[command(
+        name = "daemon",
+        about = "Manage the CX daemon (status, health, alerts)"
+    )]
+    Daemon(cli::daemon::DaemonCommand),
+
     /// Manage AI models and settings
     #[command(name = "ai", about = "Manage AI models (download, status, etc.)")]
     AI(cli::ai::AICommand),
@@ -807,6 +814,7 @@ fn run() -> anyhow::Result<()> {
         SubCommand::What(cmd) => cmd.run(),
         SubCommand::Fix(cmd) => cmd.run(),
         SubCommand::Explain(cmd) => cmd.run(),
+        SubCommand::Daemon(cmd) => cmd.run(),
         SubCommand::AI(cmd) => cmd.run(),
     }
 }
