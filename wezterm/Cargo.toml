@@ -42,7 +42,7 @@ wezterm-gui-subcommands.workspace = true
 wezterm-term.workspace = true
 
 # CX Security dependencies
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { workspace = true, features = ["bundled"] }
 ureq = { version = "2.9", features = ["json"] }
 uuid = { version = "1.6", features = ["v4"] }
 dirs = "5.0"
