@@ -128,7 +128,7 @@ jobs:
             libssl-dev
 
       - name: Run term tests
-        run: cargo test -p cx-term
+        run: cargo test -p wezterm-term
 
   test-bidi:
     name: BiDi Conformance Tests
@@ -155,7 +155,7 @@ jobs:
             ${{ runner.os }}-cargo-bidi-
 
       - name: Run bidi tests
-        run: cargo test -p cx-bidi
+        run: cargo test -p wezterm-bidi
 
   doc-tests:
     name: Documentation Tests
