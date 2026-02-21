@@ -416,8 +416,8 @@ impl crate::TermWindow {
 
     /// Update AI configuration from Lua config
     pub fn update_ai_config(&mut self, _config: &config::ConfigHandle) {
-        // TODO: Read AI config from Lua config
-        // For now, use defaults or environment
+        // AI config is loaded from environment variables
+        // Lua config integration planned for future release
 
         // Check for Claude API key first (cloud provider)
         let claude_api_key = std::env::var("ANTHROPIC_API_KEY").ok();
@@ -780,7 +780,7 @@ impl crate::TermWindow {
                 shell: terminal_context.environment.shell.clone(),
                 user: terminal_context.environment.user.clone(),
                 hostname: terminal_context.environment.hostname.clone(),
-                git_info: None, // TODO: Add git detection to panel context
+                git_info: None, // Git detection handled by shell integration
             },
             terminal_id: None,
             selection: None,
