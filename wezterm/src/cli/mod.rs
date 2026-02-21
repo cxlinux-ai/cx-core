@@ -274,7 +274,7 @@ pub struct ActivateCommand {
 impl ActivateCommand {
     pub async fn run(&self) -> anyhow::Result<()> {
         println!("Activating license: {}...", self.license_key);
-        
+
         match license::activate_license(&self.license_key).await {
             Ok(info) => {
                 println!("\n✅ License activated successfully!\n");
@@ -315,7 +315,14 @@ impl LicenseCommand {
                 println!("  Expires: {}", info.expires_at);
                 println!("  Days remaining: {}", info.days_remaining);
                 println!("  Devices: {}/{}", info.systems_used, info.systems_allowed);
-                println!("  This device: {}", if info.device_activated { "✅ Activated" } else { "❌ Not activated" });
+                println!(
+                    "  This device: {}",
+                    if info.device_activated {
+                        "✅ Activated"
+                    } else {
+                        "❌ Not activated"
+                    }
+                );
                 println!("\nFeatures: {}", info.features.join(", "));
                 Ok(())
             }
