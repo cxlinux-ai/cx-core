@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-const LICENSE_SERVER_URL: &str = "https://license.vibetravel.club";
+const LICENSE_SERVER_URL: &str = "https://license.cxlinux.com";
 const LICENSE_FILE: &str = ".cx/license.key";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
