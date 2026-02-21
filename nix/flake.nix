@@ -169,8 +169,8 @@
             echo "${passthru.terminfo}" >> $out/nix-support/propagated-user-env-packages
 
             install -Dm644 assets/icon/terminal.png $out/share/icons/hicolor/128x128/apps/org.wezfurlong.wezterm.png
-            install -Dm644 assets/wezterm.desktop $out/share/applications/org.wezfurlong.wezterm.desktop
-            install -Dm644 assets/wezterm.appdata.xml $out/share/metainfo/org.wezfurlong.wezterm.appdata.xml
+            install -Dm644 assets/cx-terminal.desktop $out/share/applications/org.wezfurlong.cx-terminal.desktop
+            install -Dm644 assets/cx-terminal.appdata.xml $out/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
 
             install -Dm644 assets/shell-integration/wezterm.sh -t $out/etc/profile.d
             installShellCompletion --cmd wezterm \
@@ -178,7 +178,7 @@
               --fish assets/shell-completion/fish \
               --zsh assets/shell-completion/zsh
 
-            install -Dm644 assets/wezterm-nautilus.py -t $out/share/nautilus-python/extensions
+            install -Dm644 assets/cx-terminal-nautilus.py -t $out/share/nautilus-python/extensions
           '';
 
           passthru = {
