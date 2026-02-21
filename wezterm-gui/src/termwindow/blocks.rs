@@ -101,23 +101,17 @@ impl crate::TermWindow {
             }
 
             CXSequence::AIExplain { text } => {
-                // Route to AI panel for explanation
+                // AI panel integration pending - see termwindow/ai.rs
                 log::debug!("AI Explain request: {}", text);
-                self.show_ai_panel(crate::ai::AIPanelState::Explain);
-                let action = self.ai_panel.borrow_mut().explain(text);
-                self.execute_ai_action(action);
             }
 
             CXSequence::AISuggest { query } => {
-                // Route to AI panel for suggestions
+                // AI panel integration pending - see termwindow/ai.rs
                 log::debug!("AI Suggest request: {}", query);
-                self.show_ai_panel(crate::ai::AIPanelState::Suggestions);
-                let action = crate::ai::AIAction::Suggest(query);
-                self.execute_ai_action(action);
             }
 
             CXSequence::AgentRequest { name, command } => {
-                // Agent system for automated tasks (reserved for future use)
+                // Agent system integration pending
                 log::info!("Agent request received: {} - {}", name, command);
             }
 
