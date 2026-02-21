@@ -58,6 +58,7 @@
             python3
             cmake  # Required for llama-cpp-sys build
             llvmPackages.libclang  # Required for bindgen in llama-cpp-sys
+            llvmPackages.clang  # C compiler for llama-cpp-sys
           ]
           ++ lib.optional stdenv.isDarwin perl;
 
@@ -139,6 +140,9 @@
 
           # Required for llama-cpp-sys bindgen
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          
+          # Ensure bindgen can find C stdlib headers
+          BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${pkgs.llvmPackages.libclang.lib}/lib/clang/${lib.versions.major pkgs.llvmPackages.libclang.version}/include -isystem ${pkgs.glibc.dev}/include";
 
           preFixup =
             lib.optionalString stdenv.isLinux /* bash */ ''
