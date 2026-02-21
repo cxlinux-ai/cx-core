@@ -32,7 +32,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
-      MACOSX_DEPLOYMENT_TARGET: "10.12"
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
 
     steps:
       - name: "checkout repo"
