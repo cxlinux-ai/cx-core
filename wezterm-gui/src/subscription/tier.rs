@@ -1,11 +1,11 @@
 //! Subscription tier definitions and limits
 //!
 //! CX Terminal is bundled with CX Linux subscriptions.
-//! Pricing aligns with cxlinux.ai/pricing:
-//! - Core (Free): 1 system, basic features
-//! - Pro ($19/system): Unlimited systems, commercial use
-//! - Team ($49/mo): Cloud AI, team dashboard, 25 systems
-//! - Enterprise ($199/mo): SSO, compliance, 100 systems
+//! Pricing aligns with cxlinux.com/pricing:
+//! - Core (Free): 1 server, basic features
+//! - Pro ($20/mo): Up to 5 servers, cloud AI, commercial use
+//! - Team ($99/mo): Up to 25 servers, team dashboard
+//! - Enterprise ($299/mo): Unlimited servers, SSO, compliance
 
 use serde::{Deserialize, Serialize};
 
@@ -13,13 +13,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SubscriptionTier {
-    /// Free tier - 1 system, basic features
+    /// Free tier - 1 server, basic features
     Core,
-    /// Pro tier ($19/system) - unlimited systems, commercial license
+    /// Pro tier ($20/mo) - up to 5 servers, cloud AI, commercial license
     Pro,
-    /// Team tier ($49/mo) - cloud AI, team features, 25 systems
+    /// Team tier ($99/mo) - up to 25 servers, team dashboard
     Team,
-    /// Enterprise tier ($199/mo) - SSO, compliance, 100 systems
+    /// Enterprise tier ($299/mo) - unlimited servers, SSO, compliance
     Enterprise,
 }
 
@@ -49,9 +49,9 @@ impl SubscriptionTier {
     pub fn price_cents(&self) -> u32 {
         match self {
             Self::Core => 0,
-            Self::Pro => 1900,         // $19/system
-            Self::Team => 4900,        // $49/mo
-            Self::Enterprise => 19900, // $199/mo
+            Self::Pro => 2000,         // $20/mo
+            Self::Team => 9900,        // $99/mo
+            Self::Enterprise => 29900, // $299/mo
         }
     }
 
@@ -59,19 +59,19 @@ impl SubscriptionTier {
     pub fn price_display(&self) -> &'static str {
         match self {
             Self::Core => "Free",
-            Self::Pro => "$19/system",
-            Self::Team => "$49/mo",
-            Self::Enterprise => "$199/mo",
+            Self::Pro => "$20/mo",
+            Self::Team => "$99/mo",
+            Self::Enterprise => "$299/mo",
         }
     }
 
-    /// Get the number of systems included
-    pub fn systems_included(&self) -> usize {
+    /// Get the number of servers included
+    pub fn servers_included(&self) -> usize {
         match self {
             Self::Core => 1,
-            Self::Pro => usize::MAX, // Unlimited (per-system pricing)
+            Self::Pro => 5,
             Self::Team => 25,
-            Self::Enterprise => 100,
+            Self::Enterprise => usize::MAX, // Unlimited
         }
     }
 
@@ -200,10 +200,10 @@ impl TierLimits {
         }
     }
 
-    /// Pro tier limits ($19/system - unlimited systems)
+    /// Pro tier limits ($20/mo - up to 5 servers)
     pub fn pro() -> Self {
         Self {
-            max_systems: usize::MAX,
+            max_systems: 5,
             max_agents: usize::MAX,
             ai_queries_per_day: usize::MAX,
             history_days: usize::MAX,
@@ -224,7 +224,7 @@ impl TierLimits {
         }
     }
 
-    /// Team tier limits ($49/mo - 25 systems)
+    /// Team tier limits ($99/mo - up to 25 servers)
     pub fn team() -> Self {
         Self {
             max_systems: 25,
@@ -248,10 +248,10 @@ impl TierLimits {
         }
     }
 
-    /// Enterprise tier limits ($199/mo - 100 systems)
+    /// Enterprise tier limits ($299/mo - unlimited servers)
     pub fn enterprise() -> Self {
         Self {
-            max_systems: 100,
+            max_systems: usize::MAX,
             max_agents: usize::MAX,
             ai_queries_per_day: usize::MAX,
             history_days: usize::MAX,
@@ -428,7 +428,7 @@ mod tests {
         assert!(!core.commercial_license);
 
         let pro = TierLimits::pro();
-        assert_eq!(pro.max_systems, usize::MAX);
+        assert_eq!(pro.max_systems, 5);
         assert!(pro.custom_agents);
         assert!(pro.voice_input);
         assert!(pro.commercial_license);
@@ -440,7 +440,7 @@ mod tests {
         assert!(team.team_dashboard);
 
         let enterprise = TierLimits::enterprise();
-        assert_eq!(enterprise.max_systems, 100);
+        assert_eq!(enterprise.max_systems, usize::MAX);
         assert!(enterprise.sso);
         assert!(enterprise.audit_logs);
         assert!(enterprise.priority_support);
@@ -474,16 +474,16 @@ mod tests {
     #[test]
     fn test_tier_price() {
         assert_eq!(SubscriptionTier::Core.price_cents(), 0);
-        assert_eq!(SubscriptionTier::Pro.price_cents(), 1900);
-        assert_eq!(SubscriptionTier::Team.price_cents(), 4900);
-        assert_eq!(SubscriptionTier::Enterprise.price_cents(), 19900);
+        assert_eq!(SubscriptionTier::Pro.price_cents(), 2000);
+        assert_eq!(SubscriptionTier::Team.price_cents(), 9900);
+        assert_eq!(SubscriptionTier::Enterprise.price_cents(), 29900);
     }
 
     #[test]
-    fn test_systems_included() {
-        assert_eq!(SubscriptionTier::Core.systems_included(), 1);
-        assert_eq!(SubscriptionTier::Pro.systems_included(), usize::MAX);
-        assert_eq!(SubscriptionTier::Team.systems_included(), 25);
-        assert_eq!(SubscriptionTier::Enterprise.systems_included(), 100);
+    fn test_servers_included() {
+        assert_eq!(SubscriptionTier::Core.servers_included(), 1);
+        assert_eq!(SubscriptionTier::Pro.servers_included(), 5);
+        assert_eq!(SubscriptionTier::Team.servers_included(), 25);
+        assert_eq!(SubscriptionTier::Enterprise.servers_included(), usize::MAX);
     }
 }
