@@ -144,8 +144,8 @@ npm ci
 # Step 3: Build
 npm run build
 
-# Step 4: Verify no Cortex references in output
-grep -ri "cortex" dist/ && echo "❌ FAIL: Cortex references found" || echo "✅ PASS: Clean build"
+# Step 4: Verify no CX references in output
+grep -ri "cx" dist/ && echo "❌ FAIL: CX references found" || echo "✅ PASS: Clean build"
 ```
 
 ### Build Verification Checklist
@@ -157,7 +157,7 @@ echo "=== Build Verification ==="
 ls -lh dist/public/assets/*.js | head -5
 
 # Check for legacy references
-grep -ri "cortex" dist/ | wc -l
+grep -ri "cx" dist/ | wc -l
 grep -ri "alex" dist/ | wc -l
 grep -ri "blue-500" dist/ | wc -l
 
@@ -219,8 +219,8 @@ rm -rf dist
 npm run build
 
 # Verify build
-if grep -ri "cortex" dist/ > /dev/null 2>&1; then
-  echo "❌ Cortex references found in build!"
+if grep -ri "cx" dist/ > /dev/null 2>&1; then
+  echo "❌ CX references found in build!"
   exit 1
 fi
 
@@ -327,7 +327,7 @@ When auditing deployment:
 
 ### Build Status
 - [ ] Clean build completed
-- [ ] No Cortex references
+- [ ] No CX references
 - [ ] Bundle size acceptable
 
 ### Port Status
