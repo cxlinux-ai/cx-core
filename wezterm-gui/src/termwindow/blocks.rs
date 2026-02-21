@@ -101,18 +101,24 @@ impl crate::TermWindow {
             }
 
             CXSequence::AIExplain { text } => {
-                // TODO: Route to AI panel when implemented
+                // Route to AI panel for explanation
                 log::debug!("AI Explain request: {}", text);
+                self.show_ai_panel(crate::ai::AIPanelState::Explain);
+                let action = self.ai_panel.borrow_mut().explain(text);
+                self.execute_ai_action(action);
             }
 
             CXSequence::AISuggest { query } => {
-                // TODO: Route to AI panel when implemented
+                // Route to AI panel for suggestions
                 log::debug!("AI Suggest request: {}", query);
+                self.show_ai_panel(crate::ai::AIPanelState::Suggestions);
+                let action = crate::ai::AIAction::Suggest(query);
+                self.execute_ai_action(action);
             }
 
             CXSequence::AgentRequest { name, command } => {
-                // TODO: Route to agent system when implemented
-                log::debug!("Agent request: {} - {}", name, command);
+                // Agent system for automated tasks (reserved for future use)
+                log::info!("Agent request received: {} - {}", name, command);
             }
 
             CXSequence::Features { blocks, ai, agents } => {
