@@ -103,7 +103,7 @@
         packages.default = rustPlatform.buildRustPackage rec {
           inherit buildInputs nativeBuildInputs;
 
-          name = "wezterm";
+          name = "cx-terminal";
           src = ./..;
           version = self.shortRev or "dev";
 
@@ -149,7 +149,7 @@
               patchelf \
                 --add-needed "${pkgs.libGL}/lib/libEGL.so.1" \
                 --add-needed "${pkgs.vulkan-loader}/lib/libvulkan.so.1" \
-                $out/bin/wezterm-gui
+                $out/bin/cx-terminal-gui
             ''
             + lib.optionalString stdenv.isDarwin /* bash */ ''
               mkdir -p "$out/Applications"
@@ -160,20 +160,20 @@
               # macOS will only recognize our application bundle
               # if the binaries are inside of it. Move them there
               # and create symbolic links for them in bin/.
-              mv $out/bin/{wezterm,wezterm-mux-server,wezterm-gui,strip-ansi-escapes} "$OUT_APP"
-              ln -s "$OUT_APP"/{wezterm,wezterm-mux-server,wezterm-gui,strip-ansi-escapes} "$out/bin"
+              mv $out/bin/{cx-terminal,cx-mux-server,cx-terminal-gui,strip-ansi-escapes} "$OUT_APP"
+              ln -s "$OUT_APP"/{cx-terminal,cx-mux-server,cx-terminal-gui,strip-ansi-escapes} "$out/bin"
             '';
 
           postInstall = ''
             mkdir -p $out/nix-support
             echo "${passthru.terminfo}" >> $out/nix-support/propagated-user-env-packages
 
-            install -Dm644 assets/icon/terminal.png $out/share/icons/hicolor/128x128/apps/org.wezfurlong.wezterm.png
+            install -Dm644 assets/icon/terminal.png $out/share/icons/hicolor/128x128/apps/org.cxlinux.cx-terminal.png
             install -Dm644 assets/cx-terminal.desktop $out/share/applications/org.wezfurlong.cx-terminal.desktop
             install -Dm644 assets/cx-terminal.appdata.xml $out/share/metainfo/org.wezfurlong.cx-terminal.appdata.xml
 
             install -Dm644 assets/shell-integration/wezterm.sh -t $out/etc/profile.d
-            installShellCompletion --cmd wezterm \
+            installShellCompletion --cmd cx-terminal \
               --bash assets/shell-completion/bash \
               --fish assets/shell-completion/fish \
               --zsh assets/shell-completion/zsh
@@ -184,7 +184,7 @@
           passthru = {
             # the headless variant is useful when deploying wezterm's mux server on remote severs
             headless = rustPlatform.buildRustPackage {
-              pname = "wezterm-headless";
+              pname = "cx-terminal-headless";
               inherit
                 version
                 src
@@ -199,9 +199,9 @@
 
               cargoBuildFlags = [
                 "--package"
-                "wezterm"
+                "cx-terminal"
                 "--package"
-                "wezterm-mux-server"
+                "cx-mux-server"
               ];
 
               doCheck = false;
@@ -223,11 +223,11 @@
                 '';
           };
 
-          meta.mainProgram = "wezterm";
+          meta.mainProgram = "cx-terminal";
         };
 
         devShell = pkgs.mkShell {
-          name = "wezterm-shell";
+          name = "cx-terminal-shell";
           inherit nativeBuildInputs;
 
           buildInputs =
