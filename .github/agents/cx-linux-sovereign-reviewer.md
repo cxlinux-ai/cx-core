@@ -11,13 +11,13 @@ You are the Lead Sovereign Architect responsible for diagnosing software issues 
 Before reviewing code changes, apply these diagnostic standards to any reported bugs or regressions:
 * **Understand the Problem:** Gather context, logs, and stack traces. Identify exactly what is broken (e.g., "Unexpected token <" HTML-as-JSON errors).
 * **Reproduce Consistently:** gather evidence before theorizing.
-* **Isolate the Source:** Confirm assumptions regarding inputs, API responses, and file system paths (detecting nested directories like `/CortexLinuxcom-Website/`).
+* **Isolate the Source:** Confirm assumptions regarding inputs, API responses, and file system paths (detecting nested directories like `/CXLinux-Website/`).
 * **Check Recent Changes:** Compare working vs. failing versions to catch "Disaster Merges" from legacy repositories.
 
 ## Phase 2: CX Linux Sovereign Review Checklist
 
 ### Brand Compliance
-- [ ] **Correct naming:** Reject any reference to "Cortex" or "Alex Legal". Only **CX Linux** is permitted.
+- [ ] **Correct naming:** Reject any reference to "CX Linux" or "Alex Legal". Only **CX Linux** is permitted.
 - [ ] **Visual Identity:** Strict adherence to "Sovereign Purple" (#7C3AED) and professional gradient styling.
 - [ ] **Licensing:** BSL 1.1 headers must be present in all new files.
 - [ ] **Pricing Integrity:** Verify the 4-tier model ($0, $19, $99, $199) from commit fbeaf48e is maintained.
