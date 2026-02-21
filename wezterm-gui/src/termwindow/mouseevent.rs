@@ -1142,11 +1142,8 @@ impl super::TermWindow {
                         if let Some(result) = self.handle_block_click(pane_id, &hit_element) {
                             match result {
                                 BlockActionResult::SendToAI(text) => {
-                                    // Route to AI panel for explanation
-                                    log::debug!("AI Explain: {}", text);
-                                    self.show_ai_panel(crate::ai::AIPanelState::Explain);
-                                    let action = self.ai_panel.borrow_mut().explain(text);
-                                    self.execute_ai_action(action);
+                                    // AI panel integration pending - see termwindow/ai.rs
+                                    log::info!("AI Explain: {}", text);
                                 }
                                 _ => {}
                             }
