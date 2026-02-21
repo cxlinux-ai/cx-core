@@ -15,7 +15,7 @@ All CX Linux work resides in the permanent silo:
 /Users/allbots/Sovereign_Builds/CX_Linux/CX_Web
 ```
 
-**NEVER** work in worktrees, legacy directories, or paths containing "alex", "gidteam", or "cortex".
+**NEVER** work in worktrees, legacy directories, or paths containing "alex", "gidteam", or obsolete branding.
 
 ---
 
@@ -84,8 +84,8 @@ backface-visibility: hidden;
 ### Naming Enforcement
 | REJECT | ACCEPT |
 |--------|--------|
-| Cortex | CX Linux |
-| Cortex Linux | CX |
+| (obsolete) | CX Linux |
+| (obsolete) | CX |
 | Alex Legal Assist | CX Core, CX Pro, CX Elite |
 | GIDTeam | CX Enterprise |
 
@@ -194,7 +194,7 @@ When reviewing code:
    - Validate bundle impact
 
 2. **Brand Check**
-   - Search for "cortex" (case-insensitive)
+   - Search for obsolete branding (case-insensitive)
    - Verify purple branding
    - Check license headers
 
