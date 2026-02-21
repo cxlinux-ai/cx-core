@@ -50,29 +50,29 @@ struct ActivateRequest {
 pub fn generate_hardware_id() -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
-    
+
     // Combine multiple system identifiers
     if let Ok(hostname) = hostname::get() {
         hostname.to_string_lossy().hash(&mut hasher);
     }
-    
+
     // Add machine-id on Linux
     if let Ok(machine_id) = fs::read_to_string("/etc/machine-id") {
         machine_id.trim().hash(&mut hasher);
     }
-    
+
     // Add boot-id for additional uniqueness
     if let Ok(boot_id) = fs::read_to_string("/proc/sys/kernel/random/boot_id") {
         boot_id.trim().hash(&mut hasher);
     }
-    
+
     // Add username
     if let Ok(user) = std::env::var("USER") {
         user.hash(&mut hasher);
     }
-    
+
     format!("{:016x}", hasher.finish())
 }
 
@@ -101,7 +101,7 @@ pub fn save_license_key(key: &str) -> std::io::Result<()> {
 /// Validate license with the server
 pub async fn validate_license(license_key: &str) -> Result<LicenseInfo, String> {
     let hardware_id = generate_hardware_id();
-    
+
     let client = reqwest::Client::new();
     let response = client
         .post(format!("{}/api/v1/licenses/validate", LICENSE_SERVER_URL))
@@ -112,16 +112,16 @@ pub async fn validate_license(license_key: &str) -> Result<LicenseInfo, String> 
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
-    
+
     let info: LicenseInfo = response
         .json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))?;
-    
+
     if !info.valid {
         return Err(info.error.unwrap_or_else(|| "Invalid license".to_string()));
     }
-    
+
     Ok(info)
 }
 
@@ -132,7 +132,7 @@ pub async fn activate_license(license_key: &str) -> Result<LicenseInfo, String> 
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
     let platform = std::env::consts::OS.to_string();
-    
+
     let client = reqwest::Client::new();
     let response = client
         .post(format!("{}/api/v1/licenses/activate", LICENSE_SERVER_URL))
@@ -146,26 +146,33 @@ pub async fn activate_license(license_key: &str) -> Result<LicenseInfo, String> 
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
-    
+
     let status = response.status();
-    let text = response.text().await.map_err(|e| format!("Read error: {}", e))?;
-    
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Read error: {}", e))?;
+
     if !status.is_success() {
-        let error: serde_json::Value = serde_json::from_str(&text)
-            .unwrap_or_else(|_| serde_json::json!({"error": text}));
-        return Err(error["error"].as_str().unwrap_or("Activation failed").to_string());
+        let error: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({"error": text}));
+        return Err(error["error"]
+            .as_str()
+            .unwrap_or("Activation failed")
+            .to_string());
     }
-    
+
     // Save the license key
     save_license_key(license_key).map_err(|e| format!("Failed to save license: {}", e))?;
-    
+
     // Validate to get full info
     validate_license(license_key).await
 }
 
 /// Check if the current installation has a valid license
 pub async fn check_license() -> Result<LicenseInfo, String> {
-    let license_key = read_license_key().ok_or("No license key found. Run 'cx activate <key>' first.")?;
+    let license_key =
+        read_license_key().ok_or("No license key found. Run 'cx activate <key>' first.")?;
     validate_license(&license_key).await
 }
 
@@ -177,7 +184,7 @@ pub fn has_feature(info: &LicenseInfo, feature: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_hardware_id_generation() {
         let id1 = generate_hardware_id();
