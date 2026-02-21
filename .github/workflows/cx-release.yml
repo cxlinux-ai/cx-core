@@ -126,42 +126,6 @@ jobs:
           asset_name: cx-terminal-linux-x86_64.tar.gz
           asset_content_type: application/gzip
 
-  build-macos-intel:
-    name: Build macOS (Intel)
-    runs-on: macos-13
-    needs: create-release
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp target/release/cx-terminal dist/cx-terminal
-          cp target/release/cx-terminal-gui dist/cx-terminal-gui
-          cp target/release/cx-mux-server dist/cx-mux-server
-          cp -r shell-integration dist/
-          cp -r examples dist/
-          cp README.md LICENSE.md dist/
-          tar -czvf cx-terminal-macos-x86_64.tar.gz -C dist .
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./cx-terminal-macos-x86_64.tar.gz
-          asset_name: cx-terminal-macos-x86_64.tar.gz
-          asset_content_type: application/gzip
-
   build-macos-arm:
     name: Build macOS (Apple Silicon)
     runs-on: macos-14
