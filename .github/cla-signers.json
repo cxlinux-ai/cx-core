@@ -64,6 +64,15 @@
       "signed_date": "2026-02-17",
       "cla_version": "1.0",
       "note": "AI coding assistant - commits covered under Mike Morgan authorization"
+    },
+    {
+      "name": "Rahul nailoo",
+      "github_username": "nailoo",
+      "emails": [
+        "rahulsinghnailoo@gmail.com"
+      ],
+      "signed_date": "2026-02-25",
+      "cla_version": "1.0"
     }
   ],
   "corporations": {
