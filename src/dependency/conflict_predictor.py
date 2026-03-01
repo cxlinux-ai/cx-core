@@ -162,14 +162,19 @@ def parse_dpkg_status(status_path: Path = DPKG_STATUS) -> Dict[str, PackageInfo]
         deps = _parse_depends_field(rec.get("Depends", ""))
         packages[name] = PackageInfo(name=name, version=version, depends=deps)
 
-    with status_path.open(encoding="utf-8", errors="replace") as fh:
+    try:
+        fh_ctx = status_path.open(encoding="utf-8", errors="replace")
+    except OSError:
+        return packages
+
+    with fh_ctx as fh:
         for line in fh:
             line = line.rstrip("\n")
             if line == "":
                 _flush(current)
                 current = {}
                 last_key = None
-            elif line[0] in (" ", "\t") and last_key:
+            elif line[0:1] in (" ", "\t") and last_key:
                 # RFC822 continuation: append to previous field
                 current[last_key] = current[last_key] + " " + line.strip()
             elif ":" in line:
@@ -228,13 +233,13 @@ def _apt_cache_depends(package: str, version_hint: str = "") -> List[Tuple[str, 
         )
         if result.returncode != 0:
             return []
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         return []
 
     deps: List[Tuple[str, str]] = []
     for line in result.stdout.splitlines():
         m = re.match(
-            r'^\s+(?:Depends|PreDepends|Recommends):\s+([\w.+\-]+)\s*(?:\(([^)]+)\))?',
+            r'^\s+(?:Depends|PreDepends):\s+([\w.+\-]+)\s*(?:\(([^)]+)\))?',
             line
         )
         if m:
