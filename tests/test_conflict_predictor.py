@@ -1,9 +1,23 @@
+# Business Source License 1.1
+#
+# Licensor:             CX Linux AI
+# Licensed Work:        CX Core
+# Additional Use Grant: You may make production use of the Licensed Work,
+#                       if your use does not include offering the Licensed
+#                       Work to third parties on a hosted or embedded basis
+#                       in order to compete with CX Linux AI's products.
+# Change Date:          Four years from the date the Licensed Work is published.
+# Change License:       Apache License, Version 2.0
+#
+# For information about alternative licensing arrangements for the Licensed Work,
+# please contact legal@cxlinux.ai
+
 """
 Focused unit tests for the dependency conflict predictor.
 
 WHY these specific cases:
-  1. _satisfies() is the core logic gate – any bug here causes silent mis-predictions.
-  2. dpkg status parsing is the data foundation – malformed entries must not crash.
+  1. _satisfies() is the core logic gate — any bug here causes silent mis-predictions.
+  2. dpkg status parsing is the data foundation — malformed entries must not crash.
   3. End-to-end predict() must catch the canonical conflict (tensorflow vs numpy 2.x)
      without touching the real filesystem or apt-cache.
 """
@@ -12,15 +26,15 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-# Adjust import path if running from repo root
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "dependency"))
 
 from conflict_predictor import (
+    Conflict,
     DependencyConflictPredictor,
     PackageInfo,
     _parse_depends_field,
@@ -35,28 +49,31 @@ from conflict_predictor import (
 # ---------------------------------------------------------------------------
 
 class TestSatisfies:
-    """Every operator variant must work correctly."""
+    """Every operator variant — including Debian-specific ones — must work correctly."""
 
     @pytest.mark.parametrize("installed,constraint,expected", [
-        # Less-than: numpy <2.0 scenario from the issue
+        # Standard Python operators
         ("1.26.4", "<2.0",   True),
-        ("2.1.0",  "<2.0",   False),   # THE canonical tensorflow conflict
+        ("2.1.0",  "<2.0",   False),   # canonical tensorflow conflict
         ("2.0.0",  "<2.0",   False),
-        # Greater-than-or-equal
         ("2.17",   ">=2.17", True),
         ("2.16",   ">=2.17", False),
-        # Exact
         ("1.26.4", "==1.26.4", True),
         ("1.26.3", "==1.26.4", False),
-        # Not-equal
         ("2.0.0",  "!=2.0.0", False),
         ("2.0.1",  "!=2.0.0", True),
-        # Empty constraint → always satisfied
         ("99.0",   "",        True),
-        # Unparseable constraint → conservative True (no false positive)
-        ("1.0",    "~=1.0",   True),
+        ("1.0",    "~=1.0",   True),   # unparseable → conservative True
+        # Debian-specific operators
+        ("1.9",    "<<2.0",  True),    # << is strict less-than
+        ("2.0",    "<<2.0",  False),
+        ("2.1",    ">>2.0",  True),    # >> is strict greater-than
+        ("2.0",    ">>2.0",  False),
+        ("1.26.4", "=1.26.4", True),   # = is exact equality in Debian
+        ("1.26.3", "=1.26.4", False),
     ])
-    def test_operator_matrix(self, installed: str, constraint: str, expected: bool):
+    def test_operator_matrix(self, installed: str, constraint: str, expected: bool) -> None:
+        """Each (installed, constraint) pair must yield the expected boolean."""
         assert _satisfies(installed, constraint) is expected, (
             f"_satisfies({installed!r}, {constraint!r}) should be {expected}"
         )
@@ -67,14 +84,16 @@ class TestSatisfies:
 # ---------------------------------------------------------------------------
 
 class TestParseDpkgStatus:
-    """Parser must handle normal entries, missing Version, and multi-stanza files."""
+    """Parser must handle normal entries, continuation lines, missing Version, and multi-stanza files."""
 
     def _write_status(self, tmp_path: Path, content: str) -> Path:
+        """Write a dpkg status file with dedented content and return its path."""
         p = tmp_path / "status"
         p.write_text(textwrap.dedent(content))
         return p
 
-    def test_normal_entry(self, tmp_path):
+    def test_normal_entry(self, tmp_path: Path) -> None:
+        """A well-formed stanza must parse name, version, and depends correctly."""
         status = self._write_status(tmp_path, """
             Package: numpy
             Version: 2.1.0
@@ -88,7 +107,22 @@ class TestParseDpkgStatus:
         assert ("python3", ">=3.8") in np.depends
         assert ("libc6", ">=2.17") in np.depends
 
-    def test_missing_version_is_empty_string(self, tmp_path):
+    def test_continuation_line_parsed(self, tmp_path: Path) -> None:
+        """RFC822 continuation lines (leading space) must be joined to the previous field."""
+        status = self._write_status(tmp_path, """
+            Package: libssl1.1
+            Version: 1.1.1n
+            Depends: libc6 (>= 2.14),
+             libgcc-s1
+
+        """)
+        pkgs = parse_dpkg_status(status)
+        assert "libssl1.1" in pkgs
+        dep_names = [d[0] for d in pkgs["libssl1.1"].depends]
+        assert "libc6" in dep_names, "Primary dep must be parsed"
+        assert "libgcc-s1" in dep_names, "Continuation dep must not be dropped"
+
+    def test_missing_version_is_empty_string(self, tmp_path: Path) -> None:
         """Packages without a Version field must not raise; version defaults to ''."""
         status = self._write_status(tmp_path, """
             Package: some-meta-pkg
@@ -98,7 +132,8 @@ class TestParseDpkgStatus:
         pkgs = parse_dpkg_status(status)
         assert pkgs["some-meta-pkg"].version == ""
 
-    def test_multiple_packages(self, tmp_path):
+    def test_multiple_packages(self, tmp_path: Path) -> None:
+        """Multiple stanzas must each be parsed into separate PackageInfo entries."""
         status = self._write_status(tmp_path, """
             Package: pandas
             Version: 1.5.3
@@ -112,7 +147,8 @@ class TestParseDpkgStatus:
         assert set(pkgs.keys()) == {"pandas", "numpy"}
         assert pkgs["pandas"].depends[0] == ("numpy", ">=1.21")
 
-    def test_nonexistent_file_returns_empty(self):
+    def test_nonexistent_file_returns_empty(self) -> None:
+        """A missing status file must return an empty dict, not raise."""
         pkgs = parse_dpkg_status(Path("/nonexistent/path/status"))
         assert pkgs == {}
 
@@ -123,14 +159,14 @@ class TestParseDpkgStatus:
 
 class TestPredictEndToEnd:
     """
-    Simulate the canonical scenario from the issue:
+    Simulate the canonical scenario from issue #428:
       - System has numpy 2.1.0 (installed by pandas)
       - tensorflow 2.15 transitively requires numpy<2.0
     Expected: one Conflict returned with confidence 1.0
     """
 
     def _make_predictor_with_numpy(self, tmp_path: Path) -> DependencyConflictPredictor:
-        """Build a predictor whose 'installed' state contains numpy 2.1.0."""
+        """Build a predictor whose installed state contains numpy 2.1.0."""
         status = tmp_path / "status"
         status.write_text(textwrap.dedent("""
             Package: numpy
@@ -143,15 +179,11 @@ class TestPredictEndToEnd:
         """))
         return DependencyConflictPredictor(dpkg_status_path=status)
 
-    def test_detects_numpy_conflict(self, tmp_path):
+    def test_detects_numpy_conflict(self, tmp_path: Path) -> None:
+        """predict() must return the numpy conflict when tensorflow requires numpy<2.0."""
         predictor = self._make_predictor_with_numpy(tmp_path)
 
-        # Patch apt-cache so we control what transitive deps tensorflow declares
-        # WHY: we cannot run apt-cache in CI, and we want deterministic results.
-        fake_deps = [
-            # tensorflow 2.15 directly requires numpy<2.0
-            ("numpy", "<2.0", "tensorflow"),
-        ]
+        fake_deps = [("numpy", "<2.0", "tensorflow")]
 
         with patch(
             "conflict_predictor.build_transitive_deps",
@@ -167,7 +199,7 @@ class TestPredictEndToEnd:
         assert c.confidence == 1.0
         assert c.required_by == "tensorflow"
 
-    def test_no_conflict_when_constraint_satisfied(self, tmp_path):
+    def test_no_conflict_when_constraint_satisfied(self, tmp_path: Path) -> None:
         """If tensorflow requires numpy>=1.21 and we have 2.1.0, no conflict."""
         predictor = self._make_predictor_with_numpy(tmp_path)
 
@@ -181,10 +213,9 @@ class TestPredictEndToEnd:
 
         assert conflicts == [], "No conflict expected when constraint is satisfied"
 
-    def test_unknown_version_yields_low_confidence_warning(self, tmp_path):
+    def test_unknown_version_yields_low_confidence_warning(self, tmp_path: Path) -> None:
         """Package present without version → confidence 0.7 warning, not hard error."""
         status = tmp_path / "status"
-        # numpy present but Version field absent
         status.write_text("Package: numpy\n\n")
         predictor = DependencyConflictPredictor(dpkg_status_path=status)
 
@@ -199,10 +230,9 @@ class TestPredictEndToEnd:
         assert conflicts[0].confidence == 0.7
         assert conflicts[0].installed == "unknown"
 
-    def test_suggest_resolutions_returns_three_ranked(self, tmp_path):
-        """Resolution list must have 3 entries, ordered by safety_score desc."""
+    def test_suggest_resolutions_order_matches_docs(self, tmp_path: Path) -> None:
+        """Resolutions must follow documented order: upgrade > adjust > virtualenv."""
         predictor = self._make_predictor_with_numpy(tmp_path)
-        from conflict_predictor import Conflict
         conflict = Conflict(
             package="numpy",
             required="<2.0",
@@ -214,5 +244,12 @@ class TestPredictEndToEnd:
         assert len(resolutions) == 3
         scores = [r.safety_score for r in resolutions]
         assert scores == sorted(scores, reverse=True), "Must be sorted safest-first"
-        # The top suggestion must reference the target package
         assert "tensorflow" in resolutions[0].description
+        # Documented order: upgrade(0.9) > adjust(0.7) > virtualenv(0.5)
+        assert resolutions[0].safety_score == 0.9
+        assert resolutions[1].safety_score == 0.7
+        assert resolutions[2].safety_score == 0.5
+        # Must use cx install, not cortex install
+        for res in resolutions:
+            if res.command:
+                assert "cortex install" not in res.command, "Must use cx install"
