@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 function fixCopyOnlyUserSelectable() {
-  buttonsToFix = document.querySelectorAll(
+  var buttonsToFix = document.querySelectorAll(
     '.language-console button.md-code__button');
   if (buttonsToFix.length)
     console.log('Fixing copy-to-clipboard text of console code-blocks.');
@@ -16,6 +16,10 @@ function fixCopyOnlyUserSelectable() {
 function extractUserSelectable(selector) {
   var result = '';
   var element = document.querySelector(selector);
+
+  if (!element) {
+    return result;
+  }
 
   // Attempt to remove the non-selectable sections based on style,
   // but we haven't seen this work reliably...
