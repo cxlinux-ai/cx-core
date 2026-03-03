@@ -34,9 +34,9 @@ function extractUserSelectable(selector) {
 
   // ... so we fall back to simple but effective:
   // remove "$ " and "# " prompt at start of lines in code
-  result = result.replace(/^[\s]?[\$#]\s+/gm, "");
+  result = result.replace(/^[\s]?[\$#]\s+/gm, "")
 
   // remove empty lines
-  result = result.replace(/^\s*\n/gm, '');
+  result = result.replace(/^\s*\n/gm, '')
   return result;
 }
