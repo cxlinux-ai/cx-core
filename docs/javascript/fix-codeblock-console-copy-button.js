@@ -17,6 +17,10 @@ function extractUserSelectable(selector) {
   var result = '';
   var element = document.querySelector(selector);
 
+  if (!element) {
+    return result;
+  }
+
   // Attempt to remove the non-selectable sections based on style,
   // but we haven't seen this work reliably...
   element.childNodes.forEach((child) => {
