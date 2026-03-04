@@ -16,6 +16,9 @@ from .resolver import ConflictResolver
 console = Console()
 
 def run_cli(package_name: str):
+    """
+    Entry point for the command-line interface to check package conflicts.
+    """
     guardian = DependencyGuardian()
     resolver = ConflictResolver()
     

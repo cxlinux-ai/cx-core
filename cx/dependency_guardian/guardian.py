@@ -17,6 +17,10 @@ logger = logging.getLogger("cx.dependency_guardian")
 
 @dataclass
 class ConflictReport:
+    """
+    Represents the result of a dependency conflict analysis.
+    Contains the target package, identified conflicts, and overall status.
+    """
     target: str
     predicted_conflicts: List[Dict[str, Any]]
     status: str
@@ -28,6 +32,9 @@ class DependencyGuardian:
     and dependency graphs. Supports direct and virtual package conflicts.
     """
     def __init__(self, status_path: str = "/var/lib/dpkg/status"):
+        """
+        Initializes the guardian with the system's package status path.
+        """
         self.status_path = status_path
         self.installed_packages: Dict[str, Any] = {}
         self.virtual_providers: Dict[str, List[str]] = {}
