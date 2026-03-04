@@ -4,6 +4,8 @@
 # Core dependencies
 rich>=13.0.0                    # Terminal UI and console formatting
 psutil>=5.8.0                   # System and process monitoring
+pydantic>=2.0.0                 # High-performance data validation (V2 required)
+aiofiles>=23.0.0                # Async file I/O for system status scanning
 
 # Enterprise security dependencies
 cryptography>=41.0.0            # Data encryption for sensitive fields (email addresses)
