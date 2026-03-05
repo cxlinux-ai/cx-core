@@ -5,8 +5,6 @@ document.addEventListener("DOMContentLoaded", function() {
 function fixCopyOnlyUserSelectable() {
   var buttonsToFix = document.querySelectorAll(
     '.language-console button.md-code__button');
-  if (buttonsToFix.length)
-    console.log('Fixing copy-to-clipboard text of console code-blocks.');
   buttonsToFix.forEach((btn) => {
     var content = extractUserSelectable(btn.dataset.clipboardTarget);
     btn.dataset.clipboardText = content;
