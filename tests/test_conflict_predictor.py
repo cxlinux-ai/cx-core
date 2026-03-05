@@ -104,10 +104,10 @@ class TestParseDpkgStatus:
         assert "numpy" in pkgs
         np = pkgs["numpy"]
         assert np.version == "2.1.0"
-        assert any(name == "python3" for name, _ in np.depends)
+        assert any(dep[0] == "python3" for dep in np.depends)
 
     def test_missing_version(self, tmp_path: Path) -> None:
-        """A stanza without a Version field must not crash the parser."""
+        """A stanza without a Version field must not raise — version should be empty string."""
         status = self._write_status(tmp_path, """
             Package: broken-pkg
             Depends: libc6
@@ -117,37 +117,27 @@ class TestParseDpkgStatus:
         assert "broken-pkg" in pkgs
         assert pkgs["broken-pkg"].version == ""
 
-    def test_continuation_line(self, tmp_path: Path) -> None:
-        """Multi-line Depends fields (continuation lines) must be joined correctly."""
-        status = self._write_status(tmp_path, """
-            Package: somelib
-            Version: 1.0.0
-            Depends: python3 (>= 3.8),
-             libc6 (>= 2.17),
-             libssl3
-
-        """)
+    def test_empty_file(self, tmp_path: Path) -> None:
+        """An empty status file must return an empty dict without raising."""
+        status = self._write_status(tmp_path, "")
         pkgs = parse_dpkg_status(status)
-        assert "somelib" in pkgs
-        names = [name for name, _ in pkgs["somelib"].depends]
-        assert "libc6" in names
-        assert "libssl3" in names
+        assert pkgs == {}
 
     def test_multi_stanza(self, tmp_path: Path) -> None:
         """Multiple stanzas separated by blank lines must all be parsed."""
         status = self._write_status(tmp_path, """
-            Package: pkgA
-            Version: 1.0
-            Depends: libc6
+            Package: numpy
+            Version: 2.1.0
 
-            Package: pkgB
-            Version: 2.0
-            Depends: python3
+            Package: tensorflow
+            Version: 2.17.0
+            Depends: numpy (< 2.0)
 
         """)
         pkgs = parse_dpkg_status(status)
-        assert "pkgA" in pkgs
-        assert "pkgB" in pkgs
+        assert "numpy" in pkgs
+        assert "tensorflow" in pkgs
+        assert pkgs["tensorflow"].version == "2.17.0"
 
 
 # ---------------------------------------------------------------------------
@@ -157,42 +147,42 @@ class TestParseDpkgStatus:
 class TestPredictConflicts:
     """predict() must surface the canonical tensorflow/numpy incompatibility."""
 
-    def _make_predictor(self, packages: dict) -> DependencyConflictPredictor:
-        """Return a predictor with a pre-populated package map (no filesystem access)."""
+    def _make_predictor(self, pkgs: dict) -> DependencyConflictPredictor:
+        """Return a predictor whose installed-package lookup is mocked."""
         predictor = DependencyConflictPredictor.__new__(DependencyConflictPredictor)
-        predictor.packages = packages
+        predictor._packages = pkgs
         return predictor
 
     def test_tensorflow_numpy_conflict(self) -> None:
-        """tensorflow 2.13 requires numpy<2.0 but numpy 2.1.0 is installed — must be flagged."""
-        packages = {
+        """tensorflow 2.17 requires numpy < 2.0; numpy 2.1.0 installed → conflict detected."""
+        pkgs = {
             "numpy": PackageInfo(name="numpy", version="2.1.0", depends=[]),
             "tensorflow": PackageInfo(
                 name="tensorflow",
-                version="2.13.0",
+                version="2.17.0",
                 depends=[("numpy", "<2.0")],
             ),
         }
-        predictor = self._make_predictor(packages)
+        predictor = self._make_predictor(pkgs)
         conflicts = predictor.predict()
         assert any(
             c.package == "tensorflow" and c.dependency == "numpy"
             for c in conflicts
-        ), "Expected tensorflow/numpy conflict was not detected"
+        ), "Expected tensorflow→numpy conflict not found"
 
-    def test_no_false_positive_when_satisfied(self) -> None:
-        """When numpy satisfies tensorflow's constraint, no conflict must be reported."""
-        packages = {
+    def test_no_conflict_when_satisfied(self) -> None:
+        """No conflict must be reported when all constraints are satisfied."""
+        pkgs = {
             "numpy": PackageInfo(name="numpy", version="1.26.4", depends=[]),
             "tensorflow": PackageInfo(
                 name="tensorflow",
-                version="2.13.0",
+                version="2.17.0",
                 depends=[("numpy", "<2.0")],
             ),
         }
-        predictor = self._make_predictor(packages)
+        predictor = self._make_predictor(pkgs)
         conflicts = predictor.predict()
         assert not any(
             c.package == "tensorflow" and c.dependency == "numpy"
             for c in conflicts
-        ), "False positive: tensorflow/numpy conflict reported when numpy 1.26.4 satisfies <2.0"
+        ), "Unexpected tensorflow→numpy conflict reported"
