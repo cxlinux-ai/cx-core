@@ -5,16 +5,18 @@ document.addEventListener("DOMContentLoaded", function() {
 function fixCopyOnlyUserSelectable() {
   var buttonsToFix = document.querySelectorAll(
     '.language-console button.md-code__button');
-  if (!buttonsToFix) {
+  if (!buttonsToFix || buttonsToFix.length === 0) {
     return;
   }
   buttonsToFix.forEach((btn) => {
-    var clipboardTarget = btn.dataset.clipboardTarget;
+    var clipboardTarget = btn.dataset ? btn.dataset.clipboardTarget : null;
     if (!clipboardTarget) {
       return;
     }
     var content = extractUserSelectable(clipboardTarget);
-    btn.dataset.clipboardText = content;
+    if (content !== null && btn.dataset) {
+      btn.dataset.clipboardText = content;
+    }
   });
 }
 
@@ -38,7 +40,9 @@ function extractUserSelectable(selector) {
         return;
       }
     }
-    result += child.textContent;
+    if (child.textContent !== null && child.textContent !== undefined) {
+      result += child.textContent;
+    }
   });
 
   // ... so we fall back to simple but effective:
