@@ -797,6 +797,85 @@ impl FontConfigInner {
         Ok((handles, loaded))
     }
 
+    /// Returns the download URL for well-known programming fonts,
+    /// or `None` for unrecognised font names.
+    fn known_font_url(font_name: &str) -> Option<&'static str> {
+        let lower = font_name.to_lowercase();
+        if lower.contains("jetbrains") {
+            Some("https://github.com/JetBrains/JetBrainsMono")
+        } else if lower.contains("fira") {
+            Some("https://github.com/tonsky/FiraCode")
+        } else if lower.contains("cascadia") {
+            Some("https://github.com/microsoft/cascadia-code")
+        } else if lower.contains("source code") {
+            Some("https://github.com/adobe-fonts/source-code-pro")
+        } else if lower.contains("hack") {
+            Some("https://github.com/source-foundry/Hack")
+        } else if lower.contains("iosevka") {
+            Some("https://github.com/be5invis/Iosevka")
+        } else if lower.contains("victor mono") {
+            Some("https://github.com/rubjo/victor-mono")
+        } else {
+            None
+        }
+    }
+
+    /// Suggest installation command for a missing font based on the platform
+    fn suggest_font_install(&self, font_name: &str) -> String {
+        let font_slug = font_name.to_lowercase().replace(" ", "-");
+        let download_hint = match Self::known_font_url(font_name) {
+            Some(url) => format!("\n  - Or download from: {}", url),
+            None => String::from("\n  - Or manually download the font from its official website"),
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            // Map well-known fonts to their Debian/Ubuntu package names
+            let lower = font_name.to_lowercase();
+            let deb_package = if lower.contains("jetbrains") {
+                "fonts-jetbrains-mono".to_string()
+            } else if lower.contains("fira") {
+                "fonts-firacode".to_string()
+            } else {
+                format!("fonts-{}", font_slug)
+            };
+
+            format!(
+                "On Linux, you can install '{}' using your package manager:\n\
+                  - Debian/Ubuntu: sudo apt install {}\n\
+                  - Fedora: sudo dnf install {}\n\
+                  - Or manually install to ~/.local/share/fonts/{}",
+                font_name, deb_package, font_slug, download_hint
+            )
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            format!(
+                "On macOS, you can install '{}' using:\n\
+                  - Homebrew: brew install --cask font-{}{}",
+                font_name, font_slug, download_hint
+            )
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            format!(
+                "On Windows, you can install '{}' by:\n\
+                  - Using winget: winget search {}{}",
+                font_name, font_name, download_hint
+            )
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            format!(
+                "Please install '{}' using your system's package manager.{}",
+                font_name, download_hint
+            )
+        }
+    }
+
     fn resolve_font_helper(
         &self,
         style: &TextStyle,
@@ -824,35 +903,56 @@ impl FontConfigInner {
                 let is_primary = config.font.font.iter().any(|a| a == attr);
                 let derived_from_primary = config.font.font.iter().any(|a| a.family == attr.family);
 
+                // Determine which fallback font will be used.
+                // `handles` should always have at least one entry (the system
+                // default) so the `unwrap_or` branch is a safety-net only.
+                let fallback_font = handles
+                    .first()
+                    .map(|h| h.names().family_name.clone())
+                    .unwrap_or_else(|| FontAttributes::default().family);
+
                 let explanation = if is_primary {
                     // This is the primary font selection
                     format!(
-                        "Unable to load a font specified by your font={} configuration",
-                        attr
+                        "Font '{}' not found, using '{}' instead",
+                        attr.family, fallback_font
                     )
                 } else if derived_from_primary {
                     // it came from font_rules and may have been derived from
                     // their primary font (we can't know for sure)
                     format!(
-                        "Unable to load a font matching one of your font_rules: {}. \
+                        "Font '{}' specified in font_rules not found, using '{}' instead. \
                         Note that wezterm will synthesize font_rules to select bold \
                         and italic fonts based on your primary font configuration",
-                        attr
+                        attr.family, fallback_font
                     )
                 } else {
                     format!(
-                        "Unable to load a font matching one of your font_rules: {}",
-                        attr
+                        "Font '{}' specified in font_rules not found, using '{}' instead",
+                        attr.family, fallback_font
                     )
                 };
 
+                // Get platform-specific installation suggestion
+                let install_suggestion = self.suggest_font_install(&attr.family);
+
+                // Log which font is being used
+                log::warn!(
+                    "Font '{}' not found, falling back to '{}'",
+                    attr.family,
+                    fallback_font
+                );
+
                 config::show_error(&format!(
-                    "{}. Fallback(s) are being used instead, and the terminal \
-                    may not render as intended{}. See \
-                    https://docs.cxlinux.com/terminal/fonts for more information",
-                    explanation, styled_extra
+                    "{}.\n\n{}{}",
+                    explanation, install_suggestion, styled_extra
                 ));
             }
+        }
+
+        // Log which font is actually being used for the primary font
+        if let Some(first_handle) = handles.first() {
+            log::info!("Using font: {}", first_handle.names().full_name);
         }
 
         Ok((new_shaper(&*config, &handles)?, handles))
