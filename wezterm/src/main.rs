@@ -187,6 +187,11 @@ enum SubCommand {
     /// Manage AI models and settings
     #[command(name = "ai", about = "Manage AI models (download, status, etc.)")]
     AI(cli::ai::AICommand),
+
+    /// Catch-all: route unrecognized input to `cx ask` for natural language processing.
+    /// This allows `cx "analyze logs"` to work the same as `cx ask "analyze logs"`.
+    #[command(external_subcommand)]
+    NaturalLanguage(Vec<OsString>),
 }
 
 use termwiz::escape::osc::{
@@ -816,6 +821,26 @@ fn run() -> anyhow::Result<()> {
         SubCommand::Explain(cmd) => cmd.run(),
         SubCommand::Daemon(cmd) => cmd.run(),
         SubCommand::AI(cmd) => cmd.run(),
+        // Catch-all: route unrecognized commands to cx ask
+        // This makes `cx "analyze logs"` work like `cx ask "analyze logs"`
+        SubCommand::NaturalLanguage(args) => {
+            let query: Vec<String> = args
+                .into_iter()
+                .map(|s| s.to_string_lossy().into_owned())
+                .collect();
+            if query.is_empty() {
+                anyhow::bail!("No query provided. Usage: cx \"your question here\" or cx ask \"your question\"");
+            }
+            let ask = cli::ask::AskCommand {
+                query,
+                execute: false,
+                auto_confirm: false,
+                local_only: false,
+                format: "text".to_string(),
+                verbose: false,
+            };
+            ask.run()
+        }
     }
 }
 
