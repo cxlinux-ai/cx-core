@@ -481,6 +481,64 @@ pub struct FontConfiguration {
     inner: Rc<FontConfigInner>,
 }
 
+/// Suggest platform-specific font installation commands
+fn suggest_font_install(family: &str) -> String {
+    let family_lower = family.to_lowercase().replace(' ', "-");
+
+    // Common font package mappings
+    let (apt_pkg, brew_pkg) = match family.to_lowercase().as_str() {
+        f if f.contains("jetbrains") => (
+            "fonts-jetbrains-mono",
+            "font-jetbrains-mono",
+        ),
+        f if f.contains("fira") && f.contains("code") => (
+            "fonts-firacode",
+            "font-fira-code",
+        ),
+        f if f.contains("cascadia") => (
+            "fonts-cascadia-code",
+            "font-cascadia-code",
+        ),
+        f if f.contains("source code") => (
+            "fonts-source-code-pro",
+            "font-source-code-pro",
+        ),
+        f if f.contains("hack") => ("fonts-hack", "font-hack"),
+        f if f.contains("inconsolata") => (
+            "fonts-inconsolata",
+            "font-inconsolata",
+        ),
+        f if f.contains("ubuntu") && f.contains("mono") => (
+            "fonts-ubuntu",
+            "font-ubuntu-mono",
+        ),
+        f if f.contains("roboto") && f.contains("mono") => (
+            "fonts-roboto-mono",
+            "font-roboto-mono",
+        ),
+        f if f.contains("noto") && f.contains("mono") => (
+            "fonts-noto-mono",
+            "font-noto-mono",
+        ),
+        _ => (
+            &*format!("fonts-{}", family_lower),
+            &*format!("font-{}", family_lower),
+        ),
+    };
+
+    format!(
+        "To install '{family}':\n\
+         • Ubuntu/Debian: sudo apt install {apt}\n\
+         • macOS:         brew install --cask {brew}\n\
+         • Arch Linux:    Check AUR for ttf-{lower}\n\
+         • Manual:        Download from fonts.google.com or nerdfonts.com",
+        family = family,
+        apt = apt_pkg,
+        brew = brew_pkg,
+        lower = family_lower,
+    )
+}
+
 impl FontConfigInner {
     /// Create a new empty configuration
     pub fn new(config: Option<ConfigHandle>, dpi: usize) -> anyhow::Result<Self> {
@@ -807,6 +865,18 @@ impl FontConfigInner {
 
         let (handles, loaded) = self.resolve_font_helper_impl(&attributes, pixel_size)?;
 
+        // Log which font is actually being used for the primary style
+        if let Some(first_handle) = handles.first() {
+            let source_name = first_handle
+                .handle
+                .diagnostic_string();
+            log::info!(
+                "CX Terminal: Using font '{}' (source: {})",
+                first_handle.names().family,
+                source_name
+            );
+        }
+
         for attr in &attributes {
             if !attr.is_synthetic && !attr.is_fallback && !loaded.contains(attr) {
                 let styled_extra = if attr.weight != FontWeight::default()
@@ -824,33 +894,36 @@ impl FontConfigInner {
                 let is_primary = config.font.font.iter().any(|a| a == attr);
                 let derived_from_primary = config.font.font.iter().any(|a| a.family == attr.family);
 
+                // Determine which fallback font is actually being used
+                let fallback_name = handles
+                    .first()
+                    .map(|h| h.names().family.clone())
+                    .unwrap_or_else(|| "system default".to_string());
+
                 let explanation = if is_primary {
-                    // This is the primary font selection
                     format!(
-                        "Unable to load a font specified by your font={} configuration",
-                        attr
+                        "Font '{}' not found — using '{}' instead",
+                        attr.family, fallback_name
                     )
                 } else if derived_from_primary {
-                    // it came from font_rules and may have been derived from
-                    // their primary font (we can't know for sure)
                     format!(
-                        "Unable to load a font matching one of your font_rules: {}. \
-                        Note that wezterm will synthesize font_rules to select bold \
-                        and italic fonts based on your primary font configuration",
-                        attr
+                        "Font variant '{}' not found (CX Terminal auto-generates \
+                        bold/italic rules from your primary font) — using '{}' instead",
+                        attr, fallback_name
                     )
                 } else {
                     format!(
-                        "Unable to load a font matching one of your font_rules: {}",
-                        attr
+                        "Font '{}' from font_rules not found — using '{}' instead",
+                        attr, fallback_name
                     )
                 };
 
+                // Suggest installation commands based on platform
+                let install_hint = suggest_font_install(&attr.family);
+
                 config::show_error(&format!(
-                    "{}. Fallback(s) are being used instead, and the terminal \
-                    may not render as intended{}. See \
-                    https://docs.cxlinux.com/terminal/fonts for more information",
-                    explanation, styled_extra
+                    "{}{}.\n\n{}\n\nSee https://docs.cxlinux.com/terminal/fonts for more information",
+                    explanation, styled_extra, install_hint
                 ));
             }
         }
