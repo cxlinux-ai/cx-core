@@ -20,7 +20,6 @@ from dataclasses import asdict, dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 
-
 @dataclass
 class ConflictFinding:
     ecosystem: str  # apt | pip
@@ -82,6 +81,31 @@ def _parse_apt_field(line: str, field: str) -> List[str]:
     return items
 
 
+def _iter_apt_fields(show_output: str, field: str) -> List[str]:
+    items: List[str] = []
+    current_value = ""
+
+    for raw_line in show_output.splitlines():
+        if raw_line.startswith(field + ":"):
+            if current_value:
+                items.extend(_parse_apt_field(f"{field}: {current_value}", field))
+            current_value = raw_line.split(":", 1)[1].strip()
+            continue
+
+        if current_value and raw_line.startswith(" "):
+            current_value = f"{current_value} {raw_line.strip()}".strip()
+            continue
+
+        if current_value:
+            items.extend(_parse_apt_field(f"{field}: {current_value}", field))
+            current_value = ""
+
+    if current_value:
+        items.extend(_parse_apt_field(f"{field}: {current_value}", field))
+
+    return items
+
+
 def get_installed_dpkg_packages(run_cmd: Callable[[Sequence[str]], str] = _run_cmd) -> Dict[str, str]:
     output = run_cmd(["dpkg-query", "-W", "-f=${Package}\t${Version}\n"])
     installed: Dict[str, str] = {}
@@ -116,10 +140,9 @@ def inspect_apt_package(
     breaks: List[str] = []
     depends: List[str] = []
 
-    for line in show_output.splitlines():
-        conflicts.extend(_parse_apt_field(line, "Conflicts"))
-        breaks.extend(_parse_apt_field(line, "Breaks"))
-        depends.extend(_parse_apt_field(line, "Depends"))
+    conflicts.extend(_iter_apt_fields(show_output, "Conflicts"))
+    breaks.extend(_iter_apt_fields(show_output, "Breaks"))
+    depends.extend(_iter_apt_fields(show_output, "Depends"))
 
     for target in conflicts:
         if target in installed:
@@ -202,6 +225,15 @@ def _version_satisfies_constraint(version: str, constraint: str) -> bool:
     return True
 
 
+def _find_unsupported_constraint_clauses(constraint: str) -> List[str]:
+    unsupported: List[str] = []
+    for clause in [c.strip() for c in constraint.split(",") if c.strip()]:
+        if re.match(r"^(==|!=|>=|<=|>|<)\s*([A-Za-z0-9_.-]+)$", clause):
+            continue
+        unsupported.append(clause)
+    return unsupported
+
+
 def inspect_pip_requirements(requested_specs: List[str]) -> List[ConflictFinding]:
     findings: List[ConflictFinding] = []
     if not requested_specs:
@@ -217,6 +249,17 @@ def inspect_pip_requirements(requested_specs: List[str]) -> List[ConflictFinding
 
     # 1) Direct constraint mismatch with already-installed package.
     for name, constraint in requested:
+        unsupported = _find_unsupported_constraint_clauses(constraint)
+        for clause in unsupported:
+            findings.append(
+                ConflictFinding(
+                    ecosystem="pip",
+                    package=name,
+                    issue="unsupported-constraint",
+                    confidence=0.7,
+                    evidence=f"Unsupported version clause '{clause}' in requested constraint '{constraint}'",
+                )
+            )
         if name in installed and constraint and not _version_satisfies_constraint(installed[name], constraint):
             findings.append(
                 ConflictFinding(

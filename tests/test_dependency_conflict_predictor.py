@@ -1,3 +1,11 @@
+"""
+Copyright (c) 2026 AI Venture Holdings LLC
+Licensed under the Business Source License 1.1
+You may not use this file except in compliance with the License.
+
+Regression tests for the dependency conflict predictor.
+"""
+
 import unittest
 from unittest.mock import patch
 
@@ -31,6 +39,31 @@ Breaks: old-demo
         issues = {f.issue for f in findings}
         self.assertIn("conflicts-installed-package", issues)
 
+    def test_apt_conflict_detection_with_continuation_lines(self):
+        installed = {"libssl1.1": "1.1.1", "legacy-lib": "2.0", "bash": "5.2"}
+
+        def fake_run(cmd):
+            if cmd[:2] == ["apt-cache", "show"]:
+                return """Package: demo-app
+Depends: libc6,
+ python3,
+ bash
+Conflicts: old-lib,
+ libssl1.1
+Breaks: unused-lib,
+ legacy-lib
+"""
+            return ""
+
+        findings = inspect_apt_package("demo-app", installed=installed, run_cmd=fake_run)
+        issues = {f.issue for f in findings}
+        evidence = "\n".join(f.evidence for f in findings)
+
+        self.assertIn("conflicts-installed-package", issues)
+        self.assertIn("breaks-installed-package", issues)
+        self.assertIn("libssl1.1", evidence)
+        self.assertIn("legacy-lib", evidence)
+
     def test_apt_package_not_found(self):
         findings = inspect_apt_package(
             "missing-app",
@@ -58,6 +91,23 @@ Breaks: old-demo
         self.assertIn("installed-version-violates-requested-constraint", issues)
 
     @patch("importlib.metadata.distributions")
+    def test_pip_reports_unsupported_constraints(self, mock_distributions):
+        class FakeDist:
+            def __init__(self, name, version, requires=None):
+                self.metadata = {"Name": name}
+                self.version = version
+                self.requires = requires or []
+
+        mock_distributions.return_value = [FakeDist("urllib3", "1.26.6", [])]
+
+        findings = inspect_pip_requirements(["urllib3~=1.26"])
+        issues = {f.issue for f in findings}
+        evidence = "\n".join(f.evidence for f in findings)
+
+        self.assertIn("unsupported-constraint", issues)
+        self.assertIn("~=1.26", evidence)
+
+    @patch("importlib.metadata.distributions")
     def test_predict_conflicts_includes_suggestions(self, mock_distributions):
         class FakeDist:
             def __init__(self, name, version, requires=None):
@@ -81,6 +131,7 @@ Breaks: old-demo
         )
         self.assertGreaterEqual(len(result.suggestions), 1)
         self.assertGreaterEqual(result.overall_confidence, 0.5)
+        self.assertTrue(all(f.issue != "unsupported-constraint" for f in result.findings))
 
 
 if __name__ == "__main__":
