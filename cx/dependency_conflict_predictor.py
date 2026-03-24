@@ -294,7 +294,6 @@ def _inspect_reverse_dependency_risks(
                         evidence=f"{parent} requires '{requirement}', requested '{dep_name}{requested_constraint}'",
                     )
                 )
-                break
 
     return findings
 
@@ -349,7 +348,7 @@ def rank_suggestions(findings: List[ConflictFinding]) -> List[ResolutionSuggesti
             rationale="Package removal can cascade into service disruption.",
         ),
     ]
-    return sorted(suggestions, key=lambda x: x.safety_score, reverse=True)
+    return suggestions
 
 
 def predict_conflicts(
@@ -370,23 +369,65 @@ def predict_conflicts(
 
 
 def render_cli(result: PredictionResult) -> None:
-    print(f"Conflict prediction confidence: {result.overall_confidence:.3f}")
-    print("\nPredicted Conflicts")
-    print("-" * 80)
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        print(f"Conflict prediction confidence: {result.overall_confidence:.3f}")
+        print("\nPredicted Conflicts")
+        print("-" * 80)
 
-    if not result.findings:
-        print("none | No high-risk conflicts found")
-    else:
+        if not result.findings:
+            print("none | No high-risk conflicts found")
+        else:
+            for finding in result.findings:
+                print(
+                    f"{finding.ecosystem} | {finding.package} | {finding.issue} | "
+                    f"{finding.confidence:.3f} | {finding.evidence}"
+                )
+
+        print("\nResolution Suggestions (ranked by safety)")
+        print("-" * 80)
+        for suggestion in result.suggestions:
+            print(f"{suggestion.safety_score:.2f} | {suggestion.action} | {suggestion.rationale}")
+        return
+
+    console = Console()
+    console.print(f"Conflict prediction confidence: {result.overall_confidence:.3f}")
+
+    findings_table = Table(title="Predicted Conflicts")
+    findings_table.add_column("Ecosystem")
+    findings_table.add_column("Package")
+    findings_table.add_column("Issue")
+    findings_table.add_column("Confidence", justify="right")
+    findings_table.add_column("Evidence")
+
+    if result.findings:
         for finding in result.findings:
-            print(
-                f"{finding.ecosystem} | {finding.package} | {finding.issue} | "
-                f"{finding.confidence:.3f} | {finding.evidence}"
+            findings_table.add_row(
+                finding.ecosystem,
+                finding.package,
+                finding.issue,
+                f"{finding.confidence:.3f}",
+                finding.evidence,
             )
+    else:
+        findings_table.add_row("none", "-", "-", "0.000", "No high-risk conflicts found")
 
-    print("\nResolution Suggestions (ranked by safety)")
-    print("-" * 80)
+    suggestions_table = Table(title="Resolution Suggestions")
+    suggestions_table.add_column("Safety", justify="right")
+    suggestions_table.add_column("Action")
+    suggestions_table.add_column("Rationale")
+
     for suggestion in result.suggestions:
-        print(f"{suggestion.safety_score:.2f} | {suggestion.action} | {suggestion.rationale}")
+        suggestions_table.add_row(
+            f"{suggestion.safety_score:.2f}",
+            suggestion.action,
+            suggestion.rationale,
+        )
+
+    console.print(findings_table)
+    console.print(suggestions_table)
 
 
 def main() -> int:

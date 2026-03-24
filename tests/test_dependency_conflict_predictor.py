@@ -14,6 +14,7 @@ from cx.dependency_conflict_predictor import (
     inspect_apt_package,
     inspect_pip_requirements,
     predict_conflicts,
+    rank_suggestions,
 )
 
 
@@ -132,6 +133,39 @@ Breaks: unused-lib,
         self.assertGreaterEqual(len(result.suggestions), 1)
         self.assertGreaterEqual(result.overall_confidence, 0.5)
         self.assertTrue(all(f.issue != "unsupported-constraint" for f in result.findings))
+
+    @patch("importlib.metadata.distributions")
+    def test_pip_reports_multiple_reverse_dependency_risks_per_distribution(self, mock_distributions):
+        class FakeDist:
+            def __init__(self, name, version, requires=None):
+                self.metadata = {"Name": name}
+                self.version = version
+                self.requires = requires or []
+
+        mock_distributions.return_value = [
+            FakeDist(
+                "service-a",
+                "1.0.0",
+                ["urllib3<2.0", "requests<2.30"],
+            ),
+            FakeDist("urllib3", "1.26.6", []),
+            FakeDist("requests", "2.28.0", []),
+        ]
+
+        findings = inspect_pip_requirements(["urllib3==2.1.0", "requests==2.31.0"])
+        reverse_dependency_findings = [
+            finding for finding in findings if finding.issue == "reverse-dependency-constraint-risk"
+        ]
+
+        self.assertEqual(len(reverse_dependency_findings), 2)
+        self.assertEqual({finding.package for finding in reverse_dependency_findings}, {"urllib3", "requests"})
+
+    def test_rank_suggestions_preserves_descending_safety_order(self):
+        suggestions = rank_suggestions([])
+        self.assertEqual(
+            [suggestion.safety_score for suggestion in suggestions],
+            sorted((suggestion.safety_score for suggestion in suggestions), reverse=True),
+        )
 
 
 if __name__ == "__main__":
