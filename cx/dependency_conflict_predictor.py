@@ -186,10 +186,17 @@ def inspect_apt_package(
 
 def _parse_req_name_and_constraints(spec: str) -> Tuple[str, str]:
     # MVP parser for common pip specs: name, name==x, name>=x,<y
-    m = re.match(r"^([A-Za-z0-9_.-]+)\s*(.*)$", spec.strip())
-    if not m:
+    match = re.match(r"^([A-Za-z0-9_.-]+)\s*(.*)$", spec.strip())
+    if not match:
         return spec.strip().lower(), ""
-    return m.group(1).lower(), m.group(2).strip()
+    return match.group(1).lower(), match.group(2).strip()
+
+
+def _split_version(version: str) -> Tuple[int, ...]:
+    parts = re.findall(r"\d+", version)
+    if not parts:
+        return (0,)
+    return tuple(int(part) for part in parts)
 
 
 def _version_satisfies_constraint(version: str, constraint: str) -> bool:
@@ -197,30 +204,22 @@ def _version_satisfies_constraint(version: str, constraint: str) -> bool:
     if not constraint:
         return True
 
-    def split_version(v: str) -> Tuple[int, ...]:
-        nums = re.findall(r"\d+", v)
-        if not nums:
-            return (0,)
-        return tuple(int(x) for x in nums)
+    parsed_version = _split_version(version)
+    comparators = {
+        "==": lambda other: parsed_version == other,
+        "!=": lambda other: parsed_version != other,
+        ">=": lambda other: parsed_version >= other,
+        "<=": lambda other: parsed_version <= other,
+        ">": lambda other: parsed_version > other,
+        "<": lambda other: parsed_version < other,
+    }
 
-    v = split_version(version)
-    for clause in [c.strip() for c in constraint.split(",") if c.strip()]:
+    for clause in [item.strip() for item in constraint.split(",") if item.strip()]:
         op_match = re.match(r"^(==|!=|>=|<=|>|<)\s*([A-Za-z0-9_.-]+)$", clause)
         if not op_match:
             continue
-        op, rhs_raw = op_match.groups()
-        rhs = split_version(rhs_raw)
-        if op == "==" and not (v == rhs):
-            return False
-        if op == "!=" and not (v != rhs):
-            return False
-        if op == ">=" and not (v >= rhs):
-            return False
-        if op == "<=" and not (v <= rhs):
-            return False
-        if op == ">" and not (v > rhs):
-            return False
-        if op == "<" and not (v < rhs):
+        operator, rhs_raw = op_match.groups()
+        if not comparators[operator](_split_version(rhs_raw)):
             return False
     return True
 
@@ -234,23 +233,18 @@ def _find_unsupported_constraint_clauses(constraint: str) -> List[str]:
     return unsupported
 
 
-def inspect_pip_requirements(requested_specs: List[str]) -> List[ConflictFinding]:
+def _build_requested_constraint_map(requested: Sequence[Tuple[str, str]]) -> Dict[str, str]:
+    return {name: constraint for name, constraint in requested}
+
+
+def _inspect_requested_pip_constraints(
+    requested: Sequence[Tuple[str, str]],
+    installed: Dict[str, str],
+) -> List[ConflictFinding]:
     findings: List[ConflictFinding] = []
-    if not requested_specs:
-        return findings
 
-    installed: Dict[str, str] = {}
-    for dist in importlib.metadata.distributions():
-        name = (dist.metadata.get("Name") or "").lower()
-        if name:
-            installed[name] = dist.version
-
-    requested = [_parse_req_name_and_constraints(spec) for spec in requested_specs]
-
-    # 1) Direct constraint mismatch with already-installed package.
     for name, constraint in requested:
-        unsupported = _find_unsupported_constraint_clauses(constraint)
-        for clause in unsupported:
+        for clause in _find_unsupported_constraint_clauses(constraint):
             findings.append(
                 ConflictFinding(
                     ecosystem="pip",
@@ -260,40 +254,66 @@ def inspect_pip_requirements(requested_specs: List[str]) -> List[ConflictFinding
                     evidence=f"Unsupported version clause '{clause}' in requested constraint '{constraint}'",
                 )
             )
-        if name in installed and constraint and not _version_satisfies_constraint(installed[name], constraint):
+
+        installed_version = installed.get(name)
+        if installed_version and constraint and not _version_satisfies_constraint(installed_version, constraint):
             findings.append(
                 ConflictFinding(
                     ecosystem="pip",
                     package=name,
                     issue="installed-version-violates-requested-constraint",
                     confidence=0.85,
-                    evidence=f"Installed {name}=={installed[name]} does not satisfy {constraint}",
+                    evidence=f"Installed {name}=={installed_version} does not satisfy {constraint}",
                 )
             )
 
-    # 2) Reverse dependency check: existing packages requiring a conflicting range.
-    req_map = {name: constraint for name, constraint in requested}
-    for dist in importlib.metadata.distributions():
+    return findings
+
+
+def _inspect_reverse_dependency_risks(
+    distributions: Sequence[importlib.metadata.Distribution],
+    requested_constraints: Dict[str, str],
+) -> List[ConflictFinding]:
+    findings: List[ConflictFinding] = []
+
+    for dist in distributions:
         parent = (dist.metadata.get("Name") or "").lower()
         if not parent:
             continue
         requires = dist.requires or []
-        for req in requires:
-            dep_name, dep_constraint = _parse_req_name_and_constraints(req)
-            if dep_name in req_map and req_map[dep_name]:
-                # Requested constraint likely conflicts with current parent expectation.
-                if dep_constraint and dep_constraint != req_map[dep_name]:
-                    findings.append(
-                        ConflictFinding(
-                            ecosystem="pip",
-                            package=dep_name,
-                            issue="reverse-dependency-constraint-risk",
-                            confidence=0.65,
-                            evidence=f"{parent} requires '{req}', requested '{dep_name}{req_map[dep_name]}'",
-                        )
+        for requirement in requires:
+            dep_name, dep_constraint = _parse_req_name_and_constraints(requirement)
+            requested_constraint = requested_constraints.get(dep_name)
+            if requested_constraint and dep_constraint and dep_constraint != requested_constraint:
+                findings.append(
+                    ConflictFinding(
+                        ecosystem="pip",
+                        package=dep_name,
+                        issue="reverse-dependency-constraint-risk",
+                        confidence=0.65,
+                        evidence=f"{parent} requires '{requirement}', requested '{dep_name}{requested_constraint}'",
                     )
-                    break
+                )
+                break
 
+    return findings
+
+
+def inspect_pip_requirements(requested_specs: List[str]) -> List[ConflictFinding]:
+    findings: List[ConflictFinding] = []
+    if not requested_specs:
+        return findings
+
+    distributions = list(importlib.metadata.distributions())
+    installed: Dict[str, str] = {}
+    for dist in distributions:
+        name = (dist.metadata.get("Name") or "").lower()
+        if name:
+            installed[name] = dist.version
+
+    requested = [_parse_req_name_and_constraints(spec) for spec in requested_specs]
+    findings.extend(_inspect_requested_pip_constraints(requested, installed))
+    findings.extend(_inspect_reverse_dependency_risks(distributions, _build_requested_constraint_map(requested)))
     return findings
 
 
