@@ -1,4 +1,8 @@
 """
+Copyright (c) 2026 AI Venture Holdings LLC
+Licensed under the Business Source License 1.1
+You may not use this file except in compliance with the License.
+
 Dependency conflict prediction for CX Linux pre-install flows.
 
 MVP scope:
@@ -18,6 +22,17 @@ import re
 import subprocess
 from dataclasses import asdict, dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import InvalidVersion, Version
+
+APT_MANY_MISSING_DEPS_THRESHOLD = 5
+HIGH_CONFIDENCE_THRESHOLD = 0.85
+_APT_PACKAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+.:_-]*$")
+_PIP_SPEC_RE = re.compile(
+    r"^[A-Za-z0-9_.-]+(?:\s*(?:==|!=|>=|<=|>|<)\s*[A-Za-z0-9_.!+-]+(?:\s*,\s*(?:==|!=|>=|<=|>|<)\s*[A-Za-z0-9_.!+-]+)*)?$"
+)
 
 
 @dataclass
@@ -59,7 +74,6 @@ def _run_cmd(command: Sequence[str]) -> str:
 
 
 def _parse_name_from_alt_dep(token: str) -> str:
-    # apt-cache outputs alternatives with "pkg | other" and architecture suffixes.
     token = token.strip().split("|")[0].strip()
     token = token.split(":")[0]
     token = token.split(" ")[0]
@@ -136,13 +150,9 @@ def inspect_apt_package(
         )
         return findings
 
-    conflicts: List[str] = []
-    breaks: List[str] = []
-    depends: List[str] = []
-
-    conflicts.extend(_iter_apt_fields(show_output, "Conflicts"))
-    breaks.extend(_iter_apt_fields(show_output, "Breaks"))
-    depends.extend(_iter_apt_fields(show_output, "Depends"))
+    conflicts = _iter_apt_fields(show_output, "Conflicts")
+    breaks = _iter_apt_fields(show_output, "Breaks")
+    depends = _iter_apt_fields(show_output, "Depends")
 
     for target in conflicts:
         if target in installed:
@@ -168,9 +178,8 @@ def inspect_apt_package(
                 )
             )
 
-    # Soft risk: many unmet deps in an unstable system may indicate install friction.
     missing = [dep for dep in depends if dep and dep not in installed]
-    if len(missing) >= 5:
+    if len(missing) >= APT_MANY_MISSING_DEPS_THRESHOLD:
         findings.append(
             ConflictFinding(
                 ecosystem="apt",
@@ -185,56 +194,94 @@ def inspect_apt_package(
 
 
 def _parse_req_name_and_constraints(spec: str) -> Tuple[str, str]:
-    # MVP parser for common pip specs: name, name==x, name>=x,<y
-    match = re.match(r"^([A-Za-z0-9_.-]+)\s*(.*)$", spec.strip())
-    if not match:
-        return spec.strip().lower(), ""
-    return match.group(1).lower(), match.group(2).strip()
+    cleaned = spec.strip()
+    if not cleaned:
+        return "", ""
+
+    try:
+        requirement = Requirement(cleaned)
+        return requirement.name.lower(), str(requirement.specifier)
+    except InvalidRequirement:
+        match = re.match(r"^([A-Za-z0-9_.-]+)\s*(.*)$", cleaned)
+        if not match:
+            return cleaned.lower(), ""
+        return match.group(1).lower(), match.group(2).strip()
 
 
-def _split_version(version: str) -> Tuple[int, ...]:
-    parts = re.findall(r"\d+", version)
-    if not parts:
-        return (0,)
-    return tuple(int(part) for part in parts)
+def _parse_version(version: str) -> Version:
+    return Version(version)
 
 
 def _version_satisfies_constraint(version: str, constraint: str) -> bool:
-    # Minimal comparator support for MVP: ==,!=,>=,<=,>,< with comma-separated clauses.
     if not constraint:
         return True
 
-    parsed_version = _split_version(version)
-    comparators = {
-        "==": lambda other: parsed_version == other,
-        "!=": lambda other: parsed_version != other,
-        ">=": lambda other: parsed_version >= other,
-        "<=": lambda other: parsed_version <= other,
-        ">": lambda other: parsed_version > other,
-        "<": lambda other: parsed_version < other,
-    }
-
-    for clause in [item.strip() for item in constraint.split(",") if item.strip()]:
-        op_match = re.match(r"^(==|!=|>=|<=|>|<)\s*([A-Za-z0-9_.-]+)$", clause)
-        if not op_match:
-            continue
-        operator, rhs_raw = op_match.groups()
-        if not comparators[operator](_split_version(rhs_raw)):
-            return False
-    return True
+    try:
+        return _parse_version(version) in SpecifierSet(constraint)
+    except (InvalidSpecifier, InvalidVersion):
+        return False
 
 
 def _find_unsupported_constraint_clauses(constraint: str) -> List[str]:
     unsupported: List[str] = []
     for clause in [c.strip() for c in constraint.split(",") if c.strip()]:
-        if re.match(r"^(==|!=|>=|<=|>|<)\s*([A-Za-z0-9_.-]+)$", clause):
-            continue
-        unsupported.append(clause)
+        try:
+            SpecifierSet(clause)
+        except InvalidSpecifier:
+            unsupported.append(clause)
     return unsupported
 
 
 def _build_requested_constraint_map(requested: Sequence[Tuple[str, str]]) -> Dict[str, str]:
-    return {name: constraint for name, constraint in requested}
+    return dict(requested)
+
+
+def _extract_constraint_candidate_versions(*constraints: str) -> List[Version]:
+    candidates: Dict[str, Version] = {}
+
+    for raw in ("0", "0.1", "1", "1.0", "2", "10"):
+        candidates[raw] = Version(raw)
+
+    for constraint in constraints:
+        for raw in re.findall(r"[0-9][A-Za-z0-9_.!+-]*", constraint):
+            try:
+                version = Version(raw)
+            except InvalidVersion:
+                continue
+
+            candidates[str(version)] = version
+
+            release = list(version.release or (0,))
+            if not release:
+                continue
+
+            previous_release = release[:]
+            previous_release[-1] = max(0, previous_release[-1] - 1)
+            next_release = release[:]
+            next_release[-1] += 1
+            patch_release = release[:] + [0]
+
+            for parts in (previous_release, next_release, patch_release):
+                derived = ".".join(str(part) for part in parts)
+                candidates[derived] = Version(derived)
+
+    return list(candidates.values())
+
+
+def _constraints_overlap(left: str, right: str) -> bool:
+    if not left or not right:
+        return True
+
+    try:
+        left_spec = SpecifierSet(left)
+        right_spec = SpecifierSet(right)
+    except InvalidSpecifier:
+        return False
+
+    for candidate in _extract_constraint_candidate_versions(left, right):
+        if candidate in left_spec and candidate in right_spec:
+            return True
+    return False
 
 
 def _inspect_requested_pip_constraints(
@@ -280,11 +327,11 @@ def _inspect_reverse_dependency_risks(
         parent = (dist.metadata.get("Name") or "").lower()
         if not parent:
             continue
-        requires = dist.requires or []
-        for requirement in requires:
+
+        for requirement in dist.requires or []:
             dep_name, dep_constraint = _parse_req_name_and_constraints(requirement)
             requested_constraint = requested_constraints.get(dep_name)
-            if requested_constraint and dep_constraint and dep_constraint != requested_constraint:
+            if requested_constraint and dep_constraint and not _constraints_overlap(dep_constraint, requested_constraint):
                 findings.append(
                     ConflictFinding(
                         ecosystem="pip",
@@ -326,7 +373,7 @@ def rank_suggestions(findings: List[ConflictFinding]) -> List[ResolutionSuggesti
             )
         ]
 
-    suggestions = [
+    return [
         ResolutionSuggestion(
             action="Dry-run apt transaction (apt-get -s install ...) before applying",
             safety_score=0.96,
@@ -348,7 +395,6 @@ def rank_suggestions(findings: List[ConflictFinding]) -> List[ResolutionSuggesti
             rationale="Package removal can cascade into service disruption.",
         ),
     ]
-    return suggestions
 
 
 def predict_conflicts(
@@ -430,6 +476,16 @@ def render_cli(result: PredictionResult) -> None:
     console.print(suggestions_table)
 
 
+def _is_valid_pip_spec(spec: str) -> bool:
+    if not _PIP_SPEC_RE.fullmatch(spec):
+        return False
+    try:
+        Requirement(spec)
+    except InvalidRequirement:
+        return False
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="CX pre-install dependency conflict predictor")
     parser.add_argument("--apt", nargs="*", default=[], help="apt packages planned for install")
@@ -437,6 +493,14 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Emit JSON output")
 
     args = parser.parse_args()
+
+    invalid_apt = [package for package in args.apt if not _APT_PACKAGE_RE.fullmatch(package)]
+    if invalid_apt:
+        parser.error(f"Invalid apt package name(s): {', '.join(repr(package) for package in invalid_apt)}")
+
+    invalid_pip = [spec for spec in args.pip if not _is_valid_pip_spec(spec)]
+    if invalid_pip:
+        parser.error(f"Invalid pip requirement spec(s): {', '.join(repr(spec) for spec in invalid_pip)}")
 
     result = predict_conflicts(apt_packages=args.apt, pip_requirements=args.pip)
 
@@ -450,8 +514,7 @@ def main() -> int:
     else:
         render_cli(result)
 
-    # Non-zero code only for confidence-worthy risks.
-    if any(f.confidence >= 0.85 for f in result.findings):
+    if any(f.confidence >= HIGH_CONFIDENCE_THRESHOLD for f in result.findings):
         return 2
     return 0
 
