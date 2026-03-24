@@ -259,7 +259,7 @@ def _extract_constraint_candidate_versions(*constraints: str) -> List[Version]:
             previous_release[-1] = max(0, previous_release[-1] - 1)
             next_release = release[:]
             next_release[-1] += 1
-            patch_release = release[:] + [0]
+            patch_release = [*release, 0]
 
             for parts in (previous_release, next_release, patch_release):
                 derived = ".".join(str(part) for part in parts)
