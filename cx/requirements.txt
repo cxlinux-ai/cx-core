@@ -4,6 +4,7 @@
 # Core dependencies
 rich>=13.0.0                    # Terminal UI and console formatting
 psutil>=5.8.0                   # System and process monitoring
+packaging>=24.0                 # PEP 440 version and specifier parsing
 
 # Enterprise security dependencies
 cryptography>=41.0.0            # Data encryption for sensitive fields (email addresses)
