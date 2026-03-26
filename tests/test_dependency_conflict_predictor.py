@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from cx.dependency_conflict_predictor import (
     ConflictFinding,
+    _run_cmd,
     _version_satisfies_constraint,
     inspect_apt_package,
     inspect_pip_requirements,
@@ -164,6 +165,31 @@ Breaks: unused-lib,
             [suggestion.safety_score for suggestion in suggestions],
             sorted((suggestion.safety_score for suggestion in suggestions), reverse=True),
         )
+
+    @patch("cx.dependency_conflict_predictor.subprocess.run")
+    @patch("cx.dependency_conflict_predictor.shutil.which", return_value="/usr/bin/apt-cache")
+    def test_run_cmd_uses_resolved_safe_binary(self, mock_which, mock_run):
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = "Package: demo\n"
+
+        output = _run_cmd(["apt-cache", "show", "demo-app"])
+
+        self.assertEqual(output, "Package: demo\n")
+        mock_which.assert_called_once_with("apt-cache", path="/usr/bin:/bin:/usr/sbin:/sbin")
+        mock_run.assert_called_once_with(
+            ["/usr/bin/apt-cache", "show", "demo-app"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"},
+            cwd="/",
+            timeout=15,
+        )
+
+    @patch("cx.dependency_conflict_predictor.subprocess.run")
+    def test_run_cmd_rejects_non_allowlisted_binary(self, mock_run):
+        self.assertEqual(_run_cmd(["python3", "-c", "print(1)"]), "")
+        mock_run.assert_not_called()
 
 
 if __name__ == "__main__":

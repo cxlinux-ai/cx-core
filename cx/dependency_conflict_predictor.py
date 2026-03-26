@@ -19,6 +19,7 @@ import argparse
 import importlib.metadata
 import json
 import re
+import shutil
 import subprocess
 from dataclasses import asdict, dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -29,6 +30,8 @@ from packaging.version import InvalidVersion, Version
 
 APT_MANY_MISSING_DEPS_THRESHOLD = 5
 HIGH_CONFIDENCE_THRESHOLD = 0.85
+_SAFE_SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+_SAFE_COMMANDS = {"apt-cache", "dpkg-query"}
 _APT_PACKAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+.:_-]*$")
 _PIP_SPEC_RE = re.compile(
     r"^[A-Za-z0-9_.-]+(?:\s*(?:==|!=|>=|<=|>|<)\s*[A-Za-z0-9_.!+-]+(?:\s*,\s*(?:==|!=|>=|<=|>|<)\s*[A-Za-z0-9_.!+-]+)*)?$"
@@ -64,8 +67,23 @@ class PredictionResult:
 
 
 def _run_cmd(command: Sequence[str]) -> str:
+    if not command or command[0] not in _SAFE_COMMANDS:
+        return ""
+
+    executable = shutil.which(command[0], path=_SAFE_SYSTEM_PATH)
+    if executable is None:
+        return ""
+
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            [executable, *command[1:]],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={"PATH": _SAFE_SYSTEM_PATH},
+            cwd="/",
+            timeout=15,
+        )
     except FileNotFoundError:
         return ""
     if result.returncode != 0:
