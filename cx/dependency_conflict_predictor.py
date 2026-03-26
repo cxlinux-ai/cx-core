@@ -220,10 +220,14 @@ def _parse_req_name_and_constraints(spec: str) -> Tuple[str, str]:
         requirement = Requirement(cleaned)
         return requirement.name.lower(), str(requirement.specifier)
     except InvalidRequirement:
-        match = re.match(r"^([A-Za-z0-9_.-]+)\s*(.*)$", cleaned)
-        if not match:
+        name_end = 0
+        while name_end < len(cleaned) and cleaned[name_end] in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-":
+            name_end += 1
+
+        if name_end == 0:
             return cleaned.lower(), ""
-        return match.group(1).lower(), match.group(2).strip()
+
+        return cleaned[:name_end].lower(), cleaned[name_end:].strip()
 
 
 def _parse_version(version: str) -> Version:

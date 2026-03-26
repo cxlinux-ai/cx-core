@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from cx.dependency_conflict_predictor import (
     ConflictFinding,
+    _parse_req_name_and_constraints,
     _run_cmd,
     _version_satisfies_constraint,
     inspect_apt_package,
@@ -36,6 +37,11 @@ class TestDependencyConflictPredictor(unittest.TestCase):
         self.assertTrue(_version_satisfies_constraint("1.2.3", ""))
         self.assertTrue(_version_satisfies_constraint("1.2.3", "!=2.0.0"))
         self.assertFalse(_version_satisfies_constraint("1.2.3", ">>2.0.0"))
+
+    def test_parse_req_name_and_constraints_avoids_regex_fallback(self):
+        self.assertEqual(_parse_req_name_and_constraints("urllib3=>1.26"), ("urllib3", "=>1.26"))
+        self.assertEqual(_parse_req_name_and_constraints("  requests ~=2.31"), ("requests", "~=2.31"))
+        self.assertEqual(_parse_req_name_and_constraints(">=1.0"), (">=1.0", ""))
 
     def test_apt_conflict_detection(self):
         installed = {"libssl1.1": "1.1.1", "bash": "5.2"}
