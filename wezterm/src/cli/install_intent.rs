@@ -23,12 +23,17 @@ pub struct InstallPlan {
 }
 
 impl InstallPlan {
-    pub fn apt_command(&self) -> Option<String> {
+    pub fn apt_command(&self, auto_confirm: bool) -> Option<String> {
         if self.status != InstallPlanStatus::Ready || self.packages.is_empty() {
             return None;
         }
 
-        Some(format!("sudo apt install {}", self.packages.join(" ")))
+        let yes_flag = if auto_confirm { " -y" } else { "" };
+        Some(format!(
+            "sudo apt install{} {}",
+            yes_flag,
+            self.packages.join(" ")
+        ))
     }
 
     pub fn summary_lines(&self) -> Vec<String> {
@@ -96,6 +101,8 @@ pub fn resolve_install_intent(query: &str) -> InstallPlan {
         .into_iter()
         .max_by(|left, right| left.confidence.total_cmp(&right.confidence))
     {
+        // Keep the ready threshold high enough that demo-safe package installs
+        // only run for direct profile matches or clear fuzzy matches.
         if best.confidence >= 0.68 {
             return InstallPlan {
                 status: InstallPlanStatus::Ready,
@@ -121,7 +128,7 @@ pub fn resolve_install_intent(query: &str) -> InstallPlan {
                 .map(|alt| alt.to_string())
                 .collect(),
             reasoning: format!(
-                "{} I am not confident enough to install packages without confirmation.",
+                "{} I need more detail before choosing packages safely.",
                 best.reasoning
             ),
             confidence: best.confidence,
@@ -465,8 +472,12 @@ mod tests {
         assert!(lines.contains("Reasoning:"));
         assert!(lines.contains("Confidence:"));
         assert_eq!(
-            plan.apt_command(),
+            plan.apt_command(false),
             Some("sudo apt install docker.io kubernetes-client".to_string())
+        );
+        assert_eq!(
+            plan.apt_command(true),
+            Some("sudo apt install -y docker.io kubernetes-client".to_string())
         );
     }
 }
