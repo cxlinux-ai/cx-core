@@ -14,8 +14,11 @@ You may not use this file except in compliance with the License.
 
 use anyhow::Result;
 use clap::Parser;
+use std::io::{self, Write};
+use std::process::Command;
 
 use super::ask::AskCommand;
+use super::install_intent::{resolve_install_intent, InstallPlan, InstallPlanStatus};
 
 /// Install packages or software using natural language
 #[derive(Debug, Parser, Clone)]
@@ -39,7 +42,13 @@ pub struct InstallCommand {
 
 impl InstallCommand {
     pub fn run(&self) -> Result<()> {
-        let query = format!("install {}", self.description.join(" "));
+        let query = self.description.join(" ");
+
+        if handle_install_intent(&query, self.auto_confirm, true)? {
+            return Ok(());
+        }
+
+        let query = format!("install {}", query);
 
         let ask = AskCommand {
             query: vec![query],
@@ -76,7 +85,13 @@ pub struct SetupCommand {
 
 impl SetupCommand {
     pub fn run(&self) -> Result<()> {
-        let query = format!("setup {}", self.description.join(" "));
+        let query = self.description.join(" ");
+
+        if handle_install_intent(&query, self.auto_confirm, false)? {
+            return Ok(());
+        }
+
+        let query = format!("setup {}", query);
 
         let ask = AskCommand {
             query: vec![query],
@@ -89,6 +104,61 @@ impl SetupCommand {
 
         ask.run()
     }
+}
+
+fn handle_install_intent(
+    description: &str,
+    auto_confirm: bool,
+    handle_unknown: bool,
+) -> Result<bool> {
+    let plan = resolve_install_intent(description);
+
+    match plan.status {
+        InstallPlanStatus::Ready => {
+            print_install_plan(&plan);
+            if let Some(command) = plan.apt_command() {
+                println!("Command: {}", command);
+
+                if auto_confirm || confirm_install()? {
+                    let status = Command::new("sh").arg("-c").arg(&command).status()?;
+
+                    if !status.success() {
+                        eprintln!("Command failed with exit code: {:?}", status.code());
+                    }
+                } else {
+                    eprintln!("Cancelled.");
+                }
+            }
+            Ok(true)
+        }
+        InstallPlanStatus::NeedsClarification => {
+            print_install_plan(&plan);
+            println!("Please clarify what you want installed before I run a command.");
+            Ok(true)
+        }
+        InstallPlanStatus::Unknown if handle_unknown => {
+            print_install_plan(&plan);
+            println!("I do not know a safe package set for that request yet.");
+            Ok(true)
+        }
+        InstallPlanStatus::Unknown => Ok(false),
+    }
+}
+
+fn print_install_plan(plan: &InstallPlan) {
+    for line in plan.summary_lines() {
+        println!("{}", line);
+    }
+}
+
+fn confirm_install() -> Result<bool> {
+    eprint!("Install these packages now? [y/N] ");
+    io::stderr().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(input.trim().eq_ignore_ascii_case("y"))
 }
 
 /// Ask questions about the system

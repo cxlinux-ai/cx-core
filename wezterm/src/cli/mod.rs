@@ -29,6 +29,7 @@ pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
 pub mod daemon;
+pub mod install_intent;
 pub mod license;
 pub mod model_utils;
 pub mod new;
