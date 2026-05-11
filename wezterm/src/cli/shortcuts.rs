@@ -44,7 +44,7 @@ impl InstallCommand {
     pub fn run(&self) -> Result<()> {
         let query = self.description.join(" ");
 
-        if handle_install_intent(&query, self.auto_confirm, true)? {
+        if handle_install_intent(&query, self.auto_confirm, false)? {
             return Ok(());
         }
 
@@ -116,11 +116,18 @@ fn handle_install_intent(
     match plan.status {
         InstallPlanStatus::Ready => {
             print_install_plan(&plan);
-            if let Some(command) = plan.apt_command() {
+            if let Some(command) = plan.apt_command(auto_confirm) {
                 println!("Command: {}", command);
 
                 if auto_confirm || confirm_install()? {
-                    let status = Command::new("sh").arg("-c").arg(&command).status()?;
+                    let mut command = Command::new("sudo");
+                    command.arg("apt").arg("install");
+                    if auto_confirm {
+                        command.arg("-y");
+                    }
+                    command.args(&plan.packages);
+
+                    let status = command.status()?;
 
                     if !status.success() {
                         eprintln!("Command failed with exit code: {:?}", status.code());
