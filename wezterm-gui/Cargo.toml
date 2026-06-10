@@ -28,7 +28,9 @@ dhat-heap = ["dhat"]    # if you are doing heap profiling
 dhat-ad-hoc = ["dhat"]  # if you are doing ad hoc profiling
 
 [build-dependencies]
+cmake = "0.1"
 anyhow.workspace = true
+cmake = "0.1.58"
 
 [target.'cfg(windows)'.build-dependencies]
 cc.workspace = true

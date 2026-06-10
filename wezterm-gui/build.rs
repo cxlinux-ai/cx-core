@@ -182,4 +182,15 @@ END
             ))
             .unwrap();
     }
+
+    // Build cortex-daemon C++ library
+    let dst = cmake::Config::new("../cortex-daemon")
+        .define("CORTEX_STATIC_LINK", "ON")
+        .build();
+
+    println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    println!("cargo:rustc-link-search=native={}/lib64", dst.display());
+    println!("cargo:rustc-link-lib=static=cortex_inference");
+    println!("cargo:rustc-link-lib=static=llama");
+    println!("cargo:rustc-link-lib=dylib=c++");
 }
