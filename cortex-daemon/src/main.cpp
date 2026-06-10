@@ -1,4 +1,6 @@
 #include <iostream>
+#include <string>
+#include <cstdlib>
 #include "bindings/llama_c_bridge.h"
 #include "models/model_registry.h"
 
@@ -16,10 +18,13 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    std::cout << "Model loaded successfully. Enter prompts (Ctrl+D to exit):\n> ";
     std::string prompt;
+    std::cout << "> ";
     while (std::getline(std::cin, prompt)) {
-        if (prompt.empty()) continue;
+        if (prompt.empty()) {
+            std::cout << "> ";
+            continue;
+        }
         
         char* response = cortex_infer_generate(prompt.c_str());
         if (response) {

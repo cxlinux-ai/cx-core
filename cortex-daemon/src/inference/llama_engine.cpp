@@ -15,7 +15,7 @@ LlamaEngine::~LlamaEngine() {
     llama_backend_free();
 }
 
-bool LlamaEngine::load_model(const std::string& model_path) {
+bool LlamaEngine::load_model(const std::string& model_path, int ctx_size) {
     unload_model();
     
     llama_model_params mparams = llama_model_default_params();
@@ -26,7 +26,7 @@ bool LlamaEngine::load_model(const std::string& model_path) {
     }
     
     llama_context_params cparams = llama_context_default_params();
-    cparams.n_ctx = 2048;
+    cparams.n_ctx = ctx_size > 0 ? ctx_size : 2048;
     
     ctx = llama_init_from_model(model, cparams);
     if (!ctx) {
@@ -99,17 +99,9 @@ void LlamaEngine::generate_stream(const std::string& prompt, std::function<void(
     
     // Generate
     while (n_cur < max_tokens + (int)tokens_list.size()) {
-        auto* logits = llama_get_logits_ith(ctx, batch.n_tokens - 1);
-        llama_token new_token_id = 0;
-        
-        // Greedy sampling for simplicity
-        float max_logit = -1e9;
-        for (int i = 0; i < n_vocab; ++i) {
-            if (logits[i] > max_logit) {
-                max_logit = logits[i];
-                new_token_id = i;
-            }
-        }
+        struct llama_sampler* smpl = llama_sampler_init_greedy();
+        llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
+        llama_sampler_free(smpl);
         
         if (llama_vocab_is_eog(vocab, new_token_id)) {
             break;

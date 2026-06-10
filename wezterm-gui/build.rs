@@ -183,6 +183,7 @@ END
             .unwrap();
     }
 
+    println!("cargo:rerun-if-changed=../cortex-daemon");
     // Build cortex-daemon C++ library
     let dst = cmake::Config::new("../cortex-daemon")
         .define("CORTEX_STATIC_LINK", "ON")
@@ -192,5 +193,13 @@ END
     println!("cargo:rustc-link-search=native={}/lib64", dst.display());
     println!("cargo:rustc-link-lib=static=cortex_inference");
     println!("cargo:rustc-link-lib=static=llama");
-    println!("cargo:rustc-link-lib=dylib=c++");
+    
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if !target.contains("msvc") {
+        if target.contains("apple") || target.contains("darwin") {
+            println!("cargo:rustc-link-lib=dylib=c++");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+        }
+    }
 }

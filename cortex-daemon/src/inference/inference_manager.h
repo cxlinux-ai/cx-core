@@ -16,7 +16,7 @@ public:
         return instance;
     }
     
-    bool load_model(const std::string& model_path);
+    bool load_model(const std::string& model_path, int ctx_size = 2048);
     std::string generate_text(const std::string& prompt);
     void generate_stream(const std::string& prompt, std::function<void(const std::string&)> callback);
 

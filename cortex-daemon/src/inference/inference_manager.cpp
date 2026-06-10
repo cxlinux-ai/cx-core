@@ -3,11 +3,11 @@
 namespace cortex {
 namespace inference {
 
-bool InferenceManager::load_model(const std::string& model_path) {
+bool InferenceManager::load_model(const std::string& model_path, int ctx_size) {
     if (!engine) {
         engine = std::make_unique<LlamaEngine>();
     }
-    return engine->load_model(model_path);
+    return engine->load_model(model_path, ctx_size);
 }
 
 std::string InferenceManager::generate_text(const std::string& prompt) {

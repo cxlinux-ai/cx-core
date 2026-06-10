@@ -22,15 +22,18 @@ extern "C" {
 
 pub struct OllamaProvider {
     config: AIProviderConfig,
+    load_success: bool,
 }
 
 impl OllamaProvider {
     pub fn new(config: AIProviderConfig) -> Self {
-        let model_path = CString::new(config.model.clone()).unwrap();
-        unsafe {
-            cortex_model_load(model_path.as_ptr());
-        }
-        Self { config }
+        let load_success = match CString::new(config.model.clone()) {
+            Ok(model_path) => unsafe {
+                cortex_model_load(model_path.as_ptr()) == 1
+            },
+            Err(_) => false,
+        };
+        Self { config, load_success }
     }
 }
 
@@ -64,7 +67,10 @@ impl AIProvider for OllamaProvider {
         prompt.push_str("Assistant:");
 
         Box::pin(async move {
-            let c_prompt = CString::new(prompt).unwrap();
+            let c_prompt = match CString::new(prompt) {
+                Ok(c) => c,
+                Err(_) => return Err(AIError::ApiError("Invalid prompt containing NUL bytes".to_string())),
+            };
             let c_result = unsafe { cortex_infer_generate(c_prompt.as_ptr()) };
             if c_result.is_null() {
                 return Err(AIError::ApiError("Failed to generate response".to_string()));
@@ -102,7 +108,10 @@ impl AIProvider for OllamaProvider {
 
         Box::pin(async move {
             let mut chunks: Vec<String> = Vec::new();
-            let c_prompt = CString::new(prompt).unwrap();
+            let c_prompt = match CString::new(prompt) {
+                Ok(c) => c,
+                Err(_) => return Err(AIError::ApiError("Invalid prompt containing NUL bytes".to_string())),
+            };
             
             unsafe {
                 cortex_infer_generate_stream(
@@ -117,7 +126,7 @@ impl AIProvider for OllamaProvider {
     }
 
     fn is_available(&self) -> bool {
-        true
+        self.load_success
     }
 
     fn name(&self) -> &str {

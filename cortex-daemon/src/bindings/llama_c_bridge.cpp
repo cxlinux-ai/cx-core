@@ -14,11 +14,12 @@ int cortex_model_load(const char* model_path) {
 char* cortex_infer_generate(const char* prompt) {
     if (!prompt) return nullptr;
     std::string result = cortex::inference::InferenceManager::get_instance().generate_text(std::string(prompt));
-    char* c_str = (char*)malloc(result.length() + 1);
-    if (c_str) {
-        strcpy(c_str, result.c_str());
-    }
-    return c_str;
+    
+#ifdef _WIN32
+    return _strdup(result.c_str());
+#else
+    return strdup(result.c_str());
+#endif
 }
 
 int cortex_infer_generate_stream(const char* prompt, cortex_stream_callback callback, void* user_data) {
