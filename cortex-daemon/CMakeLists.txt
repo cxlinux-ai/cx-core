@@ -71,33 +71,43 @@ target_include_directories(cortex_inference
         ${LLAMA_CPP_DIR}/common
 )
 
+# Use portable Threads package
+find_package(Threads REQUIRED)
+
 target_link_libraries(cortex_inference
-    PUBLIC  llama
-    PRIVATE $<$<PLATFORM_ID:Linux>:pthread>
-            $<$<PLATFORM_ID:Linux>:dl>
+    PUBLIC  llama Threads::Threads
+    PRIVATE $<$<PLATFORM_ID:Linux>:dl>
 )
 
-# Architecture-specific flags
-if(ARCH_ARM64)
-    target_compile_options(cortex_inference PRIVATE -march=armv8-a+dotprod+fp16)
-elseif(ARCH_X86_64)
+# Conditional compiler flags for non-MSVC
+if(NOT MSVC)
     target_compile_options(cortex_inference PRIVATE
-        -march=native
-        $<$<BOOL:${CORTEX_AVX2}>:-mavx2 -mfma>
+        -O3
+        -ffast-math
+        -fvisibility=hidden
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
     )
-endif()
 
-target_compile_options(cortex_inference PRIVATE
-    -O3
-    -ffast-math
-    -fvisibility=hidden
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
-)
+    # Restrict ARM64 flags to non-Apple to prevent macOS build failures
+    if(ARCH_ARM64)
+        if(NOT APPLE)
+            target_compile_options(cortex_inference PRIVATE -mcpu=native)
+        endif()
+    elseif(ARCH_X86_64)
+        # Avoid -march=native by default to ensure binary portability
+        target_compile_options(cortex_inference PRIVATE
+            $<$<BOOL:${CORTEX_AVX2}>:-mavx2 -mfma>
+        )
+    endif()
+endif()
 
 # ── Cortex daemon executable ─────────────────────────────────────────────────
 add_executable(cortexd src/main.cpp)
 target_link_libraries(cortexd PRIVATE cortex_inference)
 
 # ── Tests ────────────────────────────────────────────────────────────────────
-enable_testing()
-add_subdirectory(tests)
+# Guard enable_testing() to prevent affecting parent projects
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
