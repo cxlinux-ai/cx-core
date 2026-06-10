@@ -98,10 +98,9 @@ void LlamaEngine::generate_stream(const std::string& prompt, std::function<void(
     int n_vocab = llama_vocab_n_tokens(vocab);
     
     // Generate
+    struct llama_sampler* smpl = llama_sampler_init_greedy();
     while (n_cur < max_tokens + (int)tokens_list.size()) {
-        struct llama_sampler* smpl = llama_sampler_init_greedy();
         llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
-        llama_sampler_free(smpl);
         
         if (llama_vocab_is_eog(vocab, new_token_id)) {
             break;
@@ -123,6 +122,7 @@ void LlamaEngine::generate_stream(const std::string& prompt, std::function<void(
         n_cur++;
     }
     
+    llama_sampler_free(smpl);
     llama_batch_free(batch);
 }
 

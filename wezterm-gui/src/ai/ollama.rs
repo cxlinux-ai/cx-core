@@ -8,7 +8,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
-use std::sync::Mutex;
 
 extern "C" {
     fn cortex_model_load(model_path: *const c_char) -> c_int;
@@ -135,7 +134,7 @@ impl AIProvider for OllamaProvider {
 }
 
 pub fn create_local_provider(model: Option<&str>) -> OllamaProvider {
-    let mut config = AIProviderConfig {
+    let config = AIProviderConfig {
         provider_type: super::AIProviderType::Local,
         endpoint: String::new(),
         api_key: None,
