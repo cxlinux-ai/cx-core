@@ -95,7 +95,6 @@ void LlamaEngine::generate_stream(const std::string& prompt, std::function<void(
     }
     
     int n_cur = batch.n_tokens;
-    int n_vocab = llama_vocab_n_tokens(vocab);
     
     // Generate
     struct llama_sampler* smpl = llama_sampler_init_greedy();
