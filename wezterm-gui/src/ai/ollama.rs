@@ -41,8 +41,8 @@ extern "C" fn stream_callback(token: *const c_char, user_data: *mut c_void) {
         return;
     }
     let s = unsafe { CStr::from_ptr(token).to_string_lossy().into_owned() };
-    let chunks = unsafe { &mut *(user_data as *mut Vec<String>) };
-    chunks.push(s);
+    let tx = unsafe { &*(user_data as *const tokio::sync::mpsc::UnboundedSender<String>) };
+    let _ = tx.send(s);
 }
 
 impl AIProvider for OllamaProvider {
@@ -70,13 +70,17 @@ impl AIProvider for OllamaProvider {
                 Ok(c) => c,
                 Err(_) => return Err(AIError::ApiError("Invalid prompt containing NUL bytes".to_string())),
             };
-            let c_result = unsafe { cortex_infer_generate(c_prompt.as_ptr()) };
-            if c_result.is_null() {
-                return Err(AIError::ApiError("Failed to generate response".to_string()));
-            }
             
-            let result_str = unsafe { CStr::from_ptr(c_result).to_string_lossy().into_owned() };
-            unsafe { libc::free(c_result as *mut libc::c_void); }
+            let result_str = tokio::task::spawn_blocking(move || {
+                let c_result = unsafe { cortex_infer_generate(c_prompt.as_ptr()) };
+                if c_result.is_null() {
+                    return Err(AIError::ApiError("Failed to generate response".to_string()));
+                }
+                
+                let result_str = unsafe { CStr::from_ptr(c_result).to_string_lossy().into_owned() };
+                unsafe { libc::free(c_result as *mut libc::c_void); }
+                Ok(result_str)
+            }).await.map_err(|_| AIError::ApiError("Task panicked".to_string()))??;
             
             Ok(AIResponse {
                 content: result_str,
@@ -106,21 +110,24 @@ impl AIProvider for OllamaProvider {
         prompt.push_str("Assistant:");
 
         Box::pin(async move {
-            let mut chunks: Vec<String> = Vec::new();
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             let c_prompt = match CString::new(prompt) {
                 Ok(c) => c,
                 Err(_) => return Err(AIError::ApiError("Invalid prompt containing NUL bytes".to_string())),
             };
             
-            unsafe {
-                cortex_infer_generate_stream(
-                    c_prompt.as_ptr(),
-                    stream_callback,
-                    &mut chunks as *mut Vec<String> as *mut c_void,
-                );
-            }
+            tokio::task::spawn_blocking(move || {
+                let tx_box = Box::new(tx);
+                unsafe {
+                    cortex_infer_generate_stream(
+                        c_prompt.as_ptr(),
+                        stream_callback,
+                        tx_box.as_ref() as *const _ as *mut c_void,
+                    );
+                }
+            });
             
-            Ok(AIResponseStream::new(chunks))
+            Ok(AIResponseStream::new(rx))
         })
     }
 
