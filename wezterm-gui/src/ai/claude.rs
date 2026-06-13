@@ -189,7 +189,7 @@ impl AIProvider for ClaudeProvider {
                 .map_err(|e| AIError::NetworkError(e.to_string()))?;
 
             let chunks = parse_sse_stream(&text);
-            Ok(AIResponseStream::new(chunks))
+            Ok(AIResponseStream::from_chunks(chunks))
         })
     }
 

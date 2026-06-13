@@ -414,7 +414,7 @@ impl AIProvider for LlamaCppProvider {
             .map_err(|e| AIError::ApiError(format!("Join error: {}", e)))??;
 
             // Return as a single chunk (could be improved to true streaming later)
-            Ok(AIResponseStream::new(vec![content]))
+            Ok(AIResponseStream::from_chunks(vec![content]))
         })
     }
 
