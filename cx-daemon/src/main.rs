@@ -4,6 +4,7 @@
 //! - System health monitoring (memory, disk, services)
 //! - Persistent alert management with SQLite storage
 //! - IPC interface via Unix socket for terminal integration
+//! - AI-powered dependency conflict prediction
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -15,11 +16,13 @@ use std::thread;
 use std::time::Duration;
 
 mod alerts;
+mod dependency_prediction;
 mod ipc;
 mod monitoring;
 mod paths;
 
 use alerts::AlertDatabase;
+use dependency_prediction::{run_history, run_predict};
 use ipc::{DaemonRequest, DaemonResponse, RequestHandler};
 use monitoring::{MonitoringConfig, MonitoringService};
 
@@ -62,6 +65,19 @@ struct Args {
     /// Verbose logging
     #[arg(short, long)]
     verbose: bool,
+
+    /// Dependency prediction subcommands
+    #[command(subcommand)]
+    dep: Option<DepSubCommand>,
+}
+
+#[derive(Debug, Parser, Clone)]
+enum DepSubCommand {
+    /// Predict dependency conflicts before installation
+    Predict(dependency_prediction::PredictCommand),
+
+    /// Show installation history and outcomes
+    History(dependency_prediction::HistoryCommand),
 }
 
 fn get_default_socket_path() -> PathBuf {
@@ -83,6 +99,15 @@ fn run() -> Result<()> {
     env_bootstrap::bootstrap();
 
     let args = Args::parse();
+
+    // If a dependency subcommand is requested, run it and exit
+    if let Some(DepSubCommand::Predict(cmd)) = args.dep.clone() {
+        return run_predict(cmd);
+    }
+
+    if let Some(DepSubCommand::History(cmd)) = args.dep {
+        return run_history(cmd);
+    }
 
     // env_bootstrap already initializes logging, just set level if verbose
     if args.verbose {

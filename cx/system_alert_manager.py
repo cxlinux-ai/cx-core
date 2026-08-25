@@ -44,6 +44,9 @@ from rich.console import Console
 
 console = Console()
 
+# Ensure log directory exists before creating FileHandler
+Path.home().joinpath(".cx").mkdir(parents=True, exist_ok=True, mode=0o700)
+
 # Configure enterprise logging
 logging.basicConfig(
     level=logging.INFO,
