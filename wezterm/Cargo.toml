@@ -52,13 +52,16 @@ rusqlite = { workspace = true, features = ["bundled"] }
 ureq = { version = "2.9", features = ["json"] }
 uuid = { version = "1.6", features = ["v4"] }
 
-# HRM AI - Optional premium agent management (enable with --features hrm)
-hrm-ai = { git = "https://github.com/mikejmorgan-ai/hrm-ai-standalone.git", optional = true }
+# HRM AI premium agent management is NOT declared here: its source lives in a
+# private repository, and Cargo must fetch every git dependency (even optional
+# ones) to resolve the workspace, which broke public builds. Premium builds add
+#   hrm-ai = { git = "<private hrm-ai repo>", optional = true }
+# and `hrm = ["dep:sqlx"]` from the private build overlay.
 sqlx = { version = "0.8.1", default-features = false, features = ["runtime-tokio", "postgres"], optional = true }
 
 [features]
 default = []
-hrm = ["dep:hrm-ai", "dep:sqlx"]
+hrm = ["dep:sqlx"]
 
 [target."cfg(unix)".dependencies]
 termios.workspace = true
