@@ -140,11 +140,21 @@ impl AskCommand {
             io::stderr().flush()?;
 
             let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
+            let bytes_read = io::stdin().read_line(&mut input)?;
 
-            let input = input.trim();
-            if !input.is_empty() && !input.eq_ignore_ascii_case("y") {
-                eprintln!("Cancelled.");
+            // CX Terminal: read_line returns 0 bytes at EOF (no TTY, closed or empty
+            // pipe). EOF must never count as consent to run a command.
+            let answer = if bytes_read == 0 {
+                None
+            } else {
+                Some(input.as_str())
+            };
+            if !confirmed_default_yes(answer) {
+                if answer.is_none() {
+                    eprintln!("\nNo interactive input; not running. Re-run with -d -y to execute.");
+                } else {
+                    eprintln!("Cancelled.");
+                }
                 return Ok(());
             }
         }
@@ -612,9 +622,43 @@ impl AskCommand {
     }
 }
 
+/// CX Terminal: interpret the answer to a `[Y/n]` prompt.
+///
+/// `None` means stdin hit EOF before any input (non-interactive use) and is
+/// always a refusal. An empty line (user pressed Enter) or `y`/`Y` confirms;
+/// anything else refuses.
+fn confirmed_default_yes(answer: Option<&str>) -> bool {
+    match answer {
+        None => false,
+        Some(line) => {
+            let line = line.trim();
+            line.is_empty() || line.eq_ignore_ascii_case("y")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn eof_is_never_consent() {
+        assert!(!confirmed_default_yes(None));
+    }
+
+    #[test]
+    fn enter_and_y_confirm() {
+        assert!(confirmed_default_yes(Some("\n")));
+        assert!(confirmed_default_yes(Some("y\n")));
+        assert!(confirmed_default_yes(Some("Y")));
+    }
+
+    #[test]
+    fn other_answers_refuse() {
+        assert!(!confirmed_default_yes(Some("n\n")));
+        assert!(!confirmed_default_yes(Some("no")));
+        assert!(!confirmed_default_yes(Some("yes please")));
+    }
 
     #[test]
     fn test_query_local_missing_model() {
