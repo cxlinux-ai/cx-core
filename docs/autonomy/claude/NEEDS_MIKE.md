@@ -4,7 +4,7 @@ Each item is outside the autonomy limits (money, external communication, or acco
 
 | # | Item | Recommendation | Cost / commitment | Why it's queued |
 |---|---|---|---|---|
-| **N0** | **Approve [#771](https://github.com/cxlinux-ai/cx-core/pull/771)** — restores the public build; all 4 required checks + CX Terminal Build (macOS, Ubuntu) pass. The repo ruleset needs 1 approving review and the PR comes from your account, so it can't self-approve | Open the link → **Files changed** → **Review changes** → **Approve** → **Squash and merge**. #772 then retargets to main automatically | none | Required review (D11) |
+| ~~**N0**~~ | ✅ **DONE 12:50 MT** — Mike merged #771 and #772. ~~**Approve [#771](https://github.com/cxlinux-ai/cx-core/pull/771)** — restores the public build; all 4 required checks + CX Terminal Build (macOS, Ubuntu) pass. The repo ruleset needs 1 approving review and the PR comes from your account, so it can't self-approve | Open the link → **Files changed** → **Review changes** → **Approve** → **Squash and merge**. #772 then retargets to main automatically ~~ | — | — |
 | **N1** | **Pay two merged bounties** — cx-distro [#76](https://github.com/cxlinux-ai/cx-distro/pull/76) @silasbrookshaha $25 (merged Oct 10, asked how to claim Oct 11, unanswered) and [#83](https://github.com/cxlinux-ai/cx-distro/pull/83) @Ravikirar $25 (merged Oct 16) | Pay both via tip.cc today and post the drafted thank-you (Appendix A) | **$50** | Spending + public reply |
 | **N2** | **Add the post-funding bonus note to 19 non-compliant cx-distro bounty issues** (#27–33, #35–45, #48) | Approve; script in Appendix B edits all 19 in one pass | **+$475 post-funding** commitment | Changes financial terms publicly |
 | **N3** | **Post the real-diff reviews** on 11 open PRs (findings in [PR_REVIEWS.md](PR_REVIEWS.md)) | Approve; Appendix C posts them as "comment" reviews (not approve/merge) | none | Public communication as the company |
@@ -46,3 +46,9 @@ Review bodies are the "Findings from the diff" cells in PR_REVIEWS.md, posted ve
 
 ## Also new this cycle
 - **N9 — CLA check on #773 fails for `@cursoragent`.** The parallel Cursor agent's commits are authored as `cursoragent`, which hasn't signed CLA.md. Recommendation: add `cursoragent` to the CLA allowlist used by `cla-check.yml` (same as other bots), or have its commits authored as you.
+
+## New in cycle 2 (2026-10-19 19:25 MT)
+- **N10 — Let pushes change CI workflow files (one-time).** The Mac's GitHub login has `repo` but not `workflow` scope, so GitHub refuses any push that edits `.github/workflows/`. The Debian 11 CI fix is committed and waiting (`ci/debian11-archive-security`, patch also saved at `docs/autonomy/claude/patches/p4-debian11.patch`).
+  - **Browser (recommended, also clears N6):** open https://github.com/apps/claude/installations/select_target → pick **cxlinux-ai** → **All repositories** → **Install**.
+  - The next run pushes the branch and opens the PR.
+- **N11 — Keep shipping Debian 11 packages?** Debian 11 reached end of life on 2026-08-31 (no more security updates). README still lists it as supported. Recommendation: keep building it this week via the archive fix (zero user impact), and drop it from the supported-platforms table and CI next release. Approve "drop Debian 11" or "keep".

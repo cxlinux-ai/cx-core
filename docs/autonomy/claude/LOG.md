@@ -51,3 +51,22 @@
 
 ### Next
 - After Mike approves #771: merge, confirm #772 retargets and goes green, merge it; re-run Dependabot; then P4 remainder (debian11 apt index) and P5 Tab-moment verification.
+
+## Day 1 — Mon 2026-10-19 (cycle 2, 19:25 MT)
+
+### Shipped / verified
+| What | Proof |
+|---|---|
+| **#771 and #772 merged by Mike (12:50 MT)** | merge commits `1bf6ce0`, `b1090ad` on main |
+| **Main is green** — CX Terminal Build, CX Terminal Tests, CodeQL, Nix, fmt, and 9 packaging pipelines (Ubuntu 22.04/24.04, Debian 12, Fedora 39/40/41, CentOS 9, macOS) pass on both merge commits | `gh run list --branch main` |
+| **5 Dependabot PRs brought up to date with main** (#747 #748 #749 #761 #762) so their CI runs against the fix | `gh pr update-branch` ✓ ×5 |
+| **Debian 11 root cause found and fix built** — Debian 11 LTS EOL 2026-08-31; security packages moved to archive.debian.org. Fix in generator + 3 workflows; tested under `bash -eo pipefail` for match and no-match | commit `1bc243a` (local, push blocked B5) |
+
+### Corrected
+- B4's first hypothesis ("add apt update") was wrong — the workflow already does it. Root cause is the EOL archive move.
+
+### Not done (and why)
+- Debian 11 PR not opened: pushing workflow files needs `workflow` scope (B5 → N10).
+
+### Next
+- Day 2 (11:25 MT): Dependabot CI results → merge-ready list; P5 Tab-moment latency; P5b offline install intents; push Debian 11 fix if N10 done.

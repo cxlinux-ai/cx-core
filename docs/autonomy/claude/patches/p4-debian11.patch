@@ -1,0 +1,64 @@
+diff --git a/.github/workflows/gen_debian11.yml b/.github/workflows/gen_debian11.yml
+index 584c0e3..c939b26 100644
+--- a/.github/workflows/gen_debian11.yml
++++ b/.github/workflows/gen_debian11.yml
+@@ -40,6 +40,9 @@ jobs:
+       - name: "set APT to non-interactive"
+         shell: bash
+         run: "echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections"
++      - name: "Use archive.debian.org for EOL Debian 11 security updates"
++        shell: bash
++        run: "{ grep -rl 'deb.debian.org/debian-security' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true; } | xargs -r sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g'"
+       - name: "Update APT"
+         shell: bash
+         run: "apt update"
+diff --git a/.github/workflows/gen_debian11_continuous.yml b/.github/workflows/gen_debian11_continuous.yml
+index afdcca9..821bd02 100644
+--- a/.github/workflows/gen_debian11_continuous.yml
++++ b/.github/workflows/gen_debian11_continuous.yml
+@@ -43,6 +43,9 @@ jobs:
+       - name: "set APT to non-interactive"
+         shell: bash
+         run: "echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections"
++      - name: "Use archive.debian.org for EOL Debian 11 security updates"
++        shell: bash
++        run: "{ grep -rl 'deb.debian.org/debian-security' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true; } | xargs -r sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g'"
+       - name: "Update APT"
+         shell: bash
+         run: "apt update"
+diff --git a/.github/workflows/gen_debian11_tag.yml b/.github/workflows/gen_debian11_tag.yml
+index 6c99917..3ce5998 100644
+--- a/.github/workflows/gen_debian11_tag.yml
++++ b/.github/workflows/gen_debian11_tag.yml
+@@ -23,6 +23,9 @@ jobs:
+       - name: "set APT to non-interactive"
+         shell: bash
+         run: "echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections"
++      - name: "Use archive.debian.org for EOL Debian 11 security updates"
++        shell: bash
++        run: "{ grep -rl 'deb.debian.org/debian-security' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true; } | xargs -r sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g'"
+       - name: "Update APT"
+         shell: bash
+         run: "apt update"
+diff --git a/ci/generate-workflows.py b/ci/generate-workflows.py
+index e7c72d1..1ffd728 100755
+--- a/ci/generate-workflows.py
++++ b/ci/generate-workflows.py
+@@ -836,6 +836,17 @@ rustup default {toolchain}
+                         "echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
+                     ),
+                 ]
++            if self.container == "debian:11":
++                # CX Terminal: Debian 11 LTS ended 2026-08-31 and its security
++                # updates moved to archive.debian.org; deb.debian.org still
++                # serves an index whose security packages 404.
++                steps += [
++                    RunStep(
++                        "Use archive.debian.org for EOL Debian 11 security updates",
++                        "{ grep -rl 'deb.debian.org/debian-security' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true; }"
++                        " | xargs -r sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g'",
++                    ),
++                ]
+             steps += [
+                 RunStep("Update APT", f"{sudo}apt update"),
+             ]
