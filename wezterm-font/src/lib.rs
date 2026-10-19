@@ -487,39 +487,17 @@ fn suggest_font_install(family: &str) -> String {
 
     // Common font package mappings
     let (apt_pkg, brew_pkg) = match family.to_lowercase().as_str() {
-        f if f.contains("jetbrains") => (
-            "fonts-jetbrains-mono",
-            "font-jetbrains-mono",
-        ),
-        f if f.contains("fira") && f.contains("code") => (
-            "fonts-firacode",
-            "font-fira-code",
-        ),
-        f if f.contains("cascadia") => (
-            "fonts-cascadia-code",
-            "font-cascadia-code",
-        ),
-        f if f.contains("source code") => (
-            "fonts-source-code-pro",
-            "font-source-code-pro",
-        ),
+        f if f.contains("jetbrains") => ("fonts-jetbrains-mono", "font-jetbrains-mono"),
+        f if f.contains("fira") && f.contains("code") => ("fonts-firacode", "font-fira-code"),
+        f if f.contains("cascadia") => ("fonts-cascadia-code", "font-cascadia-code"),
+        f if f.contains("source code") => ("fonts-source-code-pro", "font-source-code-pro"),
         f if f.contains("hack") => ("fonts-hack", "font-hack"),
-        f if f.contains("inconsolata") => (
-            "fonts-inconsolata",
-            "font-inconsolata",
-        ),
-        f if f.contains("ubuntu") && f.contains("mono") => (
-            "fonts-ubuntu",
-            "font-ubuntu-mono",
-        ),
-        f if f.contains("roboto") && f.contains("mono") => (
-            "fonts-roboto-mono",
-            "font-roboto-mono",
-        ),
-        f if f.contains("noto") && f.contains("mono") => (
-            "fonts-noto-mono",
-            "font-noto-mono",
-        ),
+        f if f.contains("inconsolata") => ("fonts-inconsolata", "font-inconsolata"),
+        f if f.contains("ubuntu") && f.contains("mono") => ("fonts-ubuntu", "font-ubuntu-mono"),
+        f if f.contains("roboto") && f.contains("mono") => {
+            ("fonts-roboto-mono", "font-roboto-mono")
+        }
+        f if f.contains("noto") && f.contains("mono") => ("fonts-noto-mono", "font-noto-mono"),
         _ => (
             &*format!("fonts-{}", family_lower),
             &*format!("font-{}", family_lower),
@@ -867,9 +845,7 @@ impl FontConfigInner {
 
         // Log which font is actually being used for the primary style
         if let Some(first_handle) = handles.first() {
-            let source_name = first_handle
-                .handle
-                .diagnostic_string();
+            let source_name = first_handle.handle.diagnostic_string();
             log::info!(
                 "CX Terminal: Using font '{}' (source: {})",
                 first_handle.names().family,
