@@ -1,13 +1,12 @@
-# Blockers
+# BLOCKERS
 
-Logged only after at least three approaches were tried. Each names what would unblock it.
+- **B1 (soft):** First paying user not yet completed — checkout path PASS in e2e; waiting on Michael (or designee) to pay $20 at https://cxlinux.com/pricing (NEEDS_MIKE M1).
+- **B2:** Post-pay license activation runtime **unverified** until M1 done.
+- **B3:** Full `apt-get install` in ubuntu:24.04/debian:12 containers **unverified** (no docker on box); artifact+CLI path PASS.
+- **B4:** `cx-core` dormant since 2026-05-01; ~13 open PRs aging — not blocking first $, blocks trust.
+- **B5:** Stripe connector shows legacy Cortex products `active:false`; live checkout still works as CX Core+.
 
-## B1 — Cloud session cannot push to `cxlinux-ai` (worked around)
-- **Tried:** (1) session GitHub App via `add_repo … access: push` → push refused, app not installed on the org; (2) `GH_TOKEN` in the cloud environment → invalid token; (3) repository-scoped API through the session proxy → access not enabled for org repos other than the attached one.
-- **Workaround in use:** commit and push from a scratch clone on Mike's Mac with its authenticated `gh` (DECISIONS D7). Works while the Mac is awake and the desktop app is open.
-- **Unblock permanently:** NEEDS_MIKE N6 (install the Claude GitHub App on `cxlinux-ai`).
+- [RESOLVED 08:52 MT, Michael granted access] 2026-10-19 08:40 MT | B-GH: Cursor cloud agents can't see github.com/cxlinux-ai repos ("not accessible to the connected GitHub account"). Blocks T03/T04/T05 and all repo work. Asked Michael in chat to grant Cursor's GitHub app access to the cxlinux-ai org. Meanwhile: non-repo work (drafts, launch copy, docs).
 
-## B2 — Expired CI logs for March–May failures
-- **Tried:** `gh run view --log-failed` for runs 23110754863 (CX Terminal Build, main) and 25201523786 (Dependabot) → HTTP 410 / empty; job-level log API → same retention cut-off; re-reading the workflow to infer the failing step.
-- **Impact:** root cause of the red `CX Terminal Build` on main must be re-derived from a fresh run.
-- **Unblock:** the Day 1 cycle 2 run re-triggers CI on the P1 PR and reads current logs.
+- 2026-10-19 09:07 MT | B-DEB: no Debian 12 install (deb needs libc6>=2.39). Working on a Bookworm build in PR #774 follow-up.
+- 2026-10-19 09:07 MT | B-ACT: license activation broken on published deb until #774 lands + new APT publish (Michael-only: merge + release).

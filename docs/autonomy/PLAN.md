@@ -1,46 +1,42 @@
-# CX Linux — Autonomous Week Plan
+# CX Linux — 7-day autonomy plan (first paying user)
+**Window:** Mon 2026-10-19 → Mon 2026-10-26 (America/Denver)  
+**Goal:** One confirmed paying user (Stripe live charge + license activated).  
+**Evidence base:** `../e2e-test-2026-10-19.md` — pricing LIVE; Pro checkout reaches Stripe `cs_live_` (AIVH LLC, CX Core+ $20).
 
-**Window:** Mon 2026-10-19 → Mon 2026-10-26 (America/Denver)
-**Owner:** Claude (autonomous), reviewer: Mike Morgan
-**Mission:** Move CX Linux to the project Definition of Done — canonical repo confirmed, MVP demo assets verified, bounty system correct end-to-end, contributor fairness verifiable from GitHub data, PR review done from real diffs — so seed-round material rests on proven ground.
+Owners: **cloud** = cloud coding agent · **linus** = this bot · **mike** = Michael-only.
 
-Ranked by impact × dependency. Each item names its proof of done.
+## Ranked tasks (impact × dependency)
 
-## Ground truth established Day 1 (2026-10-19)
+| ID | Day | Owner | Repo | Task | Done-test |
+|---|---|---|---|---|---|
+| T01 | D0–D1 (Oct 19–20) | **mike** | — | Complete or designate one **$20 Pro** live purchase; save receipt + license key | Stripe dashboard shows paid sub; license email or success page shows key; optional `cx license activate <key>` OK |
+| T02 | D0 (Oct 19) | **linus** | — | File e2e + this plan; queue NEEDS_MIKE | Files exist under `org/vision/linus/` + `autonomy/` |
+| T03 | D1 (Oct 20) | **cloud** | `cx-web` | SPA host rewrite: all app routes return **HTTP 200** with index.html (fix soft-404) | `curl -s -o /dev/null -w '%{http_code}' https://cxlinux.com/pricing` → **200** (after Mike deploys) |
+| T04 | D1 (Oct 20) | **cloud** | `cx-web` | Align naming: site “Pro” ↔ Stripe “CX Core+” (copy + success page); document price IDs | PR: UI says one canonical name; checklist of `price_1SqYQj…` IDs in PR body |
+| T05 | D1 (Oct 20) | **cloud** | `cx-web` | “Install in 60 seconds” CTA → `/getting-started` (not checkout?plan=core) | Playwright/click: button lands on getting-started; Core free path still clear |
+| T06 | D2 (Oct 21) | **cloud** | `cx-web` / license worker | Harden checkout error UX when session create fails; add visible error toast | Force bad price id in staging **or** unit test; user sees message (no silent stay) |
+| T07 | D2 (Oct 21) | **linus**+**mike** | — | Approve + send Suyash/Dhruv re-engage draft | Draft in `../drafts/`; Mike/Rally sends; reply logged in LOG |
+| T08 | D2–D3 (Oct 21–22) | **cloud**/devs | — | Disposable Ubuntu 24.04 apt install from `repo.cxlinux.com` | Script/log: key install, apt update, `apt-get install -y cx-terminal`, `cx-terminal --version` |
+| T09 | D3 (Oct 22) | **cloud**/devs | — | Same on Debian 12; document libc6≥2.39 risk | Pass or written FAIL with dependency note |
+| T10 | D3 (Oct 22) | **linus** | — | After T01: verify license activate + `/account` login path | Screenshot/log of activated license; mark PASS in LOG |
+| T11 | D4 (Oct 23) | **cloud** | `cx-core` | Triage open PRs: label merge/close/needs-rebase; no merge | PR comment draft list in `NEEDS_MIKE` (max 10) |
+| T12 | D4 (Oct 23) | **cloud** | `cx-core` | README one-liner: commercial licensing live + install link | PR diff on README |
+| T13 | D5 (Oct 24) | **linus** | — | First-user playbook: pricing URL → pay → activate → ask dry-run | `../drafts/first-user-playbook.md` |
+| T14 | D5 (Oct 24) | **mike** | Stripe | Reactivate or archive inactive Cortex products; confirm Core+/Pro prices | Stripe product list shows intended CX SKUs active only |
+| T15 | D6 (Oct 25) | **linus** | — | Scorecard: paying user? Y/N + blockers | `../scorecards/2026-10-25.md` |
+| T16 | D7 (Oct 26) | **linus** | — | Week rollup for Dez; next-week ask | `status.md` + LOG append |
 
-| Fact | Evidence |
-|---|---|
-| Canonical org is `cxlinux-ai`; the legacy org no longer exists | `gh repo list` on the legacy handle returns "not recognized as a GitHub user or organization" |
-| Product repo is `cxlinux-ai/cx-core` (Rust, WezTerm-based terminal + `cx` CLI) | `gh repo view cxlinux-ai/cx` → `cxlinux-ai/cx-core`; legacy names redirect to it |
-| Most contributor-active repo is `cxlinux-ai/cx-distro` | merges on 2026-10-10 (#76) and 2026-10-16 (#83) |
-| One-liner install is live at `https://cxlinux.com/install.sh` | HTTP 200, `application/x-sh`, 8,249 bytes |
-| APT repo is live at `https://repo.cxlinux.com` | `key.gpg` 200 (3,898 B), `apt/dists/stable/Release` 200 |
-| `cxlinux.ai` redirects to `cxlinux.com`; the legacy apt host resets connections | curl probes 2026-10-19 |
-| Public `cx-core` cannot be built from a clean checkout | private git dependency `mikejmorgan-ai/hrm-ai-standalone` → HTTP 401 during dependency resolution |
-| `CX Terminal Build` workflow has failed on `main` since 2026-03-15 | `gh run list --workflow cx-build.yml` |
+## Progress (updated 2026-10-19 09:30 MT)
+- T02 DONE. T03/T04/T05 DONE as draft cx-web PR #57 (verified, awaiting Mike merge = M-PR57).
+- T08 Ubuntu PASS / T09 Debian FAIL + T11 triage DONE in draft cx-core PR #774; Bookworm build in progress.
+- T06 IN PROGRESS (cloud agent bc-71fb33cc, separate cx-web PR). T13 DRAFTED early (`../drafts/first-user-playbook.md`); launch posts drafted (`../drafts/launch-posts-DRAFT.md`).
+- Critical path: M1 ($20 test) + M-CORE (merge #771→#772→#774, new APT release).
 
-## Ranked plan
+## Dependency graph (short)
+T01 (first $) is **unblocked by engineering** today — e2e proved Stripe page loads.  
+T03–T05 improve conversion/SEO but are **not** required before T01.  
+T07–T09 validate install funnel after/in parallel with T01.  
+T11–T12 rebuild trust post-revenue.
 
-| # | Item | Why it matters | Proof of done | Day |
-|---|---|---|---|---|
-| P0 | **Stop non-interactive auto-execution** — EOF on `Run this? [Y/n]` executed the command | Safety-first is a stated differentiator | `cx ask … </dev/null` refuses; unit tests; CI green | 1 |
-| P1 | **Restore public buildability of cx-core** — remove the private git dependency from the public manifest | Contributors, CI, and any investor doing "clone → build" currently fail at step one | Clean `cargo build -p cx-terminal` + `cargo test -p cx-terminal` in a fresh environment; CI green on the PR | 1 |
-| P2 | **Bounty ledger + compliance audit** across cx-core and cx-distro | Contributor trust is part of the asset; two pay-on-merge bounties are outstanding | `docs/autonomy/BOUNTY_AUDIT.md` with every open bounty issue, amount, bonus-note status, and owed payouts | 1 |
-| P3 | **Real-diff review of every open contributor PR** | FR-005; several PRs collide with assigned issues (FCFS) or bypass dry-run safety | `docs/autonomy/PR_REVIEWS.md` with per-PR verdict and line-level findings | 1–2 |
-| P4 | **Fix `CX Terminal Build` on main** (root cause, not suppression) | Red main undermines every PR's signal | Workflow green on main | 2 |
-| P5 | **Verify the "Tab moment"** — instant fuzzy suggestions without an LLM round-trip | Single most important demo beat | Reproducible terminal recording + measured latency of the suggestion path | 2–3 |
-| P5b | **Offline answer for common install intents** — today `cx ask "how do I install docker"` with no API key or local model returns "No AI backend"; CX-native intents (new/save/snapshots) already work offline | PLAN.md's own success criterion and the offline-capable claim (spec §8) | Offline `cx ask` returns a vetted command for the top install intents (build on #763's matcher), behind the D8 confirmation rules | 3–4 |
-| P6 | **Verify one-liner install end-to-end** on Ubuntu 24.04 (container) | AC-002 | Script run log: install completes, `cx status` and `cx ask` run | 2–3 |
-| P7 | **Demo GIF asset** — confirm what exists; script a reproducible 30-second recording (asciinema/vhs tape) | AC-002, investor demo | Committed tape file + rendered GIF | 3–4 |
-| P8 | **Dry-run/sandbox-by-default guard for package execution paths** | Spec §8/§10 safety differentiator; open PRs execute `sudo apt install` directly | Shared helper in `cx` that defaults to preview; tests prove no execution without explicit confirm | 4–5 |
-| P9 | **Brand hygiene sweep** across org repos (legacy name in configs, identifiers, docs) | AC-001 | Grep report = zero non-vendored hits outside explicitly-legacy notes | 5 |
-| P10 | **Capital-efficiency evidence pack** from real repo data (commits, contributors, merged PRs, cost) | FR-007 seed support | `docs/autonomy/EVIDENCE.md` sourced only from GitHub data | 6 |
-| P11 | **Week-end report** | Mike opens the repo and sees verified progress | LOG final entry, NEEDS_MIKE short and ready-to-approve | 7 |
-
-## Operating rules for this week
-
-- Merges that create money obligations (any contributor bounty PR) are queued in NEEDS_MIKE, never merged autonomously.
-- Docs-only merges are safe: build/package workflows ignore `docs/**` and `*.md`.
-- Merges touching `**/*.rs`, `Cargo.toml`, or `Cargo.lock` trigger the `*_continuous` package workflows; they ship only after CI is green and are logged with a revert path.
-- No comments, reviews, or issue edits are posted publicly on contributor threads — those are communications as the company and are drafted in NEEDS_MIKE instead.
-- No tags/releases (`v*` tags trigger `cx-release.yml`).
+## Out of scope this week
+New core features, llama.cpp rewrite, Ed Honour outreach (contact unconfirmed), promising pay/equity to devs, bot-to-bot polling.

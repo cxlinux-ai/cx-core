@@ -1,44 +1,38 @@
-# Needs Mike — ready to approve
+# NEEDS_MIKE (ready-to-approve, short)
 
-Each item is outside the autonomy limits (money, external communication, or account access). Recommendation first; approving means "do exactly this." Reply with the item number + "approved" and the next run executes it.
+## M1 — First paying user ($20 Pro) — **DO THIS FIRST**
+- **What:** Complete checkout at https://cxlinux.com/pricing → **Start with Pro** → fill name/email → **Subscribe Now** → pay $20 on Stripe (AIVH LLC, live; product shows as **CX Core+**).
+- **Why:** E2E already reached `checkout.stripe.com` `cs_live_…` without card entry. This is the remaining gate to “first paying user.”
+- **Done:** Forward receipt + license key (or success-page screenshot) to Linus via Dez notes / this folder.
+- **Undo:** Stripe cancel/refund within 7-day money-back copy on page.
 
-| # | Item | Recommendation | Cost / commitment | Why it's queued |
-|---|---|---|---|---|
-| **N1** | **Pay two merged bounties** — cx-distro [#76](https://github.com/cxlinux-ai/cx-distro/pull/76) @silasbrookshaha $25 (merged Oct 10, asked how to claim Oct 11, unanswered) and [#83](https://github.com/cxlinux-ai/cx-distro/pull/83) @Ravikirar $25 (merged Oct 16) | Pay both via tip.cc today and post the drafted thank-you (Appendix A) | **$50** | Spending + public reply |
-| **N2** | **Add the post-funding bonus note to 19 non-compliant cx-distro bounty issues** (#27–33, #35–45, #48) | Approve; script in Appendix B edits all 19 in one pass | **+$475 post-funding** commitment | Changes financial terms publicly |
-| **N3** | **Post the real-diff reviews** on 11 open PRs (findings in [PR_REVIEWS.md](PR_REVIEWS.md)) | Approve; Appendix C posts them as "comment" reviews (not approve/merge) | none | Public communication as the company |
-| **N4** | **Resolve 4 stale FCFS assignments** — cx-core #425 (@sujay-d07), #428 (@Suyashd999); cx-distro #45, #50 (@Sahilbhatane) — all assigned months ago with no PR from the assignee while outside contributors submitted work | Post a 7-day check-in on each (Appendix D); unassign if no reply by Oct 27, then review the waiting PR on merit | none now | Personnel/assignment decision + public comment |
-| **N5** | **Merge cx-distro [#71](https://github.com/cxlinux-ai/cx-distro/pull/71) (Safe NVIDIA installer) after its one rollback fix** | Approve conditional merge; next run requests the fix via N3 and merges when CI is green | **$100** on merge | Pay-on-merge = spending |
-| **N6** | **Install the Claude GitHub App on `cxlinux-ai`** so cloud runs can push without your Mac being awake | One click: https://github.com/apps/claude/installations/select_target → choose `cxlinux-ai` → All repositories → Install | none | Account access |
-| **N7** | **Update the CX Linux project instructions** — the spec still describes the Python repo, `pytest`, and the legacy install URL. Reality: `cxlinux-ai/cx-core` (Rust), `cargo test -p cx-terminal`, install `curl -fsSL https://cxlinux.com/install.sh \| bash`, APT at `repo.cxlinux.com` | Paste the replacement §16 block in Appendix E into the project Instructions field | none | I can't edit project instructions from here |
-| **N8** | **Price or label #708 and #712** before anyone merges [#765](https://github.com/cxlinux-ai/cx-core/pull/765) / [#744](https://github.com/cxlinux-ai/cx-core/pull/744) | Label both `no-bounty` (765 duplicates shipped work; 744 needs a redesign) | none | Sets compensation expectations publicly |
+## M2 — Deploy SPA soft-404 fix (after cloud PR)
+- **What:** Approve/merge + deploy `cx-web` PR that makes https://cxlinux.com/pricing return **HTTP 200** (SEO).
+- **Why:** Page already renders; crawlers/link previews see 404.
+- **URL:** https://cxlinux.com/pricing
 
----
+## M3 — Send dev re-engage (draft ready)
+- **What:** Approve send of `../drafts/reengage-suyash-dhruv-2026-10-19.md` to suyash@mmivip.com + dhruv@aiventureholdings.com (via Rally/Michael — not Linus).
+- **Why:** Need apt smoke on Ubuntu/Debian + PR triage capacity.
 
-## Appendix A — N1 thank-you replies (professional default)
+## M4 — Stripe catalog hygiene (optional same week)
+- **What:** In Stripe (acct connected as AIVH LLC): leave working **CX Core+ $20** path; archive/reactivate old **Cortex*** products (`active:false` today) so dashboard isn’t confusing.
+- **Why:** Search found Cortex Pro/Enterprise/Managed inactive; live checkout still sold “CX Core+”.
+- **No Linus writes** — Mike only.
 
-**On cx-distro #76:**
-> Thanks @silasbrookshaha — merged and appreciated. Your $25 bounty for #26 has been sent via tip.cc. Sorry for the slow reply on the claim question; going forward bounties are paid within 48 hours of merge.
+## M5 — Merge authority for week (optional)
+- **What:** Allow Linus to merge **non-main** autonomy-doc PRs and/or approve specific `cx-web` PRs for T03–T05.
+- **Default:** merges stay queued here per DECISIONS.md.
 
-**On cx-distro #83:**
-> Thanks @Ravikirar — merged and appreciated. Your $25 bounty for #34 has been sent via tip.cc.
+## M6 — Open PR batch (after T11 list)
+- **What:** Merge/close aging `cx-core` PRs per triage list (to be attached).
+- **URL:** https://github.com/cxlinux-ai/cx-core/pulls
 
-## Appendix B — N2 script (run on the Mac; edits issue bodies in place)
+- ~~M0~~ DONE 08:52 MT: grant Cursor's GitHub app access to the cxlinux-ai org (card sent in chat Oct 19). Recommendation: approve, all repos in cxlinux-ai.
 
-```bash
-for i in 27 28 29 30 31 32 33 35 36 37 38 39 40 41 42 43 44 45 48; do gh issue view $i -R cxlinux-ai/cx-distro --json body --jq .body > /tmp/b$i.md && python3 -c "import re,sys;p=sys.argv[1];s=open(p).read();s2=re.sub(r'(\*\*Bounty:\*\*\s*\\\$(\d+))([^\n]*)',lambda m:m.group(1)+' (+ \$'+m.group(2)+' bonus after funding)'+m.group(3) if 'funding' not in m.group(0).lower() else m.group(0),s,count=1);open(p,'w').write(s2);print(p,'changed' if s2!=s else 'UNCHANGED')" /tmp/b$i.md && gh issue edit $i -R cxlinux-ai/cx-distro --body-file /tmp/b$i.md; done
-```
+- **M-PR57:** merge https://github.com/cxlinux-ai/cx-web/pull/57 (pricing pages return 200 status, free Install button goes to /getting-started, "Pro" renamed "CX Core+" to match Stripe). READY (verified 09:15 MT: assets/blog/rss/sitemap OK on preview, junk 404, Core+ and Team checkout reach checkout.stripe.com via license.cxlinux.com). Recommendation: approve. Merging likely auto-deploys cxlinux.com; rollback = revert PR. Mark ready-for-review before merge.
 
-The next autonomous run verifies every issue afterwards and reports any that printed `UNCHANGED` (different bounty wording).
+- **M-CORE (most important):** a buyer who pays $20 today can't activate a license, because the published package is missing the `activate` command (proof: https://github.com/cxlinux-ai/cx-core/pull/774). Recommendation, in order: merge https://github.com/cxlinux-ai/cx-core/pull/771 (fixes CI build) → https://github.com/cxlinux-ai/cx-core/pull/772 (safety fix) → https://github.com/cxlinux-ai/cx-core/pull/774 (license CLI + `cx` command + install smoke test), then approve publishing a new APT package (production release). Until then, pause pushing paid traffic.
+- **M-DEPS:** 5 Dependabot Action bumps (#762 #761 #749 #748 #747) look routine. Recommendation: approve as a batch after #771 makes CI green.
 
-## Appendix C — N3 review posting
-
-Review bodies are the "Findings from the diff" cells in PR_REVIEWS.md, posted verbatim with `gh pr review <n> --comment --body-file`. The next run generates and posts them once N3 is approved.
-
-## Appendix D — N4 check-in text
-
-> Hi @{assignee} — checking in on this one. It's been assigned since {date} and we have a community PR waiting on the same issue. If you're still working on it, reply here within 7 days with a status update or a draft PR and it stays yours. Otherwise we'll reassign on {date+7} so the work can move forward. Thanks for contributing to CX.
-
-## Appendix E — N7 replacement for spec §16 "Repository & workflow"
-
-> **Repository & workflow (verified 2026-10-19):** Canonical org `cxlinux-ai`. Product repo `cxlinux-ai/cx-core` (Rust; WezTerm-based CX Terminal + `cx` CLI; crate `cx-terminal`), main branch `main`. Build `cargo build -p cx-terminal`; test `cargo test -p cx-terminal` (CI: `cargo test --workspace`). Distro/packaging work in `cxlinux-ai/cx-distro`; site in `cxlinux-ai/cx-web`. Install one-liner `curl -fsSL https://cxlinux.com/install.sh | bash`; APT repo `https://repo.cxlinux.com/apt` (key `https://repo.cxlinux.com/key.gpg`). The legacy org and legacy apt host are retired. `gh` patterns use `-R cxlinux-ai/cx-core` or `-R cxlinux-ai/cx-distro`.
+- **M-PR58:** merge https://github.com/cxlinux-ai/cx-web/pull/58 after #57 (checkout failure now shows a banner with Retry + support link; fixes a blog post that was dropped from listings). Local check/test/build pass; Cloudflare CI pending at 09:27 MT. Recommendation: approve once CI is green (next cycle verifies). Diff is +1643 lines, mostly tests; next cycle confirms no lockfile churn.
