@@ -203,6 +203,48 @@ def get_pr_authors(
     return list(authors.values())
 
 
+def is_cursoragent_author(email: str, username: str | None) -> bool:
+    email_l = (email or "").lower()
+    user_l = (username or "").lower()
+    return "cursoragent" in email_l or user_l == "cursoragent"
+
+
+def verify_cursoragent_commits_have_signed_coauthor(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    token: str,
+    signers: dict,
+) -> tuple[bool, list[str]]:
+    """
+    Cursor Agent commits are allowlisted only when each commit message includes
+    Co-authored-by: for at least one contributor already in cla-signers.json.
+    """
+    commits = github_request(
+        f"repos/{owner}/{repo}/pulls/{pr_number}/commits?per_page=100",
+        token,
+    )
+    missing: list[str] = []
+    for commit in commits:
+        sha = commit["sha"][:7]
+        commit_data = commit.get("commit", {})
+        author_email = commit_data.get("author", {}).get("email", "")
+        gh_author = commit.get("author")
+        author_username = gh_author.get("login") if gh_author else None
+        if not is_cursoragent_author(author_email, author_username):
+            continue
+        message = commit_data.get("message", "")
+        has_signed_coauthor = False
+        for _co_name, co_email in extract_co_authors(message):
+            signed, _entity = is_signer(None, co_email, signers)
+            if signed:
+                has_signed_coauthor = True
+                break
+        if not has_signed_coauthor:
+            missing.append(sha)
+    return len(missing) == 0, missing
+
+
 def post_comment(
     owner: str,
     repo: str,
@@ -348,6 +390,17 @@ def main():
     print(f"Loaded {len(signers.get('individuals', []))} individual signers")
     print(f"Loaded {len(signers.get('corporations', {}))} corporate signers")
 
+    # Cursor Agent: bot author is OK only when a CLA-signed human co-authored each commit.
+    ca_ok, ca_missing = verify_cursoragent_commits_have_signed_coauthor(
+        owner, repo, pr_number, token, signers
+    )
+    if not ca_ok:
+        print(
+            "FAILED: cursoragent commit(s) without Co-authored-by from a CLA signer: "
+            + ", ".join(ca_missing)
+        )
+        sys.exit(1)
+
     # Get PR authors
     authors = get_pr_authors(owner, repo, pr_number, token)
     print(f"Found {len(authors)} unique contributor(s) in PR")
@@ -356,10 +409,17 @@ def main():
     missing = []
     signed = []
 
-    # Allowlist for bots
+    # Allowlist for bots (cursoragent still requires signed Co-authored-by above).
     bot_patterns = [
-        "dependabot", "github-actions", "renovate", "codecov",
-        "sonarcloud", "coderabbitai", "sonarqubecloud", "noreply@github.com"
+        "dependabot",
+        "github-actions",
+        "renovate",
+        "codecov",
+        "sonarcloud",
+        "cursoragent",  # cursoragent@cursor.com — human co-author must be in cla-signers.json
+        "coderabbitai",
+        "sonarqubecloud",
+        "noreply@github.com",
     ]
 
     for author in authors:
