@@ -24,7 +24,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          # Use PR head so cla_check.py changes in the PR are exercised before merge.
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || 'main' }}
           sparse-checkout: |
             .github/scripts/cla_check.py
             .github/cla-signers.json
