@@ -14,6 +14,7 @@ You may not use this file except in compliance with the License.
 
 use anyhow::Result;
 use clap::Parser;
+use std::io::Write;
 
 use super::ask::AskCommand;
 
@@ -76,6 +77,10 @@ pub struct SetupCommand {
 
 impl SetupCommand {
     pub fn run(&self) -> Result<()> {
+        if self.description.len() == 1 && self.description[0] == "shell" {
+            return self.setup_shell();
+        }
+
         let query = format!("setup {}", self.description.join(" "));
 
         let ask = AskCommand {
@@ -88,6 +93,64 @@ impl SetupCommand {
         };
 
         ask.run()
+    }
+
+    fn setup_shell(&self) -> Result<()> {
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() {
+            anyhow::bail!("HOME environment variable not set");
+        }
+        let cx_dir = std::path::Path::new(&home).join(".cx");
+        let shell_dir = cx_dir.join("shell");
+        std::fs::create_dir_all(&shell_dir)?;
+
+        let bash_script = shell_dir.join("bash_integration.sh");
+        let zsh_script = shell_dir.join("zsh_integration.sh");
+
+        // We embed the script contents here so they are available in the binary
+        let bash_content = include_str!("../../../assets/shell/bash_integration.sh");
+        let zsh_content = include_str!("../../../assets/shell/zsh_integration.sh");
+
+        std::fs::write(&bash_script, bash_content)?;
+        std::fs::write(&zsh_script, zsh_content)?;
+
+        // Update .bashrc
+        self.update_rc_file(&home, ".bashrc", &bash_script)?;
+        // Update .zshrc
+        self.update_rc_file(&home, ".zshrc", &zsh_script)?;
+
+        println!("\n✅ CX Terminal shell integration installed!");
+        println!("The integration will capture errors and allow 'cx fix' to read them automatically.");
+        println!("\nTo activate now, run:");
+        println!("  source ~/.bashrc  # if using Bash");
+        println!("  source ~/.zshrc   # if using Zsh");
+
+        Ok(())
+    }
+
+    fn update_rc_file(&self, home: &str, rc_name: &str, script_path: &std::path::Path) -> Result<()> {
+        let rc_path = std::path::Path::new(home).join(rc_name);
+        if !rc_path.exists() {
+            return Ok(()); // Skip if shell is not present
+        }
+
+        let content = std::fs::read_to_string(&rc_path)?;
+        let source_line = format!("source ~/.cx/shell/{}", script_path.file_name().unwrap().to_str().unwrap());
+
+        if content.contains(&source_line) {
+            println!("  ℹ️ Shell integration already present in {}", rc_name);
+            return Ok(());
+        }
+
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&rc_path)?;
+
+        writeln!(file, "\n# CX Terminal Shell Integration")?;
+        writeln!(file, "{}", source_line)?;
+        println!("  ✅ Added integration to {}", rc_name);
+
+        Ok(())
     }
 }
 
