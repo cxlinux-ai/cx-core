@@ -255,7 +255,7 @@ impl crate::TermWindow {
                                 let win = window.clone();
 
                                 // Process all chunks
-                                while let Some(chunk) = stream.next_chunk() {
+                                while let Some(chunk) = stream.next_chunk().await {
                                     full_response.push_str(&chunk);
 
                                     // Send incremental update for each chunk
