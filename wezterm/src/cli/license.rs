@@ -14,6 +14,9 @@ use std::path::PathBuf;
 const LICENSE_SERVER_URL: &str = "https://license.cxlinux.com";
 const LICENSE_FILE: &str = ".cx/license.key";
 
+/// Canonical activation command shown in docs, errors, and GUI copy.
+pub const ACTIVATE_USAGE: &str = "cx activate <LICENSE_KEY>";
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LicenseInfo {
     pub valid: bool,
@@ -171,8 +174,8 @@ pub async fn activate_license(license_key: &str) -> Result<LicenseInfo, String> 
 
 /// Check if the current installation has a valid license
 pub async fn check_license() -> Result<LicenseInfo, String> {
-    let license_key =
-        read_license_key().ok_or("No license key found. Run 'cx activate <key>' first.")?;
+    let license_key = read_license_key()
+        .ok_or_else(|| format!("No license key found. Run `{}` first.", ACTIVATE_USAGE))?;
     validate_license(&license_key).await
 }
 

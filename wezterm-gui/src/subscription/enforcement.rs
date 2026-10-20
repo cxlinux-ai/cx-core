@@ -124,7 +124,7 @@ fn show_registration_required() {
     eprintln!("║  Register at: https://cxlinux.com/pricing                    ║");
     eprintln!("║                                                              ║");
     eprintln!("║  After registration, activate with:                          ║");
-    eprintln!("║  cx license activate <your-license-key>                      ║");
+    eprintln!("║  cx activate <your-license-key>                              ║");
     eprintln!("║                                                              ║");
     eprintln!("╚══════════════════════════════════════════════════════════════╝");
     eprintln!();

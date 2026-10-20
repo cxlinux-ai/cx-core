@@ -235,12 +235,15 @@ Outputs the pane-id for the newly created pane on success"
     Snapshots(snapshot::SnapshotsCommand),
 
     // CX License: License management
-    /// Activate a CX Linux license
+    /// Activate a CX Linux license key (canonical: `cx activate <LICENSE_KEY>`)
     #[command(name = "activate", about = "Activate a CX Linux license key")]
     Activate(ActivateCommand),
 
-    /// Show license status
-    #[command(name = "license", about = "Show current license status")]
+    /// License status and activation aliases
+    #[command(
+        name = "license",
+        about = "Show license status (`cx license`) or activate (`cx license activate`, alias)"
+    )]
     License(LicenseCommand),
 
     // CX Security: Vulnerability Management
@@ -297,45 +300,74 @@ impl ActivateCommand {
     }
 }
 
-/// Command to show license status
 #[derive(Debug, Parser, Clone)]
-pub struct LicenseCommand;
+pub struct LicenseCommand {
+    #[command(subcommand)]
+    sub: Option<LicenseSubCommand>,
+}
+
+#[derive(Debug, Parser, Clone)]
+enum LicenseSubCommand {
+    /// Show current license status (default when `cx license` has no subcommand)
+    #[command(name = "status", about = "Show current license status")]
+    Status,
+    /// Activate a license key (alias for `cx activate`)
+    #[command(
+        name = "activate",
+        about = "Activate a license key (alias for `cx activate`)"
+    )]
+    Activate(ActivateCommand),
+}
 
 impl LicenseCommand {
     pub async fn run(&self) -> anyhow::Result<()> {
-        match license::check_license().await {
-            Ok(info) => {
-                println!("\n📄 CX Linux License Status\n");
-                println!("  License: {}", info.license_key);
-                println!("  Tier: {}", info.tier.to_uppercase());
-                println!("  Email: {}", info.customer_email);
-                if let Some(org) = info.organization {
-                    println!("  Organization: {}", org);
+        match &self.sub {
+            Some(LicenseSubCommand::Activate(cmd)) => cmd.run().await,
+            None | Some(LicenseSubCommand::Status) => print_license_status().await,
+        }
+    }
+}
+
+async fn print_license_status() -> anyhow::Result<()> {
+    match license::check_license().await {
+        Ok(info) => {
+            println!("\n📄 CX Linux License Status\n");
+            println!("  License: {}", info.license_key);
+            println!("  Tier: {}", info.tier.to_uppercase());
+            println!("  Email: {}", info.customer_email);
+            if let Some(org) = info.organization {
+                println!("  Organization: {}", org);
+            }
+            println!("  Expires: {}", info.expires_at);
+            println!("  Days remaining: {}", info.days_remaining);
+            println!("  Devices: {}/{}", info.systems_used, info.systems_allowed);
+            println!(
+                "  This device: {}",
+                if info.device_activated {
+                    "✅ Activated"
+                } else {
+                    "❌ Not activated"
                 }
-                println!("  Expires: {}", info.expires_at);
-                println!("  Days remaining: {}", info.days_remaining);
-                println!("  Devices: {}/{}", info.systems_used, info.systems_allowed);
-                println!(
-                    "  This device: {}",
-                    if info.device_activated {
-                        "✅ Activated"
-                    } else {
-                        "❌ Not activated"
-                    }
-                );
-                println!("\nFeatures: {}", info.features.join(", "));
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("\n❌ No valid license: {}", e);
-                eprintln!("\nTo activate a license, run: cx activate <LICENSE_KEY>");
-                Err(anyhow!(e))
-            }
+            );
+            println!("\nFeatures: {}", info.features.join(", "));
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("\n❌ No valid license: {}", e);
+            eprintln!("\nTo activate a license, run: {}", license::ACTIVATE_USAGE);
+            Err(anyhow!(e))
         }
     }
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
+    // License commands must work on a fresh install without a running mux/GUI.
+    match &cli.sub {
+        CliSubCommand::Activate(cmd) => return cmd.run().await,
+        CliSubCommand::License(cmd) => return cmd.run().await,
+        _ => {}
+    }
+
     let mut ui = mux::connui::ConnectionUI::new_headless();
     let initial = true;
 
