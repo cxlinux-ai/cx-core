@@ -76,6 +76,7 @@ sudo cp target/release/cx /usr/local/bin/
 | `cx ask` | Ask questions in natural language, get intelligent responses |
 | `cx status` | System health check and status overview |
 | `cx demo` | Interactive demo of CX Linux capabilities |
+| `python -m cx.dependency_conflict_predictor` | Pre-install apt/pip conflict prediction with confidence + suggestions |
 
 ### Core Capabilities
 
