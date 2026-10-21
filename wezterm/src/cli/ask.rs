@@ -23,6 +23,7 @@ use std::process::Command;
 
 use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
+use super::ask_response::{commands_from_envelope, parse_ai_text};
 use super::model_utils::{
     is_model_available as is_local_model_available, model_path, MODEL_FILENAME,
 };
@@ -334,9 +335,11 @@ impl AskCommand {
             .with_n_threads_batch(4);
         let mut ctx = model.new_context(&backend, ctx_params)?;
 
-        // CX Terminal: Restore stderr now that model loading is complete
-        #[cfg(unix)]
-        drop(_stderr_guard);
+        // CX Terminal: keep stderr silenced until this function returns. `_stderr_guard`
+        // is declared before `backend`, `model` and `ctx`, so it drops after them and
+        // llama.cpp's teardown logging (`~llama_context: ...`) no longer reaches the
+        // user. Errors are returned, not printed, so nothing useful is hidden; use
+        // `--verbose` to see llama.cpp output.
 
         // CX Terminal: Augment system prompt with project context for better responses
         let context = ProjectContext::detect();
@@ -381,11 +384,12 @@ impl AskCommand {
         for _ in 0..max_tokens {
             let candidates = ctx.candidates();
             let mut candidates_data = LlamaTokenDataArray::from_iter(candidates, false);
-            let seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u32)
-                .unwrap_or(42);
-            let token = candidates_data.sample_token(seed);
+            // CX Terminal: greedy decoding. Sampling the full distribution with a
+            // clock seed (temperature 1.0) gave a different command list on every
+            // run, sometimes adding interactive tools like `top` to "show memory
+            // usage". Shell suggestions should be the model's single best answer and
+            // the same answer each time.
+            let token = candidates_data.sample_token_greedy();
 
             if model.is_eog_token(token) {
                 break;
@@ -561,8 +565,9 @@ impl AskCommand {
             }
 
             // AI response
+            // CX Terminal: render the model's JSON / Markdown instead of printing it raw
             if let Some(ai_response) = json.get("response").and_then(|r| r.as_str()) {
-                println!("{}", ai_response);
+                println!("{}", parse_ai_text(ai_response).render());
                 return;
             }
 
@@ -582,6 +587,11 @@ impl AskCommand {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
             if let Some(cmd) = json.get("command").and_then(|c| c.as_str()) {
                 println!("{}", cmd);
+                return;
+            }
+            // CX Terminal: commands suggested inside an AI answer
+            for cmd in commands_from_envelope(&json) {
+                println!("{}", cmd);
             }
         }
     }
@@ -589,16 +599,21 @@ impl AskCommand {
     fn execute_commands(&self, response: &str) -> Result<()> {
         let json: serde_json::Value = serde_json::from_str(response)?;
 
-        let command = json.get("command").and_then(|c| c.as_str());
-
-        let command = match command {
-            Some(cmd) => cmd,
-            None => return Ok(()),
+        // CX Terminal: a pattern match carries one `command`; an AI answer carries its
+        // commands inside `response`. Both go through the same confirmation below.
+        let commands: Vec<String> = match json.get("command").and_then(|c| c.as_str()) {
+            Some(cmd) => vec![cmd.to_string()],
+            None => commands_from_envelope(&json),
         };
+        if commands.is_empty() {
+            return Ok(());
+        }
 
         if !self.auto_confirm {
-            eprintln!("\nCommand to execute:");
-            eprintln!("  $ {}", command);
+            eprintln!("\nCommands to execute (in order, stops at the first failure):");
+            for command in &commands {
+                eprintln!("  $ {}", command);
+            }
             eprint!("\nProceed? [y/N] ");
             io::stderr().flush()?;
 
@@ -611,11 +626,13 @@ impl AskCommand {
             }
         }
 
-        eprintln!("$ {}", command);
-        let status = Command::new("sh").arg("-c").arg(command).status()?;
-
-        if !status.success() {
-            eprintln!("Command failed with exit code: {:?}", status.code());
+        for command in &commands {
+            eprintln!("$ {}", command);
+            let status = Command::new("sh").arg("-c").arg(command).status()?;
+            if !status.success() {
+                eprintln!("Command failed with exit code: {:?}", status.code());
+                break;
+            }
         }
 
         Ok(())

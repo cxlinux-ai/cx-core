@@ -1,0 +1,22 @@
+$ cx ask how\ do\ I\ check\ disk\ usage 
+Check disk usage
+
+  $ du -sh *
+    Show directory sizes
+
+$ cx ask -d show\ memory\ usage 
+Check memory
+
+  $ free -h
+    Show memory usage
+
+Commands to execute (in order, stops at the first failure):
+  $ free -h
+
+Proceed? [y/N] Aborted.
+
+$ cx ask install\ nginx 
+
+  $ apt-cache search nginx
+    Search APT packages for nginx
+

@@ -28,6 +28,7 @@ pub mod ai;
 pub mod ask;
 pub mod ask_context;
 pub mod ask_patterns;
+pub mod ask_response;
 pub mod daemon;
 pub mod license;
 pub mod model_utils;
