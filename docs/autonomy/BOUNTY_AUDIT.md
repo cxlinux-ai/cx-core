@@ -3,6 +3,20 @@
 **Run:** 2026-10-19 · **Source:** live `gh` data (issues, PRs, merges, assignees) for `cxlinux-ai/cx-core` and `cxlinux-ai/cx-distro`
 **Policy checked (FR-003):** every bounty issue states an amount and the post-funding bonus (`Bounty: $XX (+ $XX bonus after funding)`); payment is owed on merge to `main`, never on assignment; first-come-first-served assignment (FR-004).
 
+## Refresh — 2026-10-23 (live `gh` data, both repos)
+
+**Nothing has changed since the 2026-10-19 run.** No bounty PR was merged, closed or updated; no payment acknowledgement appeared; no issue body was edited.
+
+| Check | 2026-10-19 | 2026-10-23 |
+|---|---|---|
+| Owed on merge (cx-distro #76, #83) | $50 | **$50, still unpaid on-thread.** @silasbrookshaha's claim question on #76 (2026-10-11) is now **12 days** unanswered |
+| Open cx-distro bounty issues missing the bonus note | 19 | 19 (#27–#33, #35–#45, #48; $25 each → +$475 if added) |
+| FCFS conflicts | cx-core #425, #428; cx-distro #45, #50 | unchanged; @Sahilbhatane still holds #23, #45, #50 with no PR |
+| New | — | **cx-distro #34:** @mimienco asked on 2026-09-13 whether the $25 task was available and payable via PayPal. The question was never answered, and #83 by another contributor later completed it. Same trust risk as #76 |
+| Public issue text with the legacy brand | not counted | **34 of 40** open cx-distro issues (epics #1–#9 and all bounty issues) and cx-core #424, #425, #428. Public issue text is company communication, so editing it is queued for Mike (NEEDS_MIKE N30) |
+
+Bounty tiers in issue text: $25 / $75 / $88 (#50) / $100 / $150. They match the recorded tiers except #50's $88, which is stated on the issue and stands as written.
+
 ## 1. Payouts owed (merged, pay-on-merge triggered)
 
 | Repo | PR | Contributor | Merged | Closes | Stated bounty | Bonus note on issue | Paid? | Contributor follow-up |

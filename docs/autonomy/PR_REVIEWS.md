@@ -5,6 +5,23 @@
 
 Safety bar applied (spec §8/§10): package-changing operations default to preview/dry-run and execute only on explicit confirmation.
 
+## Refresh — 2026-10-23
+
+Every PR below was re-checked against live GitHub. **No contributor PR received a new commit since the 2026-10-19 reviews**, so the verdicts stand except where noted.
+
+- **#765 (`cx new` templates) — verdict changed: Approve after two changes.** The Day 1 note that "`cx new` is already implemented on main" was wrong: main's `new.rs` prints "not yet implemented". Tested empirically: #765's `new.rs` was applied to current main. `cargo test -p cx-terminal` passed 24/24, including 6 tests from the PR. Then each template was generated through a local, uncommitted top-level `new` dispatch:
+  - rust, go, node and python projects run and print "Hello from demo-…"; python creates a real `.venv`;
+  - fastapi, react, nextjs and docker write their files;
+  - `../evil` is rejected as a path, a non-empty target dir is refused, and an unknown template errors.
+
+  Changes needed:
+  1. `cx ask` patterns send users to `express` and `db` templates, which #765 lacks.
+  2. `new` is reachable only as `cx-terminal cli new`, which first connects to the mux server and fails without one. On a fresh install, `cli new` exits 1 before running (pre-existing on main). Register `new` as a top-level subcommand, the way #774 does for `activate`/`license`.
+
+  Issue #708 carries no bounty; price it or label it `no-bounty` before merge (N8).
+- **#763 / #764 (NL install):** verdicts stand. The safety bar is now concrete: route package commands through `package_guard::guard` from [#781](https://github.com/cxlinux-ai/cx-core/pull/781). Both also need a rebase; they branched before #771 and share no merge base with current main. Draft request: NEEDS_MIKE N28.
+- **cx-distro #60** (Mike's clone-URL fix, February) is superseded by [#84](https://github.com/cxlinux-ai/cx-distro/pull/84), which removes every remaining legacy-org link. Recommend closing #60.
+
 ## cx-core
 
 All cx-core PRs show 2 failing checks: both are `CLA Verification` / `cla-check` (contributor CLA not signed) — not code failures.
