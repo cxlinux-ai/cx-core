@@ -60,11 +60,12 @@ sudo apt update && sudo apt install cx-terminal
 git clone https://github.com/cxlinux-ai/cx-core.git
 cd cx-core
 
-# Build
-cargo build --release
+# Build (the binary is cx-terminal; `cx` is the command name)
+cargo build --release -p cx-terminal
 
 # Install
-sudo cp target/release/cx /usr/local/bin/
+sudo cp target/release/cx-terminal /usr/local/bin/
+sudo ln -sf /usr/local/bin/cx-terminal /usr/local/bin/cx
 ```
 
 ---
@@ -73,9 +74,12 @@ sudo cp target/release/cx /usr/local/bin/
 
 | Command | Description |
 |---------|-------------|
-| `cx ask` | Ask questions in natural language, get intelligent responses |
-| `cx status` | System health check and status overview |
-| `cx demo` | Interactive demo of CX Linux capabilities |
+| `cx ask` | Ask in natural language; shows the suggested commands (add `-d` to run AI suggestions after a `[y/N]` confirmation) |
+| `cx install` | Install packages using natural language (e.g. `cx install cuda drivers`) |
+| `cx what` | Ask about your system (e.g. `cx what packages use the most disk space`) |
+| `cx fix` | Fix errors using AI assistance |
+| `cx explain` | Explain a command or concept |
+| `cx ai download` | Download the local CX model (~5 GB) for offline answers |
 
 ### Core Capabilities
 
@@ -89,26 +93,26 @@ sudo cp target/release/cx /usr/local/bin/
 
 ## 🖥️ Supported Platforms
 
-| Distribution | Versions |
+| Install method | Platforms |
 |--------------|----------|
-| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS |
-| **Debian** | 11 (Bullseye), 12 (Bookworm) |
-| **Fedora** | 39, 40, 41 |
-| **CentOS** | Stream 9 |
+| **APT package** | Ubuntu 24.04 LTS or newer, amd64 (the package needs glibc 2.39) — verified |
+| **Build from source** | Other Linux distributions and macOS — not yet verified |
 
 ---
 
 ## 🏁 Quick Start
 
 ```bash
-# Check system status
-cx status
+# Enable AI (pick one): local model, Claude API, or your Ollama server
+cx ai download
+# export ANTHROPIC_API_KEY=...
+# export OLLAMA_HOST=http://...
 
-# Ask a question
-cx ask "How do I install Docker?"
+# Ask a question (shows commands, runs nothing)
+cx ask "how do I check disk usage"
 
-# Run the interactive demo
-cx demo
+# Ask and run, after confirming
+cx ask -d "show memory usage"
 ```
 
 ---
@@ -124,10 +128,9 @@ cx demo
 
 ## 🛡️ Safety & Security
 
-- **Sandboxed Execution**: AI-generated commands run in isolated environments
-- **Dry-Run Mode**: Preview AI plans before execution
-- **Local-First ML**: Command history and models stay on your machine
-- **Audit Logging**: Full history in `~/.cx/history.db`
+- **Preview by default**: AI-suggested commands are shown, not run, unless you add `-d`
+- **Explicit consent**: `-d` asks `[y/N]` before running (`-y` skips the prompt); no input (EOF) is always No
+- **Local-first AI**: with the downloaded model, questions are answered on your machine with no network calls
 
 ---
 
