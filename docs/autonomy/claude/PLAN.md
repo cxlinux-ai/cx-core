@@ -29,10 +29,13 @@ Ranked by impact × dependency. Each item names its proof of done.
 | P3 | **Real-diff review of every open contributor PR** | FR-005; several PRs collide with assigned issues (FCFS) or bypass dry-run safety | `docs/autonomy/PR_REVIEWS.md` with per-PR verdict and line-level findings | 1–2 |
 | P4 | **Fix `CX Terminal Build` on main** (root cause, not suppression) | Red main undermines every PR's signal | Workflow green on main | 2 |
 | | ↳ *Update 2026-10-19 09:40 MT:* the P1 branch (#771) turns `CX Terminal Build` green — Build (macos-14), Build (ubuntu-22.04), Cargo Check, Test Suite all pass — so P1 was the root cause. Remaining: the `debian11` packaging job 404s on `debian-security` (stale package index in that container). | | | |
+| | ↳ *Update 2026-10-20:* P4 closed by #776 + #778 (all three Debian 11 workflows on archive sources; job passes on #776). Awaiting review/merge. | | | |
 | P5 | **Verify the "Tab moment"** — instant fuzzy suggestions without an LLM round-trip | Single most important demo beat | Reproducible terminal recording + measured latency of the suggestion path | 2–3 |
+| | ↳ *Finding 2026-10-20 (P5):* there is no Tab-moment feature in the running product. GUI Tab completion (`wezterm-gui/src/input/`, `ModernInput`) compiles but is never instantiated; Tab goes to the user's shell. The live instant path is the `cx ask` pattern matcher: ~54 ms median, no LLM wait (debug build). See LOG Day 2. | | | |
 | P5b | **Offline answer for common install intents** — today `cx ask "how do I install docker"` with no API key or local model returns "No AI backend"; CX-native intents (new/save/snapshots) already work offline | PLAN.md's own success criterion and the offline-capable claim (spec §8) | Offline `cx ask` returns a vetted command for the top install intents (build on #763's matcher), behind the D8 confirmation rules | 3–4 |
 | P6 | **Verify one-liner install end-to-end** on Ubuntu 24.04 (container) | AC-002 | Script run log: install completes, `cx status` and `cx ask` run | 2–3 |
 | P7 | **Demo GIF asset** — confirm what exists; script a reproducible 30-second recording (asciinema/vhs tape) | AC-002, investor demo | Committed tape file + rendered GIF | 3–4 |
+| | ↳ *2026-10-20:* P5b is the subject of contributor PR #763 — not duplicated (D13). | | | |
 | P8 | **Dry-run/sandbox-by-default guard for package execution paths** | Spec §8/§10 safety differentiator; open PRs execute `sudo apt install` directly | Shared helper in `cx` that defaults to preview; tests prove no execution without explicit confirm | 4–5 |
 | P9 | **Brand hygiene sweep** across org repos (legacy name in configs, identifiers, docs) | AC-001 | Grep report = zero non-vendored hits outside explicitly-legacy notes | 5 |
 | P10 | **Capital-efficiency evidence pack** from real repo data (commits, contributors, merged PRs, cost) | FR-007 seed support | `docs/autonomy/EVIDENCE.md` sourced only from GitHub data | 6 |
@@ -45,3 +48,38 @@ Ranked by impact × dependency. Each item names its proof of done.
 - Merges touching `**/*.rs`, `Cargo.toml`, or `Cargo.lock` trigger the `*_continuous` package workflows; they ship only after CI is green and are logged with a revert path.
 - No comments, reviews, or issue edits are posted publicly on contributor threads — those are communications as the company and are drafted in NEEDS_MIKE instead.
 - No tags/releases (`v*` tags trigger `cx-release.yml`).
+
+### P8 status (2026-10-20)
+Covered by the parallel run's [#775](https://github.com/cxlinux-ai/cx-core/pull/775). Reviewed from the diff with sandbox tests: gate logic correct; sandbox blocks `sudo`/apt and bubblewrap discards writes. See [REVIEW_775.md](REVIEW_775.md). Not duplicated (D12).
+*Update 2026-10-22:* the package-specific part is now built in [#781](https://github.com/cxlinux-ai/cx-core/pull/781) (D20); #775 keeps the general gate, sandbox and audit/undo.
+
+### P6/P7 status (2026-10-21)
+- P6 done: install.sh verified in Ubuntu 24.04/22.04 and Debian 12 containers; fixes in cx-web #62.
+- P7 done: real-model 30-second demo in cx-core #780 (`demo/`). Recording also exposed and fixed the unusable AI answer path.
+
+### Re-rank (Day 4, 2026-10-22) — from evidence
+| Rank | Item | Status / evidence | Owner |
+|---|---|---|---|
+| 1 | Merge order to make the demo path real on main: #776 (CI) → #780 (AI answers + demo) → #781 (P8 guard) → #775 rebased (sandbox/audit, items 1, 2, 5) | #780 green except `debian11`, which #776 fixes | Mike (N16, N22, N27) |
+| 2 | **P8** shared package guard | Built: [#781](https://github.com/cxlinux-ai/cx-core/pull/781) — `apt-get -s` preview, `[y/N]`, record + undo; real install/undo verified in Ubuntu 24.04 (D20) | done, review |
+| 3 | Contributor bar: #763 (offline install intents) and #764 (package parsing) route through `package_guard::guard` | Both build `sudo apt install …` text; no merge base with current main (branched before #771) | contributors, after #781 |
+| 4 | New APT release from main | Published 0.3.2 lacks `cx`, #772, #780, #781 | Mike (N26) |
+| 5 | Stub commands (`cx new/save/restore/snapshots`) | Contributor PR #765 implements `cx new` templates (May, unreviewed) — review it before writing a bounty issue (N23 updated) | Day 5 review |
+| 6 | P9 brand sweep | Day 5 | this track |
+| 7 | P10 evidence pack | Day 6 | this track |
+| — | P5 GUI Tab moment | Not wired in product (Day 2). Not a week-scale fix; recorded for the roadmap | — |
+
+### Status at end of week (2026-10-25)
+| Item | Status |
+|---|---|
+| P0, P1 | Merged (#772, #771) |
+| P2, P3 | Done; refreshed and independently re-verified 2026-10-25 (corrections applied) |
+| P4 | Fixed in #776 + #778; awaiting merge |
+| P5 | Finding: no Tab moment in product; P5b → contributor #763 |
+| P6 | cx-web #62 (install.sh) |
+| P7 | #780 (real-model demo) |
+| P8 | #781 (package guard) |
+| P9 | cx-distro #84, cx-core #782, cx-web #63 (merged, live); remaining items need Mike (NEEDS_MIKE 6, 8, 10) |
+| P10 | EVIDENCE.md |
+| P11 | LOG Day 7 + NEEDS_MIKE (10 rows) |
+

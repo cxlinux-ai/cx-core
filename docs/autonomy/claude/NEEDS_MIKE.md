@@ -1,28 +1,30 @@
-# Needs Mike — ready to approve
+# Needs Mike — ready to approve (trimmed 2026-10-25)
 
-Each item is outside the autonomy limits (money, external communication, or account access). Recommendation first; approving means "do exactly this." Reply with the item number + "approved" and the next run executes it.
+Reply with the number and "approved" (or a change), and the next run does exactly what is written. Everything here is outside the autonomy limits: merges need your review, money, public posts, or account access. Full history is in git (`git log -p docs/autonomy/claude/NEEDS_MIKE.md`).
 
-| # | Item | Recommendation | Cost / commitment | Why it's queued |
-|---|---|---|---|---|
-| ~~**N0**~~ | ✅ **DONE 12:50 MT** — Mike merged #771 and #772. ~~**Approve [#771](https://github.com/cxlinux-ai/cx-core/pull/771)** — restores the public build; all 4 required checks + CX Terminal Build (macOS, Ubuntu) pass. The repo ruleset needs 1 approving review and the PR comes from your account, so it can't self-approve | Open the link → **Files changed** → **Review changes** → **Approve** → **Squash and merge**. #772 then retargets to main automatically ~~ | — | — |
-| **N1** | **Pay two merged bounties** — cx-distro [#76](https://github.com/cxlinux-ai/cx-distro/pull/76) @silasbrookshaha $25 (merged Oct 10, asked how to claim Oct 11, unanswered) and [#83](https://github.com/cxlinux-ai/cx-distro/pull/83) @Ravikirar $25 (merged Oct 16) | Pay both via tip.cc today and post the drafted thank-you (Appendix A) | **$50** | Spending + public reply |
-| **N2** | **Add the post-funding bonus note to 19 non-compliant cx-distro bounty issues** (#27–33, #35–45, #48) | Approve; script in Appendix B edits all 19 in one pass | **+$475 post-funding** commitment | Changes financial terms publicly |
-| **N3** | **Post the real-diff reviews** on 11 open PRs (findings in [PR_REVIEWS.md](PR_REVIEWS.md)) | Approve; Appendix C posts them as "comment" reviews (not approve/merge) | none | Public communication as the company |
-| **N4** | **Resolve 4 stale FCFS assignments** — cx-core #425 (@sujay-d07), #428 (@Suyashd999); cx-distro #45, #50 (@Sahilbhatane) — all assigned months ago with no PR from the assignee while outside contributors submitted work | Post a 7-day check-in on each (Appendix D); unassign if no reply by Oct 27, then review the waiting PR on merit | none now | Personnel/assignment decision + public comment |
-| **N5** | **Merge cx-distro [#71](https://github.com/cxlinux-ai/cx-distro/pull/71) (Safe NVIDIA installer) after its one rollback fix** | Approve conditional merge; next run requests the fix via N3 and merges when CI is green | **$100** on merge | Pay-on-merge = spending |
-| **N6** | **Install the Claude GitHub App on `cxlinux-ai`** so cloud runs can push without your Mac being awake | One click: https://github.com/apps/claude/installations/select_target → choose `cxlinux-ai` → All repositories → Install | none | Account access |
-| **N7** | **Update the CX Linux project instructions** — the spec still describes the Python repo, `pytest`, and the legacy install URL. Reality: `cxlinux-ai/cx-core` (Rust), `cargo test -p cx-terminal`, install `curl -fsSL https://cxlinux.com/install.sh \| bash`, APT at `repo.cxlinux.com` | Paste the replacement §16 block in Appendix E into the project Instructions field | none | I can't edit project instructions from here |
-| **N8** | **Price or label #708 and #712** before anyone merges [#765](https://github.com/cxlinux-ai/cx-core/pull/765) / [#744](https://github.com/cxlinux-ai/cx-core/pull/744) | Label both `no-bounty` (765 duplicates shipped work; 744 needs a redesign) | none | Sets compensation expectations publicly |
-
----
+| # | Approve | What it does | Cost |
+|---|---|---|---|
+| **1** | **Merge chain (in order):** [#776](https://github.com/cxlinux-ai/cx-core/pull/776) CI unblock (includes the #778 CLA security fix, `f48caff`; keep it) → [#780](https://github.com/cxlinux-ai/cx-core/pull/780) AI answers + real-model demo → [#781](https://github.com/cxlinux-ai/cx-core/pull/781) package guard. Then #775 rebases on them | The core product path works on `main`: AI answers render and run after `[y/N]`, and package changes are previewed, confirmed and recorded. Unblocks CI for every open PR. Independently re-verified 2026-10-25: 29 tests pass on #780, 44 on #781 | none |
+| **2** | **Merge text-only fixes:** [cx-core #782](https://github.com/cxlinux-ai/cx-core/pull/782) README; [cx-distro #84](https://github.com/cxlinux-ai/cx-distro/pull/84) installer links; [cx-web #62](https://github.com/cxlinux-ai/cx-web/pull/62) into #60, then [#60](https://github.com/cxlinux-ai/cx-web/pull/60) | README tells the truth; installer links work. install.sh stops installing an unrelated npm package and fails safely on unsupported systems | none |
+| **3** | **Pay $50 and answer contributors:** cx-distro #76 (@silasbrookshaha, waiting since Oct 11) and #83 (@Ravikirar), $25 each via tip.cc; reply on #76 and #83 (Appendix A); answer @mimienco on #34 | Clears the money owed and two unanswered contributor questions | **$50** |
+| **4** | **Delete the `docs` DNS record** (Cloudflare → cxlinux.com → DNS → `docs` CNAME → Delete) | docs.cxlinux.com currently shows a certificate error / 404 | none |
+| **5** | **Let the next run post reviews as comments** (no approve/merge): [#775](https://github.com/cxlinux-ai/cx-core/pull/775) review (REVIEW_775.md); #763/#764 — rebase and route package commands through `package_guard` (cx-distro #25 FCFS: #763 first); [#765](https://github.com/cxlinux-ai/cx-core/pull/765) — register `new` top-level and add `express`/`db` templates; the 11 PR_REVIEWS verdicts | Contributors get actionable, diff-based feedback | none |
+| **6** | **One pass over bounty issue text:** add the post-funding bonus note to the 19 cx-distro issues missing it (Appendix B) and replace the legacy brand with "CX" in 34 cx-distro issue bodies and cx-core #424/#425/#428 | Bounty template compliance (FR-003) and brand (AC-001) | **+$475** post-funding |
+| **7** | **Stale assignments:** post the 7-day check-in (Appendix D) on cx-core #425, #428 and cx-distro #45, #50; unassign if there's no reply by Nov 1 | Fair FCFS for contributors with waiting PRs | none |
+| **8** | **Rename SonarCloud:** org `cortexlinux` → `cxlinux-ai`, project key `cortexlinux_cortex` → `cxlinux-ai_cx-core`; then the next run opens the one-line `sonar-project.properties` PR | Removes the last legacy identifier in cx-core config | none |
+| **9** | **After 1: cut a new APT release from `main`.** Decide whether the package keeps making itself the default `x-terminal-emulator` (recommend: no) | Users get `cx`, the EOF fix, usable AI answers and the package guard; published 0.3.2 has none of these | none |
+| **10** | **Quick yes/no decisions** (recommendation in bold): <br>• drop Debian 11 support next release **yes**<br>• delete cx-web `docs/` (retired-CLI docs, not deployed) and open a $75–100 docs bounty **yes**<br>• label cx-core #708/#712 `no-bounty` **yes**<br>• merge cx-distro #71 after its rollback fix ($100) **yes**<br>• close cx-distro #60 **yes**<br>• approve Dependabot #747/#748/#761 **yes**<br>• resubmit sitemap in Search Console **yes**<br>• homepage title vs H1 **keep**<br>• forward clinux.ai if you own it **yes**<br>• re-record the demo GIF on your Mac before investor use **yes**<br>• paste Appendix E into the project instructions **yes** | Each one is independent | $100 on #71 merge |
 
 ## Appendix A — N1 thank-you replies (professional default)
 
 **On cx-distro #76:**
-> Thanks @silasbrookshaha — merged and appreciated. Your $25 bounty for #26 has been sent via tip.cc. Sorry for the slow reply on the claim question; going forward bounties are paid within 48 hours of merge.
+> Thanks @silasbrookshaha — merged and appreciated. Your $25 bounty for #26 has been sent via tip.cc. Sorry for the slow reply on the claim question.
 
 **On cx-distro #83:**
 > Thanks @Ravikirar — merged and appreciated. Your $25 bounty for #34 has been sent via tip.cc.
+
+**On cx-distro #34 (to @mimienco):**
+> Sorry this went unanswered — #34 was completed by another contributor's PR (#83) before we replied. Bounties are paid via tip.cc on our Discord. Open $25 tasks include #27–#33; comment on one to claim it first-come-first-served.
 
 ## Appendix B — N2 script (run on the Mac; edits issue bodies in place)
 
@@ -44,11 +46,3 @@ Review bodies are the "Findings from the diff" cells in PR_REVIEWS.md, posted ve
 
 > **Repository & workflow (verified 2026-10-19):** Canonical org `cxlinux-ai`. Product repo `cxlinux-ai/cx-core` (Rust; WezTerm-based CX Terminal + `cx` CLI; crate `cx-terminal`), main branch `main`. Build `cargo build -p cx-terminal`; test `cargo test -p cx-terminal` (CI: `cargo test --workspace`). Distro/packaging work in `cxlinux-ai/cx-distro`; site in `cxlinux-ai/cx-web`. Install one-liner `curl -fsSL https://cxlinux.com/install.sh | bash`; APT repo `https://repo.cxlinux.com/apt` (key `https://repo.cxlinux.com/key.gpg`). The legacy org and legacy apt host are retired. `gh` patterns use `-R cxlinux-ai/cx-core` or `-R cxlinux-ai/cx-distro`.
 
-## Also new this cycle
-- **N9 — CLA check on #773 fails for `@cursoragent`.** The parallel Cursor agent's commits are authored as `cursoragent`, which hasn't signed CLA.md. Recommendation: add `cursoragent` to the CLA allowlist used by `cla-check.yml` (same as other bots), or have its commits authored as you.
-
-## New in cycle 2 (2026-10-19 19:25 MT)
-- **N10 — Let pushes change CI workflow files (one-time).** The Mac's GitHub login has `repo` but not `workflow` scope, so GitHub refuses any push that edits `.github/workflows/`. The Debian 11 CI fix is committed and waiting (`ci/debian11-archive-security`, patch also saved at `docs/autonomy/claude/patches/p4-debian11.patch`).
-  - **Browser (recommended, also clears N6):** open https://github.com/apps/claude/installations/select_target → pick **cxlinux-ai** → **All repositories** → **Install**.
-  - The next run pushes the branch and opens the PR.
-- **N11 — Keep shipping Debian 11 packages?** Debian 11 reached end of life on 2026-08-31 (no more security updates). README still lists it as supported. Recommendation: keep building it this week via the archive fix (zero user impact), and drop it from the supported-platforms table and CI next release. Approve "drop Debian 11" or "keep".
