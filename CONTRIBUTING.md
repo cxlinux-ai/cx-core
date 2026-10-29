@@ -6,8 +6,8 @@ Thanks for considering contributing to CX Terminal! We value any contribution, e
 
 ```bash
 # Clone the repository
-git clone https://github.com/cxlinux-ai/cx.git
-cd cx
+git clone https://github.com/<your-username>/cx-core.git
+cd cx-core
 
 # Install Rust (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -29,12 +29,12 @@ cargo build --release
 
 | Directory | Description |
 |-----------|-------------|
-| `cx-terminal-gui/src/ai/` | AI panel and LLM providers |
-| `cx-terminal-gui/src/blocks/` | Command blocks system |
-| `cx-terminal-gui/src/agents/` | CX Linux agent system |
-| `cx-terminal-gui/src/voice/` | Voice capture and transcription |
-| `cx-terminal-gui/src/learning/` | ML workflow learning |
-| `cx-terminal/src/cli/` | CLI commands (ask, install, setup, etc.) |
+| `wezterm-gui/src/ai/` | AI panel and LLM providers |
+| `wezterm-gui/src/blocks/` | Command blocks system |
+| `wezterm-gui/src/agents/` | CX Linux agent system |
+| `wezterm-gui/src/voice/` | Voice capture and transcription |
+| `wezterm-gui/src/learning/` | ML workflow learning |
+| `wezterm/src/cli/` | CLI commands (ask, install, setup, etc.) |
 | `term/` | Core terminal model (escape sequences, etc.) |
 | `config/` | Configuration and Lua bindings |
 | `shell-integration/` | Shell scripts for CX features |
@@ -72,13 +72,13 @@ When adding CX-specific features:
 
 ### AI Commands
 
-The AI CLI commands are in `cx-terminal/src/cli/`:
+The AI CLI commands are in `wezterm/src/cli/`:
 - `ask.rs` - Main AI query command
 - `shortcuts.rs` - Convenience commands (install, setup, what, fix, explain)
 
 ### Command Blocks
 
-The blocks system is in `cx-terminal-gui/src/blocks/`:
+The blocks system is in `wezterm-gui/src/blocks/`:
 - `block.rs` - Block data structure
 - `manager.rs` - Block lifecycle management
 - `parser.rs` - OSC sequence parsing
@@ -108,9 +108,10 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
 ## Code of Conduct
 
-Be respectful and constructive. We're all here to build something great.
+This project follows our [Code of Conduct](CODE_OF_CONDUCT.md). Be respectful and constructive.
 
 ## Questions?
 
-- Discord: https://discord.gg/7K6TR7qtS
-- GitHub Issues: https://github.com/cxlinux-ai/cx/issues
+- Questions and ideas: [GitHub Discussions](https://github.com/cxlinux-ai/cx-core/discussions)
+- Bugs and feature requests: [GitHub Issues](https://github.com/cxlinux-ai/cx-core/issues)
+- New here? Start with a [`good first issue`](https://github.com/cxlinux-ai/cx-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)

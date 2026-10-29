@@ -19,8 +19,17 @@
   <a href="https://github.com/cxlinux-ai/cx-core/blob/main/LICENSE.md">
     <img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" />
   </a>
-  <a href="https://discord.gg/7K6TR7qtS">
-    <img src="https://img.shields.io/discord/1234567890?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord" />
+  <a href="https://github.com/cxlinux-ai/cx-core/stargazers">
+    <img src="https://img.shields.io/github/stars/cxlinux-ai/cx-core?style=social" alt="GitHub stars" />
+  </a>
+  <a href="https://github.com/cxlinux-ai/cx-core/network/members">
+    <img src="https://img.shields.io/github/forks/cxlinux-ai/cx-core?style=social" alt="GitHub forks" />
+  </a>
+  <a href="https://github.com/cxlinux-ai/cx-core/graphs/contributors">
+    <img src="https://img.shields.io/github/contributors/cxlinux-ai/cx-core?color=1f6feb" alt="Contributors" />
+  </a>
+  <a href="https://github.com/cxlinux-ai/cx-core/discussions">
+    <img src="https://img.shields.io/github/discussions/cxlinux-ai/cx-core?color=3fb950&label=discussions" alt="Discussions" />
   </a>
 </p>
 
@@ -29,7 +38,17 @@
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#supported-platforms">Platforms</a> •
+  <a href="#contributing">Contribute</a> •
   <a href="#license">License</a>
+</p>
+
+<p align="center">
+  <img src="demo/cx-30s.gif" alt="cx ask: natural language in, a previewed command out, runs only after you confirm" width="800" />
+  <br><sub>Real recording, local model, no mocks. Ask in plain English, review the command, confirm, and it runs.</sub>
+</p>
+
+<p align="center">
+  <b>If CX saves you a trip to Stack Overflow, <a href="https://github.com/cxlinux-ai/cx-core/stargazers">⭐ star the repo</a></b>. It's how other Linux users find it.
 </p>
 
 ---
@@ -39,6 +58,8 @@
 CX Linux is an AI-native operating system that simplifies system administration through natural language. It provides an intelligent terminal interface that understands your intent, automates complex tasks, and learns from your workflow.
 
 ---
+
+<a name="installation"></a>
 
 ## 🚀 Installation
 
@@ -70,6 +91,8 @@ sudo ln -sf /usr/local/bin/cx-terminal /usr/local/bin/cx
 
 ---
 
+<a name="features"></a>
+
 ## ✨ Features
 
 | Command | Description |
@@ -91,6 +114,8 @@ sudo ln -sf /usr/local/bin/cx-terminal /usr/local/bin/cx
 
 ---
 
+<a name="supported-platforms"></a>
+
 ## 🖥️ Supported Platforms
 
 | Install method | Platforms |
@@ -99,6 +124,8 @@ sudo ln -sf /usr/local/bin/cx-terminal /usr/local/bin/cx
 | **Build from source** | Other Linux distributions and macOS — not yet verified |
 
 ---
+
+<a name="quick-start"></a>
 
 ## 🏁 Quick Start
 
@@ -145,6 +172,32 @@ cx ask -d "show memory usage"
 | [cx-docs](https://github.com/cxlinux-ai/cx-docs) | Documentation |
 
 ---
+
+<a name="contributing"></a>
+
+## 🤝 Contributing
+
+CX is built in the open, and first-time contributors are welcome.
+
+1. **Find a task.** Browse [`good first issue`](https://github.com/cxlinux-ai/cx-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or [`help wanted`](https://github.com/cxlinux-ai/cx-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+2. **Fork and build.** `cargo build --release -p cx-terminal`. The full setup is in [CONTRIBUTING.md](CONTRIBUTING.md).
+3. **Open a PR.** Sign the CLA once, the first time you contribute. The bot walks you through it.
+
+Ideas, questions, and show-and-tell go in [Discussions](https://github.com/cxlinux-ai/cx-core/discussions).
+
+<a href="https://github.com/cxlinux-ai/cx-core/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cxlinux-ai/cx-core&max=60" alt="Contributors" />
+</a>
+
+### Star history
+
+<a href="https://star-history.com/#cxlinux-ai/cx-core&Date">
+  <img src="https://api.star-history.com/svg?repos=cxlinux-ai/cx-core&type=Date" alt="Star history" width="600" />
+</a>
+
+---
+
+<a name="license"></a>
 
 ## 📄 License
 
