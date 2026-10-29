@@ -81,12 +81,18 @@ sudo apt update && sudo apt install cx-terminal
 git clone https://github.com/cxlinux-ai/cx-core.git
 cd cx-core
 
-# Build (the binary is cx-terminal; `cx` is the command name)
+# Build the CLI (the binary is cx-terminal; `cx` is the command name)
 cargo build --release -p cx-terminal
 
-# Install
+# Install the CLI (cx ask, install, what, fix, explain)
 sudo cp target/release/cx-terminal /usr/local/bin/
 sudo ln -sf /usr/local/bin/cx-terminal /usr/local/bin/cx
+
+# Optional: the GPU terminal and AI side panel. Running `cx` with no
+# subcommand launches the GUI binary, which it looks for as `wezterm-gui`
+# in the same directory.
+cargo build --release -p cx-terminal-gui
+sudo cp target/release/cx-terminal-gui /usr/local/bin/wezterm-gui
 ```
 
 ---
@@ -157,8 +163,8 @@ cx ask -d "show memory usage"
 
 - **AI suggestions are previews**: commands suggested by the AI are shown, not run, unless you add `-d`; then `cx` asks `[y/N]` first (`-y` skips the prompt)
 - **Built-in CX actions ask first**: requests that match a built-in CX action (for example "save my work" → `cx save`) are offered with `Run this? [Y/n]`, where Enter means yes
-- **No input is never consent**: when stdin is not a terminal (EOF), nothing runs
-- **Local-first AI**: with the downloaded model, questions are answered on your machine with no network calls
+- **No input is never consent**: at a `[y/N]` prompt, empty input or EOF means No. Two caveats: `-y` skips the prompt entirely, and piped input such as `echo y |` counts as an answer
+- **Local-first AI**: with the downloaded model, questions are answered on your machine. Add `--local` to guarantee it: without `--local`, if the local model fails to load or answer, `cx` falls back to Claude (`ANTHROPIC_API_KEY`) or Ollama (`OLLAMA_HOST`) when you've configured them
 
 ---
 
