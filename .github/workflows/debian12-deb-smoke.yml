@@ -97,6 +97,7 @@ jobs:
 
       - name: Init freetype submodules
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --depth 1 \
             deps/freetype/zlib deps/freetype/libpng deps/freetype/freetype2
 
@@ -104,7 +105,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Vendor dependencies
-        run: cargo vendor --locked --versioned-dirs
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cargo vendor --locked --versioned-dirs
 
       - name: Configure vendored sources
         run: |
