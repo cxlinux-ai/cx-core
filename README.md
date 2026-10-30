@@ -207,6 +207,8 @@ Ideas, questions, and show-and-tell go in [Discussions](https://github.com/cxlin
 
 ## 📄 License
 
+See the [Changelog](https://github.com/cxlinux-ai/cx-core/blob/main/docs/changelog.md) for release notes.
+
 **Business Source License 1.1 (BSL 1.1)**
 
 - Free for personal and non-commercial use
