@@ -612,4 +612,19 @@ mod tests {
         // Same machine should match
         assert!(fp1.matches(&fp2));
     }
+
+    #[test]
+    fn cli_activation_json_is_loadable_by_gui() {
+        let fixture = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tests/fixtures/cli_activation_license.json"
+        ))
+        .expect("fixture");
+        let license: License =
+            serde_json::from_str(&fixture).expect("GUI should parse CLI license JSON");
+
+        let validator = LicenseValidator::new();
+        assert_eq!(license.email, "user@example.com");
+        assert!(validator.is_valid(&license));
+    }
 }

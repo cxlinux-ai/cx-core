@@ -276,7 +276,10 @@ pub struct ActivateCommand {
 
 impl ActivateCommand {
     pub async fn run(&self) -> anyhow::Result<()> {
-        println!("Activating license: {}...", self.license_key);
+        println!(
+            "Activating license: {}...",
+            license::mask_license_key(&self.license_key)
+        );
 
         match license::activate_license(&self.license_key).await {
             Ok(info) => {
@@ -332,7 +335,7 @@ async fn print_license_status() -> anyhow::Result<()> {
     match license::check_license().await {
         Ok(info) => {
             println!("\n📄 CX Linux License Status\n");
-            println!("  License: {}", info.license_key);
+            println!("  License: {}", license::mask_license_key(&info.license_key));
             println!("  Tier: {}", info.tier.to_uppercase());
             println!("  Email: {}", info.customer_email);
             if let Some(org) = info.organization {
@@ -361,13 +364,6 @@ async fn print_license_status() -> anyhow::Result<()> {
 }
 
 async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
-    // License commands must work on a fresh install without a running mux/GUI.
-    match &cli.sub {
-        CliSubCommand::Activate(cmd) => return cmd.run().await,
-        CliSubCommand::License(cmd) => return cmd.run().await,
-        _ => {}
-    }
-
     let mut ui = mux::connui::ConnectionUI::new_headless();
     let initial = true;
 
@@ -434,15 +430,6 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             drop(client);
             cmd.run()
         }
-        // CX License commands don't need the mux client
-        CliSubCommand::Activate(cmd) => {
-            drop(client);
-            cmd.run().await
-        }
-        CliSubCommand::License(cmd) => {
-            drop(client);
-            cmd.run().await
-        }
         // CX Security commands don't need the mux client
         CliSubCommand::Security(cmd) => {
             drop(client);
@@ -480,6 +467,16 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
 }
 
 pub fn run_cli(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
+    match &cli.sub {
+        CliSubCommand::Activate(cmd) => {
+            return crate::runtime::block_on_async(cmd.clone().run());
+        }
+        CliSubCommand::License(cmd) => {
+            return crate::runtime::block_on_async(cmd.clone().run());
+        }
+        _ => {}
+    }
+
     let executor = promise::spawn::ScopedExecutor::new();
     match promise::spawn::block_on(executor.run(async move { run_cli_async(opts, cli).await })) {
         Ok(_) => Ok(()),
@@ -497,5 +494,35 @@ pub fn resolve_relative_cwd(cwd: Option<OsString>) -> anyhow::Result<Option<Stri
                 .ok_or_else(|| anyhow!("path is not representable as String"))?
                 .to_string(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod cli_license_tests {
+    use super::*;
+    use crate::Opt;
+
+    #[test]
+    fn cli_license_subcommands_use_tokio_runtime_without_panicking() {
+        let activate = CliCommand {
+            no_auto_start: true,
+            prefer_mux: false,
+            class: None,
+            sub: CliSubCommand::Activate(ActivateCommand {
+                license_key: "CX-PRO-INVALID-KEY0".into(),
+            }),
+        };
+        let opts = Opt::parse_from(["cx-terminal"]);
+        let result = run_cli(&opts, activate);
+        assert!(result.is_err());
+
+        let license = CliCommand {
+            no_auto_start: true,
+            prefer_mux: false,
+            class: None,
+            sub: CliSubCommand::License(LicenseCommand { sub: None }),
+        };
+        let status = run_cli(&opts, license);
+        assert!(status.is_err());
     }
 }

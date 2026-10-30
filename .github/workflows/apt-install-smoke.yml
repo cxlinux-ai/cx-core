@@ -7,17 +7,17 @@ on:
       - 'ci/apt-install-smoke.sh'
       - 'README.md'
       - 'ci/deploy.sh'
-  push:
-    branches:
-      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   ubuntu-24-04:
     name: apt install (ubuntu-24.04)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Run official APT install (host)
         run: |
@@ -26,7 +26,7 @@ jobs:
 
       - name: Upload verification log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verification-logs-ubuntu
           path: apt-install-ubuntu-24.04.log
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Run official APT install (Docker debian:12)
         run: |
@@ -46,7 +46,7 @@ jobs:
 
       - name: Upload verification log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verification-logs-debian12
           path: apt-install-debian-12.log

@@ -18,6 +18,7 @@ use wezterm_gui_subcommands::*;
 
 mod asciicast;
 mod cli;
+mod runtime;
 
 //    let message = "; ❤ 😍🤢\n\x1b[91;mw00t\n\x1b[37;104;m bleet\x1b[0;m.";
 
@@ -794,9 +795,7 @@ fn init_config(opts: &Opt) -> anyhow::Result<ConfigHandle> {
 fn run_async_command(
     fut: impl std::future::Future<Output = anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| anyhow::anyhow!("Failed to start async runtime: {}", e))?;
-    rt.block_on(fut)
+    runtime::block_on_async(fut)
 }
 
 fn run() -> anyhow::Result<()> {

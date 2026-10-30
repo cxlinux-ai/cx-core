@@ -1,0 +1,16 @@
+{
+  "id": "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+  "email": "user@example.com",
+  "name": null,
+  "tier": "pro",
+  "key": "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+  "issued_at": "2030-01-01T12:00:00Z",
+  "expires_at": "2030-06-01T00:00:00Z",
+  "hardware_fingerprint": null,
+  "last_validated": "2030-01-01T12:00:00Z",
+  "stripe_customer_id": null,
+  "stripe_subscription_id": null,
+  "organization_id": null,
+  "organization_name": "Example Org",
+  "metadata": {}
+}

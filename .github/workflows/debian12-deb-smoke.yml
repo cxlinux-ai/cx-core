@@ -12,6 +12,9 @@ on:
       - 'wezterm-mux-server/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-deb:
     name: Build .deb on debian:12
@@ -34,7 +37,7 @@ jobs:
             libfontconfig1-dev libfreetype6-dev libpng-dev zlib1g-dev \
             python3 fakeroot dpkg-dev
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           submodules: recursive
 
@@ -61,10 +64,10 @@ jobs:
         run: |
           chmod +x ci/build-deb-bookworm.sh ci/package-deb-bookworm-minimal.sh
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          MINIMAL_DEB=1 SKIP_VENDOR=1 TAG_NAME="ci-bookworm-${{ github.sha }}" bash ci/build-deb-bookworm.sh
+          MINIMAL_DEB=1 SKIP_VENDOR=1 TAG_NAME="0.0.0+ci.bookworm.${{ github.run_number }}" bash ci/build-deb-bookworm.sh
 
       - name: Upload bookworm .deb
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: cx-terminal-deb-bookworm
           path: cx-terminal-*.debian12-minimal.deb
@@ -91,7 +94,7 @@ jobs:
             libfontconfig1-dev libfreetype6-dev libpng-dev zlib1g-dev \
             python3 fakeroot dpkg-dev
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           submodules: recursive
 
@@ -124,11 +127,11 @@ jobs:
         run: |
           chmod +x ci/build-deb-bookworm.sh
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          SKIP_VENDOR=1 TAG_NAME="ci-bookworm-gui-${{ github.sha }}" bash ci/build-deb-bookworm.sh 2>&1 | tee bookworm-full-gui-build.log
+          SKIP_VENDOR=1 TAG_NAME="0.0.0+ci.bookworm.gui.${{ github.run_number }}" bash ci/build-deb-bookworm.sh 2>&1 | tee bookworm-full-gui-build.log
 
       - name: Upload full GUI build log or package
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: bookworm-full-gui-deb
           path: |
@@ -139,11 +142,13 @@ jobs:
     name: Install .deb in debian:12 container
     needs: build-deb
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Download .deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: cx-terminal-deb-bookworm
           path: artifacts
