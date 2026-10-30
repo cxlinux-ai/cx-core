@@ -9,9 +9,12 @@ You may not use this file except in compliance with the License.
 //! Smart command detection that uses CX primitives (`cx new`, `cx save`, etc.)
 //! before falling back to AI providers.
 //!
-//! Example: cx ask "create a python project" → cx new python <name>
-//! Example: cx ask "save my work" → cx save <smart-name>
-//! Example: cx ask "how do I install docker" → AI response with command
+//! State-changing suggestions default to a dry-run preview; use `--execute` (`-d`) to run.
+//! Read-only matches (e.g. `cx snapshots -l`) may execute immediately.
+//!
+//! Example: cx ask "create a python project" → preview `cx new python <name>`
+//! Example: cx ask "save my work" → preview `cx save <smart-name>`
+//! Example: cx ask "how do I install docker" → AI response with command (preview only)
 
 use anyhow::Result;
 use clap::Parser;
@@ -23,9 +26,15 @@ use std::process::Command;
 
 use super::ask_context::ProjectContext;
 use super::ask_patterns::PatternMatcher;
+use super::command_sandbox::{detect_sandbox_backend, run_sandboxed_shell, sandbox_backend_label};
+use super::execution_safety::{
+    effective_auto_confirm, execution_gate, is_read_only_cx_cli, print_dry_run_preview,
+    prompt_default_no, stdin_is_interactive, ExecutionGate,
+};
 use super::model_utils::{
     is_model_available as is_local_model_available, model_path, MODEL_FILENAME,
 };
+use super::ops::{append_audit, record_transaction};
 
 const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:
 1. Answer directly if you have the knowledge
@@ -56,11 +65,11 @@ pub struct AskCommand {
     #[arg(trailing_var_arg = true)]
     pub query: Vec<String>,
 
-    /// Execute the suggested commands (with confirmation)
-    #[arg(long = "do", short = 'd')]
+    /// Execute state-changing commands after preview (requires confirmation unless `-y`)
+    #[arg(long = "execute", short = 'd', visible_alias = "do")]
     pub execute: bool,
 
-    /// Skip confirmation prompts (use with caution)
+    /// Skip confirmation after `--execute` (ignored without `--execute` / `-d`)
     #[arg(long = "yes", short = 'y')]
     pub auto_confirm: bool,
 
@@ -82,6 +91,12 @@ const CX_USER_SOCKET_TEMPLATE: &str = "/run/user/{}/cx/daemon.sock";
 
 impl AskCommand {
     pub fn run(&self) -> Result<()> {
+        if self.auto_confirm && !self.execute {
+            eprintln!(
+                "Note: -y is ignored without --execute (-d). Commands stay in dry-run preview."
+            );
+        }
+
         let query = self.query.join(" ");
 
         if query.is_empty() {
@@ -120,53 +135,23 @@ impl AskCommand {
                     command = command.replace("{name}", &name);
                 }
 
-                // For CX commands, execute automatically (AI-native behavior)
                 println!("{}", pattern_match.description);
-                self.execute_cx_command(&command)?;
 
-                // Return empty response since we already handled it
-                return Ok(Some("{}".to_string()));
+                if is_read_only_cx_cli(&command) {
+                    self.run_command_with_audit(&command, None)?;
+                    return Ok(Some("{}".to_string()));
+                }
+
+                let response = serde_json::json!({
+                    "status": "cx_command",
+                    "description": pattern_match.description,
+                    "command": command,
+                });
+                return Ok(Some(serde_json::to_string(&response)?));
             }
         }
 
         Ok(None)
-    }
-
-    /// Execute a CX command with optional confirmation
-    fn execute_cx_command(&self, command: &str) -> Result<()> {
-        if !self.auto_confirm {
-            eprintln!("\n  $ {}", command);
-            eprint!("\nRun this? [Y/n] ");
-            io::stderr().flush()?;
-
-            let mut input = String::new();
-            let bytes_read = io::stdin().read_line(&mut input)?;
-
-            // CX Terminal: read_line returns 0 bytes at EOF (no TTY, closed or empty
-            // pipe). EOF must never count as consent to run a command.
-            let answer = if bytes_read == 0 {
-                None
-            } else {
-                Some(input.as_str())
-            };
-            if !confirmed_default_yes(answer) {
-                if answer.is_none() {
-                    eprintln!("\nNo interactive input; not running. Re-run with -d -y to execute.");
-                } else {
-                    eprintln!("Cancelled.");
-                }
-                return Ok(());
-            }
-        }
-
-        // Execute the command
-        let status = Command::new("sh").arg("-c").arg(command).status()?;
-
-        if !status.success() {
-            eprintln!("Command failed with exit code: {:?}", status.code());
-        }
-
-        Ok(())
     }
 
     fn handle_response(&self, response: &str) -> Result<()> {
@@ -176,9 +161,7 @@ impl AskCommand {
             _ => self.print_formatted(response),
         }
 
-        if self.execute {
-            self.execute_commands(response)?;
-        }
+        self.maybe_execute_from_response(response)?;
 
         Ok(())
     }
@@ -202,6 +185,13 @@ impl AskCommand {
     }
 
     fn query_ai(&self, query: &str) -> Result<String> {
+        // Offline/demo mock (labeled; no network)
+        if let Ok(mock) = env::var("CX_ASK_MOCK_RESPONSE") {
+            if !mock.is_empty() {
+                return Ok(mock);
+            }
+        }
+
         // Try daemon first
         if let Some(response) = self.try_daemon(query)? {
             return Ok(response);
@@ -586,35 +576,79 @@ impl AskCommand {
         }
     }
 
-    fn execute_commands(&self, response: &str) -> Result<()> {
+    fn maybe_execute_from_response(&self, response: &str) -> Result<()> {
         let json: serde_json::Value = serde_json::from_str(response)?;
-
         let command = json.get("command").and_then(|c| c.as_str());
-
         let command = match command {
             Some(cmd) => cmd,
             None => return Ok(()),
         };
 
-        if !self.auto_confirm {
-            eprintln!("\nCommand to execute:");
-            eprintln!("  $ {}", command);
-            eprint!("\nProceed? [y/N] ");
-            io::stderr().flush()?;
+        let undo = json.get("undo").and_then(|u| u.as_str());
+        let from_cx_pattern = json.get("status").and_then(|s| s.as_str()) == Some("cx_command");
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-
-            if !input.trim().eq_ignore_ascii_case("y") {
-                eprintln!("Aborted.");
-                return Ok(());
-            }
+        // Only pattern-matched read-only `cx …` lines may auto-run; never auto-run AI shell text.
+        if from_cx_pattern && is_read_only_cx_cli(command) {
+            return self.run_command_with_audit(command, undo);
         }
 
-        eprintln!("$ {}", command);
-        let status = Command::new("sh").arg("-c").arg(command).status()?;
+        print_dry_run_preview(&[command]);
 
-        if !status.success() {
+        let auto = effective_auto_confirm(self.execute, self.auto_confirm);
+        match execution_gate(self.execute, auto) {
+            ExecutionGate::PreviewOnly => {
+                append_audit(
+                    "dry_run_preview",
+                    Some(command),
+                    serde_json::json!({ "source": "cx ask" }),
+                )?;
+                return Ok(());
+            }
+            ExecutionGate::ConfirmFirst => {
+                if !stdin_is_interactive() {
+                    eprintln!(
+                        "\nNon-interactive stdin; not running. Use: cx ask --execute -y \"…\""
+                    );
+                    return Ok(());
+                }
+                eprintln!("\n  $ {}", command);
+                if !prompt_default_no("\nRun this? [y/N] ")? {
+                    eprintln!("\nCancelled or no input (default is No). Use --execute (-d) and type y, or -d -y without a TTY.");
+                    return Ok(());
+                }
+            }
+            ExecutionGate::RunNow => {}
+        }
+
+        self.run_command_with_audit(command, undo)
+    }
+
+    fn run_command_with_audit(&self, command: &str, undo: Option<&str>) -> Result<()> {
+        eprintln!("$ {}", command);
+        let backend = detect_sandbox_backend();
+        let status = run_sandboxed_shell(command)?;
+
+        let success = status.success();
+        let tx_id = if success {
+            match undo {
+                Some(undo_cmd) => Some(record_transaction(command, undo_cmd)?),
+                None => None,
+            }
+        } else {
+            None
+        };
+
+        append_audit(
+            if success { "execute" } else { "execute_failed" },
+            Some(command),
+            serde_json::json!({
+                "exit_code": status.code(),
+                "transaction_id": tx_id,
+                "sandbox": sandbox_backend_label(backend),
+            }),
+        )?;
+
+        if !success {
             eprintln!("Command failed with exit code: {:?}", status.code());
         }
 
@@ -622,42 +656,49 @@ impl AskCommand {
     }
 }
 
-/// CX Terminal: interpret the answer to a `[Y/n]` prompt.
-///
-/// `None` means stdin hit EOF before any input (non-interactive use) and is
-/// always a refusal. An empty line (user pressed Enter) or `y`/`Y` confirms;
-/// anything else refuses.
-fn confirmed_default_yes(answer: Option<&str>) -> bool {
-    match answer {
-        None => false,
-        Some(line) => {
-            let line = line.trim();
-            line.is_empty() || line.eq_ignore_ascii_case("y")
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::AskCommand;
+    use crate::cli::execution_safety::{
+        confirmed_default_no, confirmed_default_yes, effective_auto_confirm, execution_gate,
+        ExecutionGate,
+    };
+
+    #[test]
+    fn default_is_preview_only() {
+        assert_eq!(execution_gate(false, false), ExecutionGate::PreviewOnly);
+    }
+
+    #[test]
+    fn explicit_execute_flag_enables_run_path() {
+        assert_eq!(execution_gate(true, true), ExecutionGate::RunNow);
+        assert_eq!(execution_gate(true, false), ExecutionGate::ConfirmFirst);
+        assert_eq!(execution_gate(false, true), ExecutionGate::PreviewOnly);
+    }
+
+    #[test]
+    fn y_without_execute_does_not_auto_confirm() {
+        assert!(!effective_auto_confirm(false, true));
+    }
 
     #[test]
     fn eof_is_never_consent() {
         assert!(!confirmed_default_yes(None));
+        assert!(!confirmed_default_no(None));
     }
 
     #[test]
-    fn enter_and_y_confirm() {
-        assert!(confirmed_default_yes(Some("\n")));
-        assert!(confirmed_default_yes(Some("y\n")));
-        assert!(confirmed_default_yes(Some("Y")));
+    fn default_no_prompt_requires_explicit_y() {
+        assert!(!confirmed_default_no(Some("\n")));
+        assert!(!confirmed_default_no(Some("")));
+        assert!(confirmed_default_no(Some("y\n")));
+        assert!(confirmed_default_no(Some("Y")));
     }
 
     #[test]
-    fn other_answers_refuse() {
-        assert!(!confirmed_default_yes(Some("n\n")));
-        assert!(!confirmed_default_yes(Some("no")));
-        assert!(!confirmed_default_yes(Some("yes please")));
+    fn default_no_refuses_other_answers() {
+        assert!(!confirmed_default_no(Some("n\n")));
+        assert!(!confirmed_default_no(Some("yes please")));
     }
 
     #[test]

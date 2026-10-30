@@ -1,0 +1,42 @@
+=== CX safety demo (offline mock, isolated HOME: /tmp/cx-safety-demo-home.Vt2z9A) ===
+
+--- 1) Natural language request (default: dry-run only) ---
+[mock-offline] Simulated AI suggestion for demo only.
+
+┌─ Dry-run preview (no changes applied) ─────────────────
+│  $ touch "/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker"
+└────────────────────────────────────────────────────────
+To run: add --execute (-d) and confirm at the prompt, or use -d -y
+
+
+--- 2) Execute with --execute -y ---
+[mock-offline] Simulated AI suggestion for demo only.
+
+┌─ Dry-run preview (no changes applied) ─────────────────
+│  $ touch "/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker"
+└────────────────────────────────────────────────────────
+To run: add --execute (-d) and confirm at the prompt, or use -d -y
+
+$ touch "/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker"
+WARNING: Neither firejail nor bubblewrap (bwrap) was found on PATH.
+         Command will run on the host without a sandbox. Install firejail or bubblewrap for isolation.
+
+--- 3) Audit log (last entries) ---
+{"ts":"2026-10-20T14:20:54.252470914+00:00","event":"dry_run_preview","command":"touch \"/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker\"","detail":{"source":"cx ask"}}
+{"ts":"2026-10-20T14:20:54.261917910+00:00","event":"execute","command":"touch \"/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker\"","detail":{"exit_code":0,"sandbox":"none","transaction_id":"tx-1792506054261"}}
+
+--- 4) Undo ---
+
+┌─ Dry-run preview (no changes applied) ─────────────────
+│  $ rm -f "/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker"
+└────────────────────────────────────────────────────────
+To run: add --execute (-d) and confirm at the prompt, or use -d -y
+
+Undo forward command: touch "/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker"
+Original directory: /workspace
+$ rm -f "/tmp/cx-safety-demo-home.Vt2z9A/.cx/demo-risk-marker"
+WARNING: Neither firejail nor bubblewrap (bwrap) was found on PATH.
+         Command will run on the host without a sandbox. Install firejail or bubblewrap for isolation.
+✅ Undone.
+
+=== Demo complete ===
