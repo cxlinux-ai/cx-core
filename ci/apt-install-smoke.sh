@@ -11,7 +11,7 @@ apt-get update -qq
 apt-get install -y -qq curl gnupg ca-certificates
 
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://repo.cxlinux.com/key.gpg | gpg --dearmor -o /etc/apt/keyrings/cxlinux.gpg
+curl -fsSL --proto '=https' --tlsv1.2 https://repo.cxlinux.com/key.gpg | gpg --dearmor -o /etc/apt/keyrings/cxlinux.gpg
 echo "deb [signed-by=/etc/apt/keyrings/cxlinux.gpg] https://repo.cxlinux.com/apt stable main" \
   | tee /etc/apt/sources.list.d/cxlinux.list
 

@@ -39,7 +39,7 @@ jobs:
           submodules: recursive
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
 
       - name: Vendor dependencies
         run: |
@@ -102,7 +102,7 @@ jobs:
             deps/freetype/zlib deps/freetype/libpng deps/freetype/freetype2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
 
       - name: Vendor dependencies
         run: |
