@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration as StdDuration;
 
-const LICENSE_SERVER_URL: &str = "https://license.cxlinux.com";
-const LICENSE_SERVER_URL_ENV: &str = "CX_LICENSE_SERVER_URL";
+const LICENSE_SERVER_BASE: &str = "https://license.cxlinux.com";
+pub use LICENSE_SERVER_BASE as LICENSE_SERVER_BASE_URL;
 const LICENSE_KEY_DIR: &str = ".cx";
 const LICENSE_KEY_FILE: &str = "license.key";
 const GUI_LICENSE_DIR: &str = "cx-terminal";
@@ -78,8 +78,75 @@ struct ActivateRequest {
     hostname: String,
 }
 
-fn license_server_url() -> String {
-    std::env::var(LICENSE_SERVER_URL_ENV).unwrap_or_else(|_| LICENSE_SERVER_URL.to_string())
+fn license_server_base_url() -> &'static str {
+    LICENSE_SERVER_BASE
+}
+
+async fn validate_license_at(license_key: &str, base: &str) -> Result<LicenseInfo, String> {
+    let hardware_id = generate_hardware_id();
+
+    let client = http_client()?;
+    let response = client
+        .post(format!("{}/api/v1/licenses/validate", base))
+        .json(&ValidateRequest {
+            license_key: license_key.to_string(),
+            hardware_id,
+        })
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    let info: LicenseInfo = response
+        .json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))?;
+
+    if !info.valid {
+        return Err(info.error.unwrap_or_else(|| "Invalid license".to_string()));
+    }
+
+    Ok(info)
+}
+
+async fn activate_license_at(license_key: &str, base: &str) -> Result<LicenseInfo, String> {
+    let hardware_id = generate_hardware_id();
+    let hostname = hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    let platform = std::env::consts::OS.to_string();
+
+    let client = http_client()?;
+    let response = client
+        .post(format!("{}/api/v1/licenses/activate", base))
+        .json(&ActivateRequest {
+            license_key: license_key.to_string(),
+            hardware_id,
+            device_name: hostname.clone(),
+            platform,
+            hostname,
+        })
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Read error: {}", e))?;
+
+    if !status.is_success() {
+        let error: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({"error": text}));
+        return Err(error["error"]
+            .as_str()
+            .unwrap_or("Activation failed")
+            .to_string());
+    }
+
+    let info = validate_license_at(license_key, base).await?;
+    save_activated_license(&info, license_key)?;
+    Ok(info)
 }
 
 fn normalize_tier(tier: &str) -> String {
@@ -291,73 +358,20 @@ pub fn read_license_key() -> Option<String> {
 
 /// Validate license with the server
 pub async fn validate_license(license_key: &str) -> Result<LicenseInfo, String> {
-    let hardware_id = generate_hardware_id();
-
-    let client = http_client()?;
-    let base = license_server_url();
-    let response = client
-        .post(format!("{}/api/v1/licenses/validate", base))
-        .json(&ValidateRequest {
-            license_key: license_key.to_string(),
-            hardware_id,
-        })
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
-
-    let info: LicenseInfo = response
-        .json()
-        .await
-        .map_err(|e| format!("Invalid response: {}", e))?;
-
-    if !info.valid {
-        return Err(info.error.unwrap_or_else(|| "Invalid license".to_string()));
-    }
-
-    Ok(info)
+    validate_license_at(license_key, license_server_base_url()).await
 }
 
 /// Activate license on this device
 pub async fn activate_license(license_key: &str) -> Result<LicenseInfo, String> {
-    let hardware_id = generate_hardware_id();
-    let hostname = hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
-    let platform = std::env::consts::OS.to_string();
+    activate_license_at(license_key, license_server_base_url()).await
+}
 
-    let client = http_client()?;
-    let base = license_server_url();
-    let response = client
-        .post(format!("{}/api/v1/licenses/activate", base))
-        .json(&ActivateRequest {
-            license_key: license_key.to_string(),
-            hardware_id,
-            device_name: hostname.clone(),
-            platform,
-            hostname,
-        })
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
-
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Read error: {}", e))?;
-
-    if !status.is_success() {
-        let error: serde_json::Value =
-            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({"error": text}));
-        return Err(error["error"]
-            .as_str()
-            .unwrap_or("Activation failed")
-            .to_string());
-    }
-
-    let info = validate_license(license_key).await?;
-    save_activated_license(&info, license_key)?;
-    Ok(info)
+#[cfg(test)]
+pub(crate) async fn activate_license_with_server_base(
+    license_key: &str,
+    base: &str,
+) -> Result<LicenseInfo, String> {
+    activate_license_at(license_key, base).await
 }
 
 /// Check if the current installation has a valid license
@@ -407,7 +421,9 @@ mod tests {
     }
 
     fn env_test_guard() -> MutexGuard<'static, ()> {
-        ENV_TEST_LOCK.lock().unwrap()
+        ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn sample_info(expires_at: &str, tier: &str) -> LicenseInfo {
@@ -470,6 +486,11 @@ mod tests {
     #[test]
     fn save_activated_license_rejects_invalid_expiry() {
         let _guard = env_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let mut env = EnvRestore::new();
+        env.set("HOME", temp.path().to_str().unwrap());
+        env.set("XDG_CONFIG_HOME", temp.path().join("cfg").to_str().unwrap());
+
         let info = sample_info("not-a-date", "pro");
         let err = save_activated_license(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD").unwrap_err();
         assert!(err.contains("Invalid license expiration timestamp"));
@@ -547,11 +568,13 @@ mod tests {
         let mut env = EnvRestore::new();
         env.set("HOME", temp.path().to_str().unwrap());
         env.set("XDG_CONFIG_HOME", temp.path().join("cfg").to_str().unwrap());
-        env.set(LICENSE_SERVER_URL_ENV, "http://127.0.0.1:1");
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let err = rt
-            .block_on(activate_license("CX-PRO-AAAA-BBBB-CCCC-DDDD"))
+            .block_on(activate_license_with_server_base(
+                "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+                "http://127.0.0.1:1",
+            ))
             .unwrap_err();
         assert!(err.starts_with("Network error:"));
     }

@@ -344,6 +344,37 @@ impl From<serde_json::Error> for LicenseError {
     }
 }
 
+#[cfg(unix)]
+fn write_private_license_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+
+    if let Some(parent) = path.parent() {
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true).mode(0o700);
+        builder.create(parent)?;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(contents)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_private_license_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, contents)
+}
+
 /// License validator
 pub struct LicenseValidator {
     /// License file path
@@ -388,14 +419,8 @@ impl LicenseValidator {
 
     /// Save license to disk
     pub fn save_license(&self, license: &License) -> Result<(), LicenseError> {
-        // Ensure directory exists
-        if let Some(parent) = self.license_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
         let content = serde_json::to_string_pretty(license)?;
-        std::fs::write(&self.license_path, content)?;
-
+        write_private_license_file(&self.license_path, content.as_bytes())?;
         Ok(())
     }
 

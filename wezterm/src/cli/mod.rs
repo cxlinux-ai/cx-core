@@ -280,8 +280,27 @@ impl ActivateCommand {
             "Activating license: {}...",
             license::mask_license_key(&self.license_key)
         );
+        self.finish_activation(license::activate_license(&self.license_key).await)
+            .await
+    }
 
-        match license::activate_license(&self.license_key).await {
+    #[cfg(test)]
+    pub async fn run_with_server_base(&self, base: &str) -> anyhow::Result<()> {
+        println!(
+            "Activating license: {}...",
+            license::mask_license_key(&self.license_key)
+        );
+        self.finish_activation(
+            license::activate_license_with_server_base(&self.license_key, base).await,
+        )
+        .await
+    }
+
+    async fn finish_activation(
+        &self,
+        result: Result<license::LicenseInfo, String>,
+    ) -> anyhow::Result<()> {
+        match result {
             Ok(info) => {
                 println!("\n✅ License activated successfully!\n");
                 println!("  Tier: {}", info.tier);
@@ -490,6 +509,21 @@ pub fn run_cli(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
     }
 }
 
+/// Test-only entry point so `run_cli` activate routing can be exercised with an injected server base.
+#[cfg(test)]
+pub(crate) fn run_cli_with_license_server_base(
+    opts: &crate::Opt,
+    cli: CliCommand,
+    base: &str,
+) -> anyhow::Result<()> {
+    match &cli.sub {
+        CliSubCommand::Activate(cmd) => {
+            crate::runtime::block_on_async(cmd.clone().run_with_server_base(base))
+        }
+        _ => run_cli(opts, cli),
+    }
+}
+
 pub fn resolve_relative_cwd(cwd: Option<OsString>) -> anyhow::Result<Option<String>> {
     match cwd {
         None => Ok(None),
@@ -500,5 +534,72 @@ pub fn resolve_relative_cwd(cwd: Option<OsString>) -> anyhow::Result<Option<Stri
                 .ok_or_else(|| anyhow!("path is not representable as String"))?
                 .to_string(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod license_cli_tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        saved: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvRestore {
+        fn new() -> Self {
+            Self { saved: Vec::new() }
+        }
+
+        fn set(&mut self, key: &str, value: &str) {
+            self.saved.push((key.to_string(), std::env::var(key).ok()));
+            std::env::set_var(key, value);
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                match value {
+                    Some(v) => std::env::set_var(&key, v),
+                    None => std::env::remove_var(&key),
+                }
+            }
+        }
+    }
+
+    fn env_test_guard() -> MutexGuard<'static, ()> {
+        ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[test]
+    fn run_cli_activate_unreachable_server_reports_network_error() {
+        let _guard = env_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let mut env = EnvRestore::new();
+        env.set("HOME", temp.path().to_str().unwrap());
+        env.set("XDG_CONFIG_HOME", temp.path().join("cfg").to_str().unwrap());
+
+        let opts = crate::Opt {
+            skip_config: true,
+            config_file: None,
+            config_override: vec![],
+            cmd: None,
+        };
+        let cli = CliCommand {
+            no_auto_start: true,
+            prefer_mux: false,
+            class: None,
+            sub: CliSubCommand::Activate(ActivateCommand {
+                license_key: "CX-PRO-AAAA-BBBB-CCCC-DDDD".into(),
+            }),
+        };
+
+        let err = run_cli_with_license_server_base(&opts, cli, "http://127.0.0.1:1").unwrap_err();
+        assert!(err.to_string().contains("Network error"));
     }
 }
