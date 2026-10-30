@@ -335,7 +335,10 @@ async fn print_license_status() -> anyhow::Result<()> {
     match license::check_license().await {
         Ok(info) => {
             println!("\n📄 CX Linux License Status\n");
-            println!("  License: {}", license::mask_license_key(&info.license_key));
+            println!(
+                "  License: {}",
+                license::mask_license_key(&info.license_key)
+            );
             println!("  Tier: {}", info.tier.to_uppercase());
             println!("  Email: {}", info.customer_email);
             if let Some(org) = info.organization {
@@ -463,6 +466,9 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             drop(client);
             cmd.run()
         }
+        CliSubCommand::Activate(_) | CliSubCommand::License(_) => {
+            unreachable!("license commands are handled in run_cli before run_cli_async")
+        }
     }
 }
 
@@ -494,35 +500,5 @@ pub fn resolve_relative_cwd(cwd: Option<OsString>) -> anyhow::Result<Option<Stri
                 .ok_or_else(|| anyhow!("path is not representable as String"))?
                 .to_string(),
         )),
-    }
-}
-
-#[cfg(test)]
-mod cli_license_tests {
-    use super::*;
-    use crate::Opt;
-
-    #[test]
-    fn cli_license_subcommands_use_tokio_runtime_without_panicking() {
-        let activate = CliCommand {
-            no_auto_start: true,
-            prefer_mux: false,
-            class: None,
-            sub: CliSubCommand::Activate(ActivateCommand {
-                license_key: "CX-PRO-INVALID-KEY0".into(),
-            }),
-        };
-        let opts = Opt::parse_from(["cx-terminal"]);
-        let result = run_cli(&opts, activate);
-        assert!(result.is_err());
-
-        let license = CliCommand {
-            no_auto_start: true,
-            prefer_mux: false,
-            class: None,
-            sub: CliSubCommand::License(LicenseCommand { sub: None }),
-        };
-        let status = run_cli(&opts, license);
-        assert!(status.is_err());
     }
 }

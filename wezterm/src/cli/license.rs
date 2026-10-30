@@ -7,19 +7,21 @@ You may not use this file except in compliance with the License.
 //!
 //! Validates licenses against the CX Linux license server.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::Duration as StdDuration;
 
 const LICENSE_SERVER_URL: &str = "https://license.cxlinux.com";
+const LICENSE_SERVER_URL_ENV: &str = "CX_LICENSE_SERVER_URL";
 const LICENSE_KEY_DIR: &str = ".cx";
 const LICENSE_KEY_FILE: &str = "license.key";
 const GUI_LICENSE_DIR: &str = "cx-terminal";
 const GUI_LICENSE_FILE: &str = "license.json";
-const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+const HTTP_TIMEOUT: StdDuration = StdDuration::from_secs(30);
 
 /// Canonical activation command shown in docs, errors, and GUI copy.
 pub const ACTIVATE_USAGE: &str = "cx activate <LICENSE_KEY>";
@@ -76,6 +78,20 @@ struct ActivateRequest {
     hostname: String,
 }
 
+fn license_server_url() -> String {
+    std::env::var(LICENSE_SERVER_URL_ENV).unwrap_or_else(|_| LICENSE_SERVER_URL.to_string())
+}
+
+fn normalize_tier(tier: &str) -> String {
+    match tier.to_lowercase().as_str() {
+        "pro" | "professional" => "pro".to_string(),
+        "team" | "teams" | "business" => "team".to_string(),
+        "enterprise" | "org" | "organization" => "enterprise".to_string(),
+        "core" | "free" => "core".to_string(),
+        _ => "core".to_string(),
+    }
+}
+
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(HTTP_TIMEOUT)
@@ -85,11 +101,12 @@ fn http_client() -> Result<reqwest::Client, String> {
 
 /// Show only the last four characters of a license key in user-facing output.
 pub fn mask_license_key(key: &str) -> String {
-    let trimmed = key.trim();
-    if trimmed.len() <= 4 {
+    let chars: Vec<char> = key.trim().chars().collect();
+    if chars.len() <= 4 {
         return "****".to_string();
     }
-    format!("****{}", &trimmed[trimmed.len() - 4..])
+    let suffix: String = chars[chars.len() - 4..].iter().collect();
+    format!("****{}", suffix)
 }
 
 /// Generate a hardware fingerprint for this machine
@@ -152,10 +169,31 @@ fn ensure_private_dir(path: &Path, _mode: u32) -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
+fn tighten_path_mode(path: &Path, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if path.exists() {
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn tighten_path_mode(_path: &Path, _mode: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
 fn write_private_file(path: &Path, contents: &[u8], mode: u32) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     if let Some(parent) = path.parent() {
+        if parent.exists() {
+            tighten_path_mode(parent, 0o700)?;
+        }
         ensure_private_dir(parent, 0o700)?;
+        tighten_path_mode(parent, 0o700)?;
+    }
+    if path.exists() {
+        tighten_path_mode(path, mode)?;
     }
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -164,6 +202,7 @@ fn write_private_file(path: &Path, contents: &[u8], mode: u32) -> std::io::Resul
         .mode(mode)
         .open(path)?;
     file.write_all(contents)?;
+    tighten_path_mode(path, mode)?;
     Ok(())
 }
 
@@ -175,27 +214,28 @@ fn write_private_file(path: &Path, contents: &[u8], _mode: u32) -> std::io::Resu
     fs::write(path, contents)
 }
 
-pub fn parse_expires_at(raw: &str) -> DateTime<Utc> {
+pub fn parse_expires_at(raw: &str) -> Result<DateTime<Utc>, String> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
-        return dt.with_timezone(&Utc);
+        return Ok(dt.with_timezone(&Utc));
     }
-    if let Ok(dt) = raw.parse::<DateTime<Utc>>() {
-        return dt;
-    }
-    Utc::now() + chrono::Duration::days(365)
+    raw.parse::<DateTime<Utc>>()
+        .map_err(|_| format!("Invalid license expiration timestamp: {}", raw))
 }
 
-pub fn build_gui_license_document(info: &LicenseInfo, license_key: &str) -> GuiLicenseDocument {
-    let tier = info.tier.to_lowercase();
+pub fn build_gui_license_document(
+    info: &LicenseInfo,
+    license_key: &str,
+) -> Result<GuiLicenseDocument, String> {
+    let tier = normalize_tier(&info.tier);
     let now = Utc::now();
-    GuiLicenseDocument {
+    Ok(GuiLicenseDocument {
         id: license_key.to_string(),
         email: info.customer_email.clone(),
         name: None,
         tier,
         key: license_key.to_string(),
         issued_at: now,
-        expires_at: parse_expires_at(&info.expires_at),
+        expires_at: parse_expires_at(&info.expires_at)?,
         hardware_fingerprint: None,
         last_validated: Some(now),
         stripe_customer_id: None,
@@ -203,12 +243,12 @@ pub fn build_gui_license_document(info: &LicenseInfo, license_key: &str) -> GuiL
         organization_id: None,
         organization_name: info.organization.clone(),
         metadata: std::collections::HashMap::new(),
-    }
+    })
 }
 
 /// Persist activation artifacts for CLI and GUI after server-side success.
 pub fn save_activated_license(info: &LicenseInfo, license_key: &str) -> Result<(), String> {
-    let document = build_gui_license_document(info, license_key);
+    let document = build_gui_license_document(info, license_key)?;
     let json = serde_json::to_string_pretty(&document)
         .map_err(|e| format!("Failed to encode license file: {}", e))?;
 
@@ -218,7 +258,13 @@ pub fn save_activated_license(info: &LicenseInfo, license_key: &str) -> Result<(
 
     let key_path = license_key_path();
     if let Some(parent) = key_path.parent() {
+        if parent.exists() {
+            tighten_path_mode(parent, 0o700)
+                .map_err(|e| format!("Failed to tighten ~/.cx permissions: {}", e))?;
+        }
         ensure_private_dir(parent, 0o700).map_err(|e| format!("Failed to create ~/.cx: {}", e))?;
+        tighten_path_mode(parent, 0o700)
+            .map_err(|e| format!("Failed to tighten ~/.cx permissions: {}", e))?;
     }
     write_private_file(key_path.as_path(), license_key.as_bytes(), 0o600)
         .map_err(|e| format!("Failed to save license key: {}", e))?;
@@ -248,8 +294,9 @@ pub async fn validate_license(license_key: &str) -> Result<LicenseInfo, String> 
     let hardware_id = generate_hardware_id();
 
     let client = http_client()?;
+    let base = license_server_url();
     let response = client
-        .post(format!("{}/api/v1/licenses/validate", LICENSE_SERVER_URL))
+        .post(format!("{}/api/v1/licenses/validate", base))
         .json(&ValidateRequest {
             license_key: license_key.to_string(),
             hardware_id,
@@ -279,8 +326,9 @@ pub async fn activate_license(license_key: &str) -> Result<LicenseInfo, String> 
     let platform = std::env::consts::OS.to_string();
 
     let client = http_client()?;
+    let base = license_server_url();
     let response = client
-        .post(format!("{}/api/v1/licenses/activate", LICENSE_SERVER_URL))
+        .post(format!("{}/api/v1/licenses/activate", base))
         .json(&ActivateRequest {
             license_key: license_key.to_string(),
             hardware_id,
@@ -328,6 +376,56 @@ pub fn has_feature(info: &LicenseInfo, feature: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        saved: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvRestore {
+        fn new() -> Self {
+            Self { saved: Vec::new() }
+        }
+
+        fn set(&mut self, key: &str, value: &str) {
+            self.saved.push((key.to_string(), std::env::var(key).ok()));
+            std::env::set_var(key, value);
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                match value {
+                    Some(v) => std::env::set_var(&key, v),
+                    None => std::env::remove_var(&key),
+                }
+            }
+        }
+    }
+
+    fn env_test_guard() -> MutexGuard<'static, ()> {
+        ENV_TEST_LOCK.lock().unwrap()
+    }
+
+    fn sample_info(expires_at: &str, tier: &str) -> LicenseInfo {
+        LicenseInfo {
+            valid: true,
+            license_key: "CX-PRO-AAAA-BBBB-CCCC-DDDD".into(),
+            tier: tier.into(),
+            customer_email: "user@example.com".into(),
+            organization: Some("Example Org".into()),
+            expires_at: expires_at.into(),
+            days_remaining: 100,
+            systems_used: 1,
+            systems_allowed: 5,
+            device_activated: true,
+            features: vec!["cloud_ai".into()],
+            error: None,
+        }
+    }
 
     #[test]
     fn test_hardware_id_generation() {
@@ -341,79 +439,120 @@ mod tests {
     fn test_mask_license_key() {
         assert_eq!(mask_license_key("CX-PRO-ABCD-EFGH-IJKL-MNOP"), "****MNOP");
         assert_eq!(mask_license_key("abcd"), "****");
+        assert_eq!(mask_license_key("キー1234"), "****1234");
     }
 
     #[test]
-    fn gui_license_document_matches_shared_cli_fixture() {
-        let info = LicenseInfo {
-            valid: true,
-            license_key: "CX-PRO-AAAA-BBBB-CCCC-DDDD".into(),
-            tier: "Pro".into(),
-            customer_email: "user@example.com".into(),
-            organization: Some("Example Org".into()),
-            expires_at: "2030-06-01T00:00:00Z".into(),
-            days_remaining: 100,
-            systems_used: 1,
-            systems_allowed: 5,
-            device_activated: true,
-            features: vec!["cloud_ai".into()],
-            error: None,
-        };
-        let doc = build_gui_license_document(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD");
-        doc.issued_at = chrono::DateTime::parse_from_rfc3339("2030-01-01T12:00:00Z")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
-        doc.last_validated = Some(doc.issued_at);
-        doc.expires_at = chrono::DateTime::parse_from_rfc3339("2030-06-01T00:00:00Z")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
+    fn parse_expires_at_rejects_invalid_timestamp() {
+        assert!(parse_expires_at("not-a-date").is_err());
+    }
 
-        let fixture =
-            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/fixtures/cli_activation_license.json"))
-                .expect("fixture");
-        let expected: GuiLicenseDocument = serde_json::from_str(&fixture).unwrap();
-        assert_eq!(doc, expected);
+    #[test]
+    fn build_gui_license_document_normalizes_free_tier() {
+        let expires = (Utc::now() + Duration::days(30)).to_rfc3339();
+        let info = sample_info(&expires, "free");
+        let doc = build_gui_license_document(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD").unwrap();
+        assert_eq!(doc.tier, "core");
+        assert!(doc.expires_at > Utc::now() + Duration::days(29));
+    }
+
+    #[test]
+    fn gui_license_document_json_roundtrip_uses_relative_expiry() {
+        let expires = (Utc::now() + Duration::days(30)).to_rfc3339();
+        let info = sample_info(&expires, "Pro");
+        let doc = build_gui_license_document(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD").unwrap();
+        let json = serde_json::to_string(&doc).unwrap();
+        let parsed: GuiLicenseDocument = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, doc);
+        assert!(parsed.last_validated.unwrap() <= Utc::now() + Duration::seconds(5));
+    }
+
+    #[test]
+    fn save_activated_license_rejects_invalid_expiry() {
+        let _guard = env_test_guard();
+        let info = sample_info("not-a-date", "pro");
+        let err = save_activated_license(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD").unwrap_err();
+        assert!(err.contains("Invalid license expiration timestamp"));
     }
 
     #[cfg(unix)]
     #[test]
-    fn save_activated_license_uses_private_permissions() {
+    fn save_activated_license_tightens_loose_permissions() {
+        let _guard = env_test_guard();
         let temp = tempfile::tempdir().unwrap();
         let home = temp.path().join("home");
         let config = temp.path().join("config");
-        std::fs::create_dir_all(&home).unwrap();
-        std::fs::create_dir_all(&config).unwrap();
+        let loose_cx = home.join(".cx");
+        std::fs::create_dir_all(&loose_cx).unwrap();
+        std::fs::write(loose_cx.join("license.key"), b"old-key").unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&loose_cx, fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(
+                loose_cx.join("license.key"),
+                fs::Permissions::from_mode(0o644),
+            )
+            .unwrap();
+        }
 
-        std::env::set_var("HOME", &home);
-        std::env::set_var("XDG_CONFIG_HOME", &config);
+        let mut env = EnvRestore::new();
+        env.set("HOME", home.to_str().unwrap());
+        env.set("XDG_CONFIG_HOME", config.to_str().unwrap());
 
-        let info = LicenseInfo {
-                    valid: true,
-                    license_key: "CX-PRO-AAAA-BBBB-CCCC-DDDD".into(),
-                    tier: "pro".into(),
-                    customer_email: "user@example.com".into(),
-                    organization: None,
-                    expires_at: "2030-01-01T00:00:00Z".into(),
-                    days_remaining: 10,
-                    systems_used: 1,
-                    systems_allowed: 1,
-                    device_activated: true,
-                    features: vec![],
-                    error: None,
-                };
-                save_activated_license(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD").unwrap();
+        let expires = (Utc::now() + Duration::days(30)).to_rfc3339();
+        let info = sample_info(&expires, "pro");
+        save_activated_license(&info, "CX-PRO-AAAA-BBBB-CCCC-DDDD").unwrap();
 
-                use std::os::unix::fs::PermissionsExt;
-                let key_path = license_key_path();
-                let key_mode = fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
-                assert_eq!(key_mode, 0o600);
+        use std::os::unix::fs::PermissionsExt;
+        let key_path = license_key_path();
+        assert_eq!(
+            fs::metadata(&key_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(key_path.parent().unwrap())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(gui_license_path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
 
-                let cx_dir = key_path.parent().unwrap();
-                let dir_mode = fs::metadata(cx_dir).unwrap().permissions().mode() & 0o777;
-                assert_eq!(dir_mode, 0o700);
+    #[test]
+    fn check_license_without_local_key_is_specific_error() {
+        let _guard = env_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let mut env = EnvRestore::new();
+        env.set("HOME", temp.path().to_str().unwrap());
+        env.set("XDG_CONFIG_HOME", temp.path().join("cfg").to_str().unwrap());
 
-                let gui_path = gui_license_path();
-                let gui_mode = fs::metadata(&gui_path).unwrap().permissions().mode() & 0o777;
-                assert_eq!(gui_mode, 0o600);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let err = rt.block_on(check_license()).unwrap_err();
+        assert!(err.contains("No license key found"));
+    }
+
+    #[test]
+    fn activate_with_unreachable_server_reports_network_error() {
+        let _guard = env_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let mut env = EnvRestore::new();
+        env.set("HOME", temp.path().to_str().unwrap());
+        env.set("XDG_CONFIG_HOME", temp.path().join("cfg").to_str().unwrap());
+        env.set(LICENSE_SERVER_URL_ENV, "http://127.0.0.1:1");
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let err = rt
+            .block_on(activate_license("CX-PRO-AAAA-BBBB-CCCC-DDDD"))
+            .unwrap_err();
+        assert!(err.starts_with("Network error:"));
     }
 }

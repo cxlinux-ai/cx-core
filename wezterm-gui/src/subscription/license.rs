@@ -383,9 +383,7 @@ impl LicenseValidator {
         }
 
         let content = std::fs::read_to_string(&self.license_path)?;
-        let license: License = serde_json::from_str(&content)?;
-
-        Ok(license)
+        parse_license_json(&content)
     }
 
     /// Save license to disk
@@ -466,7 +464,10 @@ impl LicenseValidator {
 
     /// Validate license with server (async)
     pub async fn validate_online(&self, license: &mut License) -> Result<(), LicenseError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| LicenseError::NetworkError(e.to_string()))?;
 
         let response = client
             .post(format!("{}/validate", self.server_url))
@@ -503,7 +504,10 @@ impl LicenseValidator {
 
     /// Activate a new license key
     pub async fn activate(&self, license_key: &str) -> Result<License, LicenseError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| LicenseError::NetworkError(e.to_string()))?;
 
         let response = client
             .post(format!("{}/activate", self.server_url))
@@ -534,7 +538,10 @@ impl LicenseValidator {
 
     /// Deactivate the current license
     pub async fn deactivate(&self, license: &License) -> Result<(), LicenseError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| LicenseError::NetworkError(e.to_string()))?;
 
         let _ = client
             .post(format!("{}/deactivate", self.server_url))
@@ -563,6 +570,17 @@ impl Default for LicenseValidator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn parse_license_json(content: &str) -> Result<License, LicenseError> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| LicenseError::InvalidFormat(e.to_string()))?;
+    if let Some(tier) = value.get("tier").and_then(|v| v.as_str()) {
+        if SubscriptionTier::from_str(tier).is_none() {
+            value["tier"] = serde_json::json!("core");
+        }
+    }
+    serde_json::from_value(value).map_err(|e| LicenseError::InvalidFormat(e.to_string()))
 }
 
 #[cfg(test)]
@@ -615,16 +633,47 @@ mod tests {
 
     #[test]
     fn cli_activation_json_is_loadable_by_gui() {
-        let fixture = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../tests/fixtures/cli_activation_license.json"
-        ))
-        .expect("fixture");
+        let issued = Utc::now();
+        let expires = issued + Duration::days(30);
+        let json = serde_json::json!({
+            "id": "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+            "email": "user@example.com",
+            "name": null,
+            "tier": "pro",
+            "key": "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+            "issued_at": issued,
+            "expires_at": expires,
+            "hardware_fingerprint": null,
+            "last_validated": issued,
+            "stripe_customer_id": null,
+            "stripe_subscription_id": null,
+            "organization_id": null,
+            "organization_name": "Example Org",
+            "metadata": {},
+        });
         let license: License =
-            serde_json::from_str(&fixture).expect("GUI should parse CLI license JSON");
+            serde_json::from_value(json).expect("GUI should parse CLI license JSON");
 
         let validator = LicenseValidator::new();
         assert_eq!(license.email, "user@example.com");
         assert!(validator.is_valid(&license));
+    }
+
+    #[test]
+    fn parse_license_json_maps_unknown_tier_to_core() {
+        let issued = Utc::now();
+        let expires = issued + Duration::days(30);
+        let json = serde_json::json!({
+            "id": "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+            "email": "user@example.com",
+            "tier": "free",
+            "key": "CX-PRO-AAAA-BBBB-CCCC-DDDD",
+            "issued_at": issued,
+            "expires_at": expires,
+            "last_validated": issued,
+        })
+        .to_string();
+        let license = parse_license_json(&json).unwrap();
+        assert_eq!(license.tier, SubscriptionTier::Core);
     }
 }
