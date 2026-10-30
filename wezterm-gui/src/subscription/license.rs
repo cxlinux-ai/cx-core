@@ -576,9 +576,15 @@ fn parse_license_json(content: &str) -> Result<License, LicenseError> {
     let mut value: serde_json::Value =
         serde_json::from_str(content).map_err(|e| LicenseError::InvalidFormat(e.to_string()))?;
     if let Some(tier) = value.get("tier").and_then(|v| v.as_str()) {
-        if SubscriptionTier::from_str(tier).is_none() {
-            value["tier"] = serde_json::json!("core");
-        }
+        let normalized = SubscriptionTier::from_str(tier)
+            .map(|t| match t {
+                SubscriptionTier::Core => "core",
+                SubscriptionTier::Pro => "pro",
+                SubscriptionTier::Team => "team",
+                SubscriptionTier::Enterprise => "enterprise",
+            })
+            .unwrap_or("core");
+        value["tier"] = serde_json::json!(normalized);
     }
     serde_json::from_value(value).map_err(|e| LicenseError::InvalidFormat(e.to_string()))
 }
