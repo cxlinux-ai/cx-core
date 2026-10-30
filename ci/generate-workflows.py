@@ -836,9 +836,30 @@ rustup default {toolchain}
                         "echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
                     ),
                 ]
-            steps += [
-                RunStep("Update APT", f"{sudo}apt update"),
-            ]
+            if self.container == "debian:11":
+                # CX Terminal: Debian 11 reached end of life (2026-08-31) and its
+                # packages moved to archive.debian.org; the image's default
+                # sources now 404 on security updates.
+                steps += [
+                    RunStep(
+                        "Refresh Bullseye APT sources (archive)",
+                        "set -eux\n"
+                        "# debian:11 image still ships security.debian.org lists that 404 for Bullseye.\n"
+                        "rm -f /etc/apt/sources.list.d/*\n"
+                        "cat >/etc/apt/sources.list <<'EOF'\n"
+                        "deb http://archive.debian.org/debian bullseye main contrib non-free\n"
+                        "deb http://archive.debian.org/debian-security bullseye-security main contrib non-free\n"
+                        "EOF\n"
+                        "printf 'Acquire::Check-Valid-Until \"false\";\\n' >/etc/apt/apt.conf.d/99no-check-valid\n"
+                        "apt-get clean\n"
+                        "rm -rf /var/lib/apt/lists/*\n"
+                        "apt-get update",
+                    ),
+                ]
+            else:
+                steps += [
+                    RunStep("Update APT", f"{sudo}apt update"),
+                ]
 
         if self.uses_zypper():
             if self.container:
