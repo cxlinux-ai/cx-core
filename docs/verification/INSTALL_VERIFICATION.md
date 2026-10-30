@@ -1,6 +1,6 @@
 # APT clean-install verification (2026-10-19)
 
-Commands follow [README.md](../../README.md) **APT Repository (Recommended)** exactly.
+Commands follow the repo [README](https://github.com/cxlinux-ai/cx-core/blob/main/README.md) **APT Repository (Recommended)** exactly.
 
 **Summary:** see [VERIFICATION_SUMMARY.md](./VERIFICATION_SUMMARY.md). Raw logs: CI artifact `verification-logs` on PR [#774](https://github.com/cxlinux-ai/cx-core/pull/774).
 
@@ -33,4 +33,4 @@ E: Unable to correct problems, you have held broken packages.
 
 ## CI
 
-Workflow [`.github/workflows/apt-install-smoke.yml`](../../.github/workflows/apt-install-smoke.yml) runs the same steps on `ubuntu-24.04` (required) and `debian:12` in Docker (`continue-on-error: true` until packaging is fixed).
+Workflow [`apt-install-smoke.yml`](https://github.com/cxlinux-ai/cx-core/blob/main/.github/workflows/apt-install-smoke.yml) runs the same steps on `ubuntu-24.04` (required) and `debian:12` in Docker (`continue-on-error: true` until packaging is fixed).

@@ -15,8 +15,8 @@ Evidence for PR [#774](https://github.com/cxlinux-ai/cx-core/pull/774). Full tra
 
 | Workflow | What it proves |
 |----------|----------------|
-| [apt-install-smoke.yml](../../.github/workflows/apt-install-smoke.yml) | Official `repo.cxlinux.com` install on Ubuntu 24.04 (required); Debian 12 (`continue-on-error` until Bookworm package ships). |
-| [debian12-deb-smoke.yml](../../.github/workflows/debian12-deb-smoke.yml) | Build minimal CLI `.deb` in `debian:12`, install in fresh container, `cx --version` / `cx activate --help`. |
+| [`apt-install-smoke.yml`](https://github.com/cxlinux-ai/cx-core/blob/main/.github/workflows/apt-install-smoke.yml) | Official `repo.cxlinux.com` install on Ubuntu 24.04 (required); Debian 12 (`continue-on-error` until Bookworm package ships). |
+| [`debian12-deb-smoke.yml`](https://github.com/cxlinux-ai/cx-core/blob/main/.github/workflows/debian12-deb-smoke.yml) | Build minimal CLI `.deb` in `debian:12`, install in fresh container, `cx --version` / `cx activate --help`. |
 
 Download **verification-logs** and **cx-terminal-deb-bookworm** artifacts from the latest PR run for raw transcripts.
 
