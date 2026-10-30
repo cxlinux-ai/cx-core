@@ -18,6 +18,7 @@ use wezterm_gui_subcommands::*;
 
 mod asciicast;
 mod cli;
+mod runtime;
 
 //    let message = "; ❤ 😍🤢\n\x1b[91;mw00t\n\x1b[37;104;m bleet\x1b[0;m.";
 
@@ -187,6 +188,17 @@ enum SubCommand {
     /// Manage AI models and settings
     #[command(name = "ai", about = "Manage AI models (download, status, etc.)")]
     AI(cli::ai::AICommand),
+
+    /// Activate a CX Linux license key (`cx activate <LICENSE_KEY>`)
+    #[command(name = "activate", about = "Activate a CX Linux license key")]
+    Activate(cli::ActivateCommand),
+
+    /// License status; use `cx license activate` as an alias of `cx activate`
+    #[command(
+        name = "license",
+        about = "Show license status or activate via subcommand"
+    )]
+    License(cli::LicenseCommand),
 
     /// Catch-all: route unrecognized input to `cx ask` for natural language processing.
     /// This allows `cx "analyze logs"` to work the same as `cx ask "analyze logs"`.
@@ -780,6 +792,12 @@ fn init_config(opts: &Opt) -> anyhow::Result<ConfigHandle> {
     Ok(config)
 }
 
+fn run_async_command(
+    fut: impl std::future::Future<Output = anyhow::Result<()>>,
+) -> anyhow::Result<()> {
+    runtime::block_on_async(fut)
+}
+
 fn run() -> anyhow::Result<()> {
     env_bootstrap::bootstrap();
 
@@ -821,6 +839,8 @@ fn run() -> anyhow::Result<()> {
         SubCommand::Explain(cmd) => cmd.run(),
         SubCommand::Daemon(cmd) => cmd.run(),
         SubCommand::AI(cmd) => cmd.run(),
+        SubCommand::Activate(cmd) => run_async_command(cmd.run()),
+        SubCommand::License(cmd) => run_async_command(cmd.run()),
         // Catch-all: route unrecognized commands to cx ask
         // This makes `cx "analyze logs"` work like `cx ask "analyze logs"`
         SubCommand::NaturalLanguage(args) => {

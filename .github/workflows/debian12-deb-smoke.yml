@@ -1,0 +1,160 @@
+name: Debian 12 Bookworm Deb Build + Install
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/debian12-deb-smoke.yml'
+      - 'ci/build-deb-bookworm.sh'
+      - 'ci/test-deb-bookworm.sh'
+      - 'ci/deploy.sh'
+      - 'wezterm/**'
+      - 'wezterm-gui/**'
+      - 'wezterm-mux-server/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    name: Build .deb on debian:12
+    runs-on: ubuntu-24.04
+    container: debian:12
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: "0"
+      HOME: /root
+    steps:
+      - name: Install build prerequisites
+        run: |
+          set -euxo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y git curl ca-certificates build-essential pkg-config \
+            libssl-dev libx11-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
+            libfontconfig1-dev libfreetype6-dev libpng-dev zlib1g-dev \
+            python3 fakeroot dpkg-dev
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+
+      - name: Vendor dependencies
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cargo vendor --locked --versioned-dirs
+
+      - name: Configure vendored sources
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [source.crates-io]
+          replace-with = "vendored-sources"
+
+          [source.vendored-sources]
+          directory = "vendor"
+          EOF
+
+      - name: Build minimal Bookworm .deb (CLI)
+        run: |
+          chmod +x ci/build-deb-bookworm.sh ci/package-deb-bookworm-minimal.sh
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          MINIMAL_DEB=1 SKIP_VENDOR=1 TAG_NAME="0.0.0+ci.bookworm.${{ github.run_number }}" bash ci/build-deb-bookworm.sh
+
+      - name: Upload bookworm .deb
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cx-terminal-deb-bookworm
+          path: cx-terminal-*.debian12-minimal.deb
+
+  full-gui-deb:
+    name: Full GUI .deb on debian:12 (optional)
+    runs-on: ubuntu-24.04
+    container: debian:12
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: "0"
+      HOME: /root
+    steps:
+      - name: Install build prerequisites
+        run: |
+          set -euxo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y git curl ca-certificates build-essential pkg-config \
+            libssl-dev libx11-dev libxcb1-dev libxkbcommon-dev libwayland-dev \
+            libfontconfig1-dev libfreetype6-dev libpng-dev zlib1g-dev \
+            python3 fakeroot dpkg-dev
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          submodules: recursive
+
+      - name: Init freetype submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 \
+            deps/freetype/zlib deps/freetype/libpng deps/freetype/freetype2
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+
+      - name: Vendor dependencies
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cargo vendor --locked --versioned-dirs
+
+      - name: Configure vendored sources
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [source.crates-io]
+          replace-with = "vendored-sources"
+
+          [source.vendored-sources]
+          directory = "vendor"
+          EOF
+
+      - name: Build full GUI Bookworm .deb
+        run: |
+          chmod +x ci/build-deb-bookworm.sh
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          SKIP_VENDOR=1 TAG_NAME="0.0.0+ci.bookworm.gui.${{ github.run_number }}" bash ci/build-deb-bookworm.sh 2>&1 | tee bookworm-full-gui-build.log
+
+      - name: Upload full GUI build log or package
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bookworm-full-gui-deb
+          path: |
+            bookworm-full-gui-build.log
+            cx-terminal-*.debian12.deb
+
+  install-smoke:
+    name: Install .deb in debian:12 container
+    needs: build-deb
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Download .deb artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cx-terminal-deb-bookworm
+          path: artifacts
+
+      - name: Run install smoke test
+        run: |
+          chmod +x ci/test-deb-bookworm.sh
+          DEB="$(ls -1 artifacts/*.deb | head -1)"
+          bash ci/test-deb-bookworm.sh "$DEB"

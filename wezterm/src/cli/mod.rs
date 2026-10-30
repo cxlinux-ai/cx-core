@@ -235,12 +235,15 @@ Outputs the pane-id for the newly created pane on success"
     Snapshots(snapshot::SnapshotsCommand),
 
     // CX License: License management
-    /// Activate a CX Linux license
+    /// Activate a CX Linux license key (canonical: `cx activate <LICENSE_KEY>`)
     #[command(name = "activate", about = "Activate a CX Linux license key")]
     Activate(ActivateCommand),
 
-    /// Show license status
-    #[command(name = "license", about = "Show current license status")]
+    /// License status and activation aliases
+    #[command(
+        name = "license",
+        about = "Show license status (`cx license`) or activate (`cx license activate`, alias)"
+    )]
     License(LicenseCommand),
 
     // CX Security: Vulnerability Management
@@ -273,9 +276,31 @@ pub struct ActivateCommand {
 
 impl ActivateCommand {
     pub async fn run(&self) -> anyhow::Result<()> {
-        println!("Activating license: {}...", self.license_key);
+        println!(
+            "Activating license: {}...",
+            license::mask_license_key(&self.license_key)
+        );
+        self.finish_activation(license::activate_license(&self.license_key).await)
+            .await
+    }
 
-        match license::activate_license(&self.license_key).await {
+    #[cfg(test)]
+    pub async fn run_with_server_base(&self, base: &str) -> anyhow::Result<()> {
+        println!(
+            "Activating license: {}...",
+            license::mask_license_key(&self.license_key)
+        );
+        self.finish_activation(
+            license::activate_license_with_server_base(&self.license_key, base).await,
+        )
+        .await
+    }
+
+    async fn finish_activation(
+        &self,
+        result: Result<license::LicenseInfo, String>,
+    ) -> anyhow::Result<()> {
+        match result {
             Ok(info) => {
                 println!("\n✅ License activated successfully!\n");
                 println!("  Tier: {}", info.tier);
@@ -297,40 +322,65 @@ impl ActivateCommand {
     }
 }
 
-/// Command to show license status
 #[derive(Debug, Parser, Clone)]
-pub struct LicenseCommand;
+pub struct LicenseCommand {
+    #[command(subcommand)]
+    sub: Option<LicenseSubCommand>,
+}
+
+#[derive(Debug, Parser, Clone)]
+enum LicenseSubCommand {
+    /// Show current license status (default when `cx license` has no subcommand)
+    #[command(name = "status", about = "Show current license status")]
+    Status,
+    /// Activate a license key (alias for `cx activate`)
+    #[command(
+        name = "activate",
+        about = "Activate a license key (alias for `cx activate`)"
+    )]
+    Activate(ActivateCommand),
+}
 
 impl LicenseCommand {
     pub async fn run(&self) -> anyhow::Result<()> {
-        match license::check_license().await {
-            Ok(info) => {
-                println!("\n📄 CX Linux License Status\n");
-                println!("  License: {}", info.license_key);
-                println!("  Tier: {}", info.tier.to_uppercase());
-                println!("  Email: {}", info.customer_email);
-                if let Some(org) = info.organization {
-                    println!("  Organization: {}", org);
+        match &self.sub {
+            Some(LicenseSubCommand::Activate(cmd)) => cmd.run().await,
+            None | Some(LicenseSubCommand::Status) => print_license_status().await,
+        }
+    }
+}
+
+async fn print_license_status() -> anyhow::Result<()> {
+    match license::check_license().await {
+        Ok(info) => {
+            println!("\n📄 CX Linux License Status\n");
+            println!(
+                "  License: {}",
+                license::mask_license_key(&info.license_key)
+            );
+            println!("  Tier: {}", info.tier.to_uppercase());
+            println!("  Email: {}", info.customer_email);
+            if let Some(org) = info.organization {
+                println!("  Organization: {}", org);
+            }
+            println!("  Expires: {}", info.expires_at);
+            println!("  Days remaining: {}", info.days_remaining);
+            println!("  Devices: {}/{}", info.systems_used, info.systems_allowed);
+            println!(
+                "  This device: {}",
+                if info.device_activated {
+                    "✅ Activated"
+                } else {
+                    "❌ Not activated"
                 }
-                println!("  Expires: {}", info.expires_at);
-                println!("  Days remaining: {}", info.days_remaining);
-                println!("  Devices: {}/{}", info.systems_used, info.systems_allowed);
-                println!(
-                    "  This device: {}",
-                    if info.device_activated {
-                        "✅ Activated"
-                    } else {
-                        "❌ Not activated"
-                    }
-                );
-                println!("\nFeatures: {}", info.features.join(", "));
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("\n❌ No valid license: {}", e);
-                eprintln!("\nTo activate a license, run: cx activate <LICENSE_KEY>");
-                Err(anyhow!(e))
-            }
+            );
+            println!("\nFeatures: {}", info.features.join(", "));
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("\n❌ No valid license: {}", e);
+            eprintln!("\nTo activate a license, run: {}", license::ACTIVATE_USAGE);
+            Err(anyhow!(e))
         }
     }
 }
@@ -402,15 +452,6 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             drop(client);
             cmd.run()
         }
-        // CX License commands don't need the mux client
-        CliSubCommand::Activate(cmd) => {
-            drop(client);
-            cmd.run().await
-        }
-        CliSubCommand::License(cmd) => {
-            drop(client);
-            cmd.run().await
-        }
         // CX Security commands don't need the mux client
         CliSubCommand::Security(cmd) => {
             drop(client);
@@ -444,14 +485,42 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
             drop(client);
             cmd.run()
         }
+        CliSubCommand::Activate(_) | CliSubCommand::License(_) => {
+            unreachable!("license commands are handled in run_cli before run_cli_async")
+        }
     }
 }
 
 pub fn run_cli(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()> {
+    match &cli.sub {
+        CliSubCommand::Activate(cmd) => {
+            return crate::runtime::block_on_async(cmd.clone().run());
+        }
+        CliSubCommand::License(cmd) => {
+            return crate::runtime::block_on_async(cmd.clone().run());
+        }
+        _ => {}
+    }
+
     let executor = promise::spawn::ScopedExecutor::new();
     match promise::spawn::block_on(executor.run(async move { run_cli_async(opts, cli).await })) {
         Ok(_) => Ok(()),
         Err(err) => crate::terminate_with_error(err),
+    }
+}
+
+/// Test-only entry point so `run_cli` activate routing can be exercised with an injected server base.
+#[cfg(test)]
+pub(crate) fn run_cli_with_license_server_base(
+    opts: &crate::Opt,
+    cli: CliCommand,
+    base: &str,
+) -> anyhow::Result<()> {
+    match &cli.sub {
+        CliSubCommand::Activate(cmd) => {
+            crate::runtime::block_on_async(cmd.clone().run_with_server_base(base))
+        }
+        _ => run_cli(opts, cli),
     }
 }
 
@@ -465,5 +534,72 @@ pub fn resolve_relative_cwd(cwd: Option<OsString>) -> anyhow::Result<Option<Stri
                 .ok_or_else(|| anyhow!("path is not representable as String"))?
                 .to_string(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod license_cli_tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        saved: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvRestore {
+        fn new() -> Self {
+            Self { saved: Vec::new() }
+        }
+
+        fn set(&mut self, key: &str, value: &str) {
+            self.saved.push((key.to_string(), std::env::var(key).ok()));
+            std::env::set_var(key, value);
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                match value {
+                    Some(v) => std::env::set_var(&key, v),
+                    None => std::env::remove_var(&key),
+                }
+            }
+        }
+    }
+
+    fn env_test_guard() -> MutexGuard<'static, ()> {
+        ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[test]
+    fn run_cli_activate_unreachable_server_reports_network_error() {
+        let _guard = env_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let mut env = EnvRestore::new();
+        env.set("HOME", temp.path().to_str().unwrap());
+        env.set("XDG_CONFIG_HOME", temp.path().join("cfg").to_str().unwrap());
+
+        let opts = crate::Opt {
+            skip_config: true,
+            config_file: None,
+            config_override: vec![],
+            cmd: None,
+        };
+        let cli = CliCommand {
+            no_auto_start: true,
+            prefer_mux: false,
+            class: None,
+            sub: CliSubCommand::Activate(ActivateCommand {
+                license_key: "CX-PRO-AAAA-BBBB-CCCC-DDDD".into(),
+            }),
+        };
+
+        let err = run_cli_with_license_server_base(&opts, cli, "http://127.0.0.1:1").unwrap_err();
+        assert!(err.to_string().contains("Network error"));
     }
 }

@@ -354,6 +354,7 @@ EOF
 set -e
 if [ "\$1" = "configure" ] ; then
         update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/open-cx-terminal-here 20
+        update-alternatives --install /usr/bin/cx cx /usr/bin/cx-terminal 100
 fi
 EOF
 
@@ -362,6 +363,7 @@ EOF
 set -e
 if [ "\$1" = "remove" ]; then
 	update-alternatives --remove x-terminal-emulator /usr/bin/open-cx-terminal-here
+	update-alternatives --remove cx /usr/bin/cx-terminal
 fi
 EOF
 

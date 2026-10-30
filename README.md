@@ -70,9 +70,13 @@ CX Linux is an AI-native operating system that simplifies system administration 
 curl -fsSL https://repo.cxlinux.com/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/cxlinux.gpg
 echo "deb [signed-by=/etc/apt/keyrings/cxlinux.gpg] https://repo.cxlinux.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cxlinux.list
 
-# Install CX Terminal
+# Install CX Terminal (binary: cx-terminal; `cx` symlink added by the package postinst)
 sudo apt update && sudo apt install cx-terminal
 ```
+
+**APT repo requirements:** the published `cx-terminal` package is built on Ubuntu 24.04 and requires `libc6 >= 2.39`. Ubuntu 22.04/20.04 and Debian 12 (Bookworm) cannot install from this repo until a compatible build is published. See [docs/verification/INSTALL_VERIFICATION.md](docs/verification/INSTALL_VERIFICATION.md).
+
+**License activation** (after Pro/Team checkout): **`cx activate <LICENSE_KEY>`** (aliases: `cx license activate …`, `cx-terminal activate …`). Keys appear on the [pricing success page](https://cxlinux.com/pricing/success) and in your account dashboard. See [docs/verification/LICENSE_ACTIVATION_FLOW.md](docs/verification/LICENSE_ACTIVATION_FLOW.md).
 
 ### Build from Source
 
@@ -126,7 +130,8 @@ sudo cp target/release/cx-terminal-gui /usr/local/bin/wezterm-gui
 
 | Install method | Platforms |
 |--------------|----------|
-| **APT package** | Ubuntu 24.04 LTS or newer, amd64 (the package needs glibc 2.39) — verified |
+| **APT package** | Ubuntu 24.04 LTS or newer, amd64 (glibc 2.39) — verified via CI |
+| **Debian 12 (Bookworm)** | Minimal `.deb` in CI; published APT repo pending glibc-compatible package — see [INSTALL_VERIFICATION.md](docs/verification/INSTALL_VERIFICATION.md) |
 | **Build from source** | Other Linux distributions and macOS — not yet verified |
 
 ---
@@ -146,6 +151,12 @@ cx ask "how do I check disk usage"
 
 # Ask and run, after confirming
 cx ask -d "show memory usage"
+
+# Activate a Pro license (after checkout)
+cx activate CX-PRO-XXXX-XXXX-XXXX-XXXX
+
+# Check license status
+cx license status
 ```
 
 ---

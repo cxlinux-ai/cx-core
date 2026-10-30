@@ -10,9 +10,7 @@ fn new_build() -> cc::Build {
 }
 
 fn zlib() {
-    if !Path::new("zlib/.git").exists() {
-        git_submodule_update();
-    }
+    ensure_tree("zlib/adler32.c", "deps/freetype/zlib");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -47,9 +45,7 @@ fn zlib() {
 }
 
 fn libpng() {
-    if !Path::new("libpng/.git").exists() {
-        git_submodule_update();
-    }
+    ensure_tree("libpng/png.c", "deps/freetype/libpng");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -112,9 +108,7 @@ fn libpng() {
 }
 
 fn freetype() {
-    if !Path::new("freetype2/.git").exists() {
-        git_submodule_update();
-    }
+    ensure_tree("freetype2/src/base/ftsystem.c", "deps/freetype/freetype2");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -233,10 +227,39 @@ fn freetype() {
     println!("cargo:lib={}", build_dir.display());
 }
 
-fn git_submodule_update() {
-    let _ = std::process::Command::new("git")
-        .args(["submodule", "update", "--init"])
-        .status();
+fn repo_root() -> PathBuf {
+    let mut dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    while dir.parent().is_some() {
+        if dir.join(".git").exists() {
+            return dir;
+        }
+        dir.pop();
+    }
+    dir
+}
+
+fn ensure_tree(probe: &str, submodule_path: &str) {
+    if Path::new(probe).exists() {
+        return;
+    }
+    let root = repo_root();
+    let status = std::process::Command::new("git")
+        .current_dir(&root)
+        .args([
+            "submodule",
+            "update",
+            "--init",
+            "--depth",
+            "1",
+            submodule_path,
+        ])
+        .status()
+        .expect("failed to spawn git for freetype submodules");
+    if !status.success() || !Path::new(probe).exists() {
+        panic!(
+            "missing freetype dependency at {probe}; run `git submodule update --init --recursive deps/freetype` from the repo root"
+        );
+    }
 }
 
 fn main() {

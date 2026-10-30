@@ -1,0 +1,57 @@
+name: APT Install Smoke Test
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/apt-install-smoke.yml'
+      - 'ci/apt-install-smoke.sh'
+      - 'README.md'
+      - 'ci/deploy.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-24-04:
+    name: apt install (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Run official APT install (host)
+        run: |
+          set -euxo pipefail
+          sudo bash ci/apt-install-smoke.sh ubuntu 2>&1 | tee apt-install-ubuntu-24.04.log
+
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verification-logs-ubuntu
+          path: apt-install-ubuntu-24.04.log
+
+  debian-12:
+    name: apt install (debian:12)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Run official APT install (Docker debian:12)
+        run: |
+          set -euxo pipefail
+          docker run --rm -v "$PWD/ci/apt-install-smoke.sh:/apt-install-smoke.sh:ro" debian:12 \
+            bash /apt-install-smoke.sh debian 2>&1 | tee apt-install-debian-12.log
+
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verification-logs-debian12
+          path: apt-install-debian-12.log
+
+      - name: Document Debian 12 blocker
+        if: failure()
+        run: |
+          echo "::warning::Debian 12 install failed: published cx-terminal requires libc6 (>= 2.39) and libssl3t64; Bookworm ships libc6 2.36. Use Ubuntu 24.04+ for APT until a Bookworm-compatible build is published."

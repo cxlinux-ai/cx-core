@@ -13,6 +13,8 @@ dhat-heap.json
 /WezTerm*.zip
 /WezTerm*.exe
 /wezterm*.deb
+/cx-terminal*.debian12-minimal.deb
+/vendor/
 /wezterm*.tar.xz
 /pkg
 /target/
@@ -55,6 +57,7 @@ dhat-heap.json
 **/*.rs.bk
 .*.sw*
 /esctest.log
+/docs/verification/*.log
 /AppDir
 /WezTerm*.AppImage
 /WezTerm*.AppImage.zsync
