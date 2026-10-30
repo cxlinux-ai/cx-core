@@ -7,16 +7,14 @@ You may not use this file except in compliance with the License.
 //!
 //! Validates licenses against the CX Linux license server.
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::Duration as StdDuration;
 
 const LICENSE_SERVER_BASE: &str = "https://license.cxlinux.com";
-pub use LICENSE_SERVER_BASE as LICENSE_SERVER_BASE_URL;
 const LICENSE_KEY_DIR: &str = ".cx";
 const LICENSE_KEY_FILE: &str = "license.key";
 const GUI_LICENSE_DIR: &str = "cx-terminal";
@@ -390,6 +388,7 @@ pub fn has_feature(info: &LicenseInfo, feature: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration;
     use std::sync::{Mutex, MutexGuard};
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
