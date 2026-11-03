@@ -123,7 +123,7 @@ jobs:
           mv ~/rpmbuild/RPMS/*/cx-mux-server-*.rpm cx-mux-server-nightly-centos9.rpm
           mv ~/rpmbuild/RPMS/*/cx-terminal-*.rpm cx-terminal-nightly-centos9.rpm
       - name: "Upload artifact"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: "centos9"
           path: "cx-terminal-*.rpm"
