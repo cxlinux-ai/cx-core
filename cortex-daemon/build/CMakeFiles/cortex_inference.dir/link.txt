@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcortex_inference.a CMakeFiles/cortex_inference.dir/src/inference/llama_engine.cpp.o CMakeFiles/cortex_inference.dir/src/inference/inference_manager.cpp.o CMakeFiles/cortex_inference.dir/src/bindings/llama_c_bridge.cpp.o CMakeFiles/cortex_inference.dir/src/models/model_registry.cpp.o
+/usr/bin/ranlib libcortex_inference.a

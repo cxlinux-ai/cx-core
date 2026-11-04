@@ -70,28 +70,24 @@ pub trait AIProvider: Send + Sync {
 
 /// Streaming response
 pub struct AIResponseStream {
-    // This would be implemented with async-stream or similar
-    // For now, placeholder
-    chunks: Vec<String>,
-    position: usize,
+    receiver: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
 
 impl AIResponseStream {
-    pub fn new(chunks: Vec<String>) -> Self {
-        Self {
-            chunks,
-            position: 0,
+    pub fn new(receiver: tokio::sync::mpsc::UnboundedReceiver<String>) -> Self {
+        Self { receiver }
+    }
+    
+    pub fn from_chunks(chunks: Vec<String>) -> Self {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        for chunk in chunks {
+            let _ = tx.send(chunk);
         }
+        Self { receiver: rx }
     }
 
-    pub fn next_chunk(&mut self) -> Option<String> {
-        if self.position < self.chunks.len() {
-            let chunk = self.chunks[self.position].clone();
-            self.position += 1;
-            Some(chunk)
-        } else {
-            None
-        }
+    pub async fn next_chunk(&mut self) -> Option<String> {
+        self.receiver.recv().await
     }
 }
 
