@@ -33,6 +33,7 @@ pub mod daemon;
 pub mod license;
 pub mod model_utils;
 pub mod new;
+pub mod package_guard;
 pub mod shortcuts;
 pub mod snapshot;
 

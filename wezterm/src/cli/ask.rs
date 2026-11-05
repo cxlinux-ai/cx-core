@@ -27,6 +27,7 @@ use super::ask_response::{commands_from_envelope, parse_ai_text};
 use super::model_utils::{
     is_model_available as is_local_model_available, model_path, MODEL_FILENAME,
 };
+use super::package_guard::{self, Classification, Consent, Outcome};
 
 const CX_SYSTEM_PROMPT: &str = r#"You are a Linux command expert assistant. You can either:
 1. Answer directly if you have the knowledge
@@ -609,6 +610,38 @@ impl AskCommand {
             return Ok(());
         }
 
+        // CX Terminal: package changes never run straight through `sh -c`. They are
+        // previewed with `apt-get -s`, confirmed and recorded by package_guard.
+        let commands: Vec<String> = commands
+            .iter()
+            .flat_map(|c| package_guard::split_and_chain(c))
+            .collect();
+        let classes: Vec<Classification> = commands
+            .iter()
+            .map(|c| package_guard::classify(c))
+            .collect();
+        let refusals: Vec<(&String, &String)> = commands
+            .iter()
+            .zip(&classes)
+            .filter_map(|(c, k)| match k {
+                Classification::Refused(why) => Some((c, why)),
+                _ => None,
+            })
+            .collect();
+        if !refusals.is_empty() {
+            eprintln!("\nNot running anything:");
+            for (cmd, why) in refusals {
+                eprintln!("  $ {}\n    {}", cmd, why);
+            }
+            return Ok(());
+        }
+        if classes
+            .iter()
+            .any(|k| matches!(k, Classification::Package(_)))
+        {
+            return self.execute_with_package_guard(&commands, &classes);
+        }
+
         if !self.auto_confirm {
             eprintln!("\nCommands to execute (in order, stops at the first failure):");
             for command in &commands {
@@ -635,6 +668,66 @@ impl AskCommand {
             }
         }
 
+        Ok(())
+    }
+
+    /// Run a command list that includes package changes: each package command is
+    /// previewed and confirmed on its own; other commands get their own `[y/N]`.
+    /// Stops at the first decline or failure.
+    fn execute_with_package_guard(
+        &self,
+        commands: &[String],
+        classes: &[Classification],
+    ) -> Result<()> {
+        eprintln!("\nCommands (each is confirmed separately; stops at the first No or failure):");
+        for command in commands {
+            eprintln!("  $ {}", command);
+        }
+
+        let consent = if self.auto_confirm {
+            Consent::Explicit
+        } else {
+            Consent::Prompt
+        };
+        let data_dir = package_guard::default_data_dir();
+        let mut runner = package_guard::SystemRunner;
+        let mut stderr = io::stderr();
+
+        for (command, class) in commands.iter().zip(classes) {
+            match class {
+                Classification::Package(pkg) => {
+                    let outcome = package_guard::guard(
+                        pkg,
+                        consent,
+                        &mut runner,
+                        &mut package_guard::stdin_answer,
+                        &mut stderr,
+                        data_dir.as_deref(),
+                    )?;
+                    if !matches!(outcome, Outcome::Executed { success: true, .. }) {
+                        return Ok(());
+                    }
+                }
+                _ => {
+                    if !self.auto_confirm {
+                        eprint!("\nRun `{}`? [y/N] ", command);
+                        io::stderr().flush()?;
+                        let yes = package_guard::stdin_answer()
+                            .map_or(false, |a| a.trim().eq_ignore_ascii_case("y"));
+                        if !yes {
+                            eprintln!("Aborted.");
+                            return Ok(());
+                        }
+                    }
+                    eprintln!("$ {}", command);
+                    let status = Command::new("sh").arg("-c").arg(command).status()?;
+                    if !status.success() {
+                        eprintln!("Command failed with exit code: {:?}", status.code());
+                        return Ok(());
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
