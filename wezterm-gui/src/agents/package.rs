@@ -76,6 +76,19 @@ pub enum PackageCommand {
     Search { query: String },
     /// Install a package
     Install { package: String },
+    /// Install a natural-language package profile
+    NaturalInstall {
+        query: String,
+        packages: Vec<String>,
+        confidence: u8,
+        reasoning: String,
+    },
+    /// Ask the user to clarify an ambiguous package request
+    Clarify {
+        query: String,
+        reason: String,
+        suggestions: Vec<String>,
+    },
     /// Remove a package
     Remove { package: String },
     /// List installed packages
@@ -99,8 +112,13 @@ pub enum PackageCommand {
 impl PackageCommand {
     /// Parse a command string into a PackageCommand
     pub fn parse(input: &str) -> Self {
-        let input_lower = input.to_lowercase();
+        let normalized = normalize_package_request(input);
+        let input_lower = normalized.to_lowercase();
         let words: Vec<&str> = input.split_whitespace().collect();
+
+        if let Some(command) = parse_natural_install(input, &input_lower) {
+            return command;
+        }
 
         // Search
         if input_lower.contains("search") || input_lower.contains("find package") {
@@ -118,7 +136,7 @@ impl PackageCommand {
         if input_lower.contains("install") {
             let package = words
                 .iter()
-                .skip_while(|&w| w.to_lowercase() != "install")
+                .skip_while(|&w| normalize_package_request(w).to_lowercase() != "install")
                 .nth(1)
                 .map(|s| s.to_string())
                 .or_else(|| words.last().map(|s| s.to_string()))
@@ -203,6 +221,150 @@ impl PackageCommand {
     }
 }
 
+fn normalize_package_request(input: &str) -> String {
+    input
+        .to_lowercase()
+        .split_whitespace()
+        .map(|word| match word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-') {
+            "instal" | "isntall" | "isntal" => "install",
+            "pyhton" | "pythn" => "python",
+            "dockr" | "docer" => "docker",
+            "kubernets" | "kubernetess" | "k8s" => "kubernetes",
+            "ngnix" => "nginx",
+            "machne" => "machine",
+            "lerning" | "leaning" => "learning",
+            other => other,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_natural_install(original: &str, input: &str) -> Option<PackageCommand> {
+    let is_install_request = input.contains("install")
+        || input.contains("set up")
+        || input.contains("setup")
+        || input.contains("i need")
+        || input.contains("something for");
+
+    if !is_install_request {
+        return None;
+    }
+
+    if input.contains("web server") {
+        return Some(PackageCommand::Clarify {
+            query: original.to_string(),
+            reason: "A web server could mean a reverse proxy, static file server, or application runtime.".to_string(),
+            suggestions: vec![
+                "install nginx for a common production reverse proxy".to_string(),
+                "install apache2 for a traditional HTTP server".to_string(),
+                "install caddy for automatic HTTPS".to_string(),
+            ],
+        });
+    }
+
+    if input.contains("machine learning") || input.contains("ml") {
+        return Some(PackageCommand::NaturalInstall {
+            query: original.to_string(),
+            packages: vec![
+                "python3",
+                "python3-pip",
+                "python3-venv",
+                "python3-numpy",
+                "python3-scipy",
+                "python3-pandas",
+                "python3-sklearn",
+                "jupyter-notebook",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+            confidence: 86,
+            reasoning: "I understood this as a Python-based machine learning workstation setup."
+                .to_string(),
+        });
+    }
+
+    if input.contains("python development")
+        || input.contains("python dev")
+        || input.contains("python environment")
+    {
+        return Some(PackageCommand::NaturalInstall {
+            query: original.to_string(),
+            packages: vec![
+                "python3",
+                "python3-pip",
+                "python3-venv",
+                "python3-dev",
+                "build-essential",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+            confidence: 91,
+            reasoning: "I understood this as a Python development environment with compiler headers, pip, and virtualenv support.".to_string(),
+        });
+    }
+
+    if input.contains("docker") && input.contains("kubernetes") {
+        return Some(PackageCommand::NaturalInstall {
+            query: original.to_string(),
+            packages: vec!["docker.io", "docker-compose-plugin", "kubectl"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            confidence: 82,
+            reasoning: "I understood this as container tooling plus the Kubernetes command-line client.".to_string(),
+        });
+    }
+
+    if input.contains("nginx") {
+        return Some(PackageCommand::NaturalInstall {
+            query: original.to_string(),
+            packages: vec!["nginx"].into_iter().map(str::to_string).collect(),
+            confidence: 94,
+            reasoning: "I understood this as a request for the nginx web server.".to_string(),
+        });
+    }
+
+    if input.contains("python") {
+        return Some(PackageCommand::NaturalInstall {
+            query: original.to_string(),
+            packages: vec!["python3", "python3-pip", "python3-venv"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            confidence: 78,
+            reasoning: "I understood this as a general Python runtime request.".to_string(),
+        });
+    }
+
+    if input.contains("docker") {
+        return Some(PackageCommand::NaturalInstall {
+            query: original.to_string(),
+            packages: vec!["docker.io", "docker-compose-plugin"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            confidence: 84,
+            reasoning: "I understood this as a Docker engine and Compose plugin setup.".to_string(),
+        });
+    }
+
+    if input.contains("something for") || input.contains("i need") || input.contains("set up") {
+        return Some(PackageCommand::Clarify {
+            query: original.to_string(),
+            reason: "The request describes a goal, but not enough constraints to choose packages safely.".to_string(),
+            suggestions: vec![
+                "name the language or framework".to_string(),
+                "say whether this is for a desktop, server, or container host".to_string(),
+                "ask for a known profile such as machine learning or python development".to_string(),
+            ],
+        });
+    }
+
+    None
+}
+
 /// Package agent for package management
 pub struct PackageAgent {
     capabilities: Vec<AgentCapability>,
@@ -271,29 +433,67 @@ impl PackageAgent {
 
     /// Install a package (returns command to run, requires confirmation)
     fn install_package(&self, package: &str) -> AgentResponse {
+        self.install_packages(&[package.to_string()], None, None, None)
+    }
+
+    /// Install packages (returns command to run, requires confirmation)
+    fn install_packages(
+        &self,
+        packages: &[String],
+        confidence: Option<u8>,
+        reasoning: Option<&str>,
+        query: Option<&str>,
+    ) -> AgentResponse {
+        if packages.is_empty() || packages.iter().any(|p| p.trim().is_empty()) {
+            return AgentResponse::error("No package name was provided".to_string());
+        }
+
+        let package_list = packages.join(" ");
         let cmd_str = match self.package_manager {
-            PackageManager::Apt => format!("sudo apt install -y {}", package),
-            PackageManager::Pacman => format!("sudo pacman -S {}", package),
-            PackageManager::Dnf => format!("sudo dnf install -y {}", package),
-            PackageManager::Yum => format!("sudo yum install -y {}", package),
-            PackageManager::Zypper => format!("sudo zypper install -y {}", package),
-            PackageManager::Brew => format!("brew install {}", package),
-            PackageManager::Nix => format!("nix-env -iA nixpkgs.{}", package),
+            PackageManager::Apt => format!("sudo apt install -y {}", package_list),
+            PackageManager::Pacman => format!("sudo pacman -S {}", package_list),
+            PackageManager::Dnf => format!("sudo dnf install -y {}", package_list),
+            PackageManager::Yum => format!("sudo yum install -y {}", package_list),
+            PackageManager::Zypper => format!("sudo zypper install -y {}", package_list),
+            PackageManager::Brew => format!("brew install {}", package_list),
+            PackageManager::Nix => {
+                let attrs = packages
+                    .iter()
+                    .map(|package| format!("nixpkgs.{}", package))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!("nix-env -iA {}", attrs)
+            }
             PackageManager::Unknown => {
                 return AgentResponse::error("No package manager detected".to_string());
             }
         };
 
-        // Return the command to execute - requires user confirmation
+        let intro = match (query, confidence, reasoning) {
+            (Some(query), Some(confidence), Some(reasoning)) => format!(
+                "I understood you want: {}\nReasoning: {}\nConfidence: {}%\nPackages: {}\n\n",
+                query, reasoning, confidence, package_list
+            ),
+            _ => String::new(),
+        };
+
         AgentResponse::success(format!(
-            "To install '{}', run:\n\n  {}\n\nThis requires confirmation before execution.",
-            package, cmd_str
+            "{}To install '{}', run:\n\n  {}\n\nThis requires confirmation before execution.",
+            intro, package_list, cmd_str
         ))
         .with_commands(vec![cmd_str])
         .with_suggestions(vec![
-            format!("search {}", package),
-            format!("info {}", package),
+            format!("search {}", packages[0]),
+            format!("info {}", packages[0]),
         ])
+    }
+
+    fn clarify_install(&self, query: &str, reason: &str, suggestions: Vec<String>) -> AgentResponse {
+        AgentResponse::success(format!(
+            "I understood the request, but need clarification before choosing packages.\nRequest: {}\nReasoning: {}\nConfidence: 45%",
+            query, reason
+        ))
+        .with_suggestions(suggestions)
     }
 
     /// Remove a package (returns command to run, requires confirmation)
@@ -567,6 +767,7 @@ impl Agent for PackageAgent {
         let cmd_lower = request.command.to_lowercase();
         cmd_lower.contains("package")
             || cmd_lower.contains("install")
+            || cmd_lower.contains("instal")
             || cmd_lower.contains("uninstall")
             || cmd_lower.contains("upgrade")
             || cmd_lower.contains("apt ")
@@ -580,6 +781,22 @@ impl Agent for PackageAgent {
         match command {
             PackageCommand::Search { query } => self.search_packages(&query),
             PackageCommand::Install { package } => self.install_package(&package),
+            PackageCommand::NaturalInstall {
+                query,
+                packages,
+                confidence,
+                reasoning,
+            } => self.install_packages(
+                &packages,
+                Some(confidence),
+                Some(&reasoning),
+                Some(&query),
+            ),
+            PackageCommand::Clarify {
+                query,
+                reason,
+                suggestions,
+            } => self.clarify_install(&query, &reason, suggestions),
             PackageCommand::Remove { package } => self.remove_package(&package),
             PackageCommand::ListInstalled { filter } => self.list_installed(filter.as_deref()),
             PackageCommand::CheckUpdates => self.check_updates(),
@@ -623,6 +840,85 @@ mod tests {
         assert!(matches!(
             PackageCommand::parse("install vim"),
             PackageCommand::Install { package } if package == "vim"
+        ));
+    }
+
+    #[test]
+    fn test_parse_machine_learning_profile() {
+        assert!(matches!(
+            PackageCommand::parse("install something for machine learning"),
+            PackageCommand::NaturalInstall { packages, confidence, .. }
+                if confidence >= 80 && packages.contains(&"python3-sklearn".to_string())
+        ));
+    }
+
+    #[test]
+    fn test_parse_web_server_ambiguity() {
+        assert!(matches!(
+            PackageCommand::parse("I need a web server"),
+            PackageCommand::Clarify { suggestions, .. } if suggestions.len() >= 3
+        ));
+    }
+
+    #[test]
+    fn test_parse_python_development_environment() {
+        assert!(matches!(
+            PackageCommand::parse("set up python development environment"),
+            PackageCommand::NaturalInstall { packages, confidence, .. }
+                if confidence >= 90 && packages.contains(&"python3-dev".to_string())
+        ));
+    }
+
+    #[test]
+    fn test_parse_docker_and_kubernetes() {
+        assert!(matches!(
+            PackageCommand::parse("install docker and kubernetes"),
+            PackageCommand::NaturalInstall { packages, .. }
+                if packages == vec!["docker.io".to_string(), "docker-compose-plugin".to_string(), "kubectl".to_string()]
+        ));
+    }
+
+    #[test]
+    fn test_typo_install_python() {
+        assert!(matches!(
+            PackageCommand::parse("instal pyhton"),
+            PackageCommand::NaturalInstall { packages, .. }
+                if packages.contains(&"python3".to_string())
+        ));
+    }
+
+    #[test]
+    fn test_typo_install_nginx() {
+        assert!(matches!(
+            PackageCommand::parse("instal ngnix"),
+            PackageCommand::NaturalInstall { packages, confidence, .. }
+                if confidence >= 90 && packages == vec!["nginx".to_string()]
+        ));
+    }
+
+    #[test]
+    fn test_unknown_goal_requires_clarification() {
+        assert!(matches!(
+            PackageCommand::parse("set up something useful"),
+            PackageCommand::Clarify { reason, .. } if reason.contains("not enough constraints")
+        ));
+    }
+
+    #[test]
+    fn test_general_python_profile() {
+        assert!(matches!(
+            PackageCommand::parse("I need python"),
+            PackageCommand::NaturalInstall { packages, confidence, .. }
+                if confidence >= 70 && packages.contains(&"python3-venv".to_string())
+        ));
+    }
+
+    #[test]
+    fn test_general_docker_profile() {
+        assert!(matches!(
+            PackageCommand::parse("set up docker"),
+            PackageCommand::NaturalInstall { packages, confidence, .. }
+                if confidence >= 80 && packages.contains(&"docker-compose-plugin".to_string())
         ));
     }
 
