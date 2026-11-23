@@ -12,7 +12,7 @@
 | **Test suite** | `cargo test -p cx-terminal`: **18 passed, 0 failed** (15 existing + 3 new) |
 | **Install + APT endpoints verified live** | `https://cxlinux.com/install.sh` 200 (`application/x-sh`, 8,249 B); `https://repo.cxlinux.com/key.gpg` 200; `…/apt/dists/stable/Release` 200; `cxlinux.ai` → 301 `cxlinux.com` |
 | **Bounty ledger + compliance audit** | [BOUNTY_AUDIT.md](BOUNTY_AUDIT.md): $50 owed on 2 merged PRs; 19 issues missing the bonus note; 4 FCFS conflicts |
-| **Real-diff review of 11 open contributor PRs** | [PR_REVIEWS.md](PR_REVIEWS.md): every verdict cites the diff; claims re-verified against the diffs before shipping (3 initial claims corrected) |
+| **Real-diff review of 11 open contributor PRs** | [PR_REVIEWS.md](../PR_REVIEWS.md): every verdict cites the diff; claims re-verified against the diffs before shipping (3 initial claims corrected) |
 | **Week plan, decisions, blockers, approvals queue** | PLAN / DECISIONS (D1–D9) / BLOCKERS (B1–B2) / NEEDS_MIKE (N1–N8) |
 | **Continuation cycles scheduled** | Day 1 cycle 2 (19:25 MT today), Days 2–7 and final report (11:25 MT daily through Mon Oct 26) |
 

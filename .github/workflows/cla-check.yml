@@ -24,6 +24,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # CX Linux: always run the CLA script and signer list from main. This
+          # workflow runs on pull_request_target with a write token, so checking
+          # out PR-controlled code here would let any PR execute its own script
+          # (and edit cla-signers.json to pass). Script changes take effect after merge.
           ref: main
           sparse-checkout: |
             .github/scripts/cla_check.py

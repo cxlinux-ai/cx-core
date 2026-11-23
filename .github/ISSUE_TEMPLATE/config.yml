@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: GitHub Discussions
-    url: https://github.com/wez/wezterm/discussions
-    about: When you have questions that are not bug reports or feature requests
-  - name: WezTerm room on Matrix/Element
-    url: https://app.element.io/#/room/#wezterm:matrix.org
-    about: if you'd prefer more realtime conversation with the community
+    url: https://github.com/cxlinux-ai/cx-core/discussions
+    about: Questions, ideas, and show-and-tell. Use this when it isn't a bug report or feature request.
+  - name: Security issue
+    url: https://github.com/cxlinux-ai/cx-core/blob/main/SECURITY.md
+    about: Please report vulnerabilities privately. Don't open a public issue.
