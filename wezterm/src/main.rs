@@ -188,6 +188,21 @@ enum SubCommand {
     #[command(name = "ai", about = "Manage AI models (download, status, etc.)")]
     AI(cli::ai::AICommand),
 
+    /// Undo the last reversible `cx ask` operation (from ~/.cx/transactions.jsonl)
+    #[command(name = "undo", about = "Undo the last recorded CX operation")]
+    Undo(cli::ops::UndoCommand),
+
+    /// Show recent entries from the local audit log (~/.cx/audit.log)
+    #[command(name = "audit", about = "Show recent local audit log entries")]
+    Audit(cli::ops::AuditCommand),
+
+    /// Remove local CX data under ~/.cx (audit log, transactions; does not remove the package)
+    #[command(
+        name = "clean-local-data",
+        about = "Remove ~/.cx local data (removable / local-first)"
+    )]
+    CleanLocalData(cli::ops::CleanLocalDataCommand),
+
     /// Catch-all: route unrecognized input to `cx ask` for natural language processing.
     /// This allows `cx "analyze logs"` to work the same as `cx ask "analyze logs"`.
     #[command(external_subcommand)]
@@ -821,6 +836,9 @@ fn run() -> anyhow::Result<()> {
         SubCommand::Explain(cmd) => cmd.run(),
         SubCommand::Daemon(cmd) => cmd.run(),
         SubCommand::AI(cmd) => cmd.run(),
+        SubCommand::Undo(cmd) => cmd.run(),
+        SubCommand::Audit(cmd) => cmd.run(),
+        SubCommand::CleanLocalData(cmd) => cmd.run(),
         // Catch-all: route unrecognized commands to cx ask
         // This makes `cx "analyze logs"` work like `cx ask "analyze logs"`
         SubCommand::NaturalLanguage(args) => {

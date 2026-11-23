@@ -6,10 +6,10 @@ You may not use this file except in compliance with the License.
 //! CX Terminal: Shortcut commands
 //!
 //! Simplified aliases for common AI-powered operations:
-//! - cx install <description> -> cx ask --do "install <description>"
-//! - cx setup <description>   -> cx ask --do "setup <description>"
+//! - cx install <description> -> cx ask "install <description>" (preview; use --execute to run)
+//! - cx setup <description>   -> cx ask "setup <description>"
 //! - cx what <question>       -> cx ask "what <question>"
-//! - cx fix <error>           -> cx ask --do "fix <error>"
+//! - cx fix <error>           -> cx ask "fix <error>"
 //! - cx explain <thing>       -> cx ask "explain <thing>"
 
 use anyhow::Result;
@@ -24,7 +24,11 @@ pub struct InstallCommand {
     #[arg(trailing_var_arg = true, required = true)]
     pub description: Vec<String>,
 
-    /// Skip confirmation prompts
+    /// Run suggested commands after dry-run preview (same as `cx ask --execute`)
+    #[arg(long = "execute", short = 'd', visible_alias = "do")]
+    pub execute: bool,
+
+    /// Skip confirmation after `--execute` (requires `-d`; ignored without it)
     #[arg(long = "yes", short = 'y')]
     pub auto_confirm: bool,
 
@@ -43,7 +47,7 @@ impl InstallCommand {
 
         let ask = AskCommand {
             query: vec![query],
-            execute: true,
+            execute: self.execute,
             auto_confirm: self.auto_confirm,
             local_only: self.local_only,
             format: "text".to_string(),
@@ -61,7 +65,9 @@ pub struct SetupCommand {
     #[arg(trailing_var_arg = true, required = true)]
     pub description: Vec<String>,
 
-    /// Skip confirmation prompts
+    #[arg(long = "execute", short = 'd', visible_alias = "do")]
+    pub execute: bool,
+
     #[arg(long = "yes", short = 'y')]
     pub auto_confirm: bool,
 
@@ -80,7 +86,7 @@ impl SetupCommand {
 
         let ask = AskCommand {
             query: vec![query],
-            execute: true,
+            execute: self.execute,
             auto_confirm: self.auto_confirm,
             local_only: self.local_only,
             format: "text".to_string(),
@@ -135,7 +141,9 @@ pub struct FixCommand {
     #[arg(trailing_var_arg = true)]
     pub error: Vec<String>,
 
-    /// Skip confirmation prompts
+    #[arg(long = "execute", short = 'd', visible_alias = "do")]
+    pub execute: bool,
+
     #[arg(long = "yes", short = 'y')]
     pub auto_confirm: bool,
 
@@ -165,7 +173,7 @@ impl FixCommand {
 
         let ask = AskCommand {
             query: vec![query],
-            execute: true,
+            execute: self.execute,
             auto_confirm: self.auto_confirm,
             local_only: self.local_only,
             format: "text".to_string(),
